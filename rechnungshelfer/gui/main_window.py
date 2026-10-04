@@ -22,6 +22,7 @@ from .update_dialog import UpdateDialog
 from .buffered_form import BufferedFormHost
 from .export_workflow import ExportWorkflow
 from rechnungshelfer.services.update_service import check_for_application_update
+from rechnungshelfer.application.errors import CustomerDuplicateError
 from rechnungshelfer.domain.models import DocumentType
 
 class InvoiceGUI:
@@ -59,7 +60,6 @@ class InvoiceGUI:
         self.root.after(100, self._do_startup_tasks)
 
     def _do_startup_tasks(self):
-        self.controller.migrate_customers_from_invoices_if_empty()
         self.load_latest_invoice()
         if self.on_ready:
             self.on_ready()
@@ -433,32 +433,26 @@ class InvoiceGUI:
                 f"{self.invoice.document_type.label} {invoice_number} wurde gespeichert.",
             )
 
-        except ValueError as e:
-            msg = str(e)
+        except CustomerDuplicateError as error:
+            ok = messagebox.askyesno(
+                "Möglicher doppelter Kunde",
+                "Es wurde ein möglicher doppelter Kunde gefunden:\n\n"
+                f"{error.format_duplicates()}\n\n"
+                "Trotzdem speichern?",
+            )
 
-            if msg.startswith("CUSTOMER_DUPLICATE_FOUND"):
-                duplicates = msg.replace("CUSTOMER_DUPLICATE_FOUND", "").strip()
+            if ok:
+                try:
+                    self.controller.save_invoice(
+                        self.invoice,
+                        allow_customer_duplicate=True,
+                    )
+                    messagebox.showinfo("Gespeichert", "Beleg wurde gespeichert.")
+                except Exception as retry_error:
+                    messagebox.showerror("Fehler", str(retry_error))
 
-                ok = messagebox.askyesno(
-                    "Möglicher doppelter Kunde",
-                    "Es wurde ein möglicher doppelter Kunde gefunden:\n\n"
-                    f"{duplicates}\n\n"
-                    "Trotzdem speichern?"
-                )
-
-                if ok:
-                    try:
-                        self.controller.save_invoice(
-                            self.invoice,
-                            allow_customer_duplicate=True,
-                        )
-                        messagebox.showinfo("Gespeichert", "Beleg wurde gespeichert.")
-                    except Exception as e2:
-                        messagebox.showerror("Fehler", str(e2))
-
-                return
-
-            messagebox.showerror("Fehler", msg)
+        except ValueError as error:
+            messagebox.showerror("Fehler", str(error))
 
         except Exception as e:
             messagebox.showerror(

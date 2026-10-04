@@ -15,8 +15,9 @@ from rechnungshelfer.services.pdf_service import create_pdf
 from rechnungshelfer.services.validation_service import (
     ExternalInvoiceValidator,
     ValidationResult,
-    format_missing_fields,
-    get_missing_required_fields,
+    format_missing_fields as format_export_issues,
+    get_missing_required_fields as find_missing_required_fields,
+    is_required_field as check_required_field,
     validate_invoice,
 )
 from rechnungshelfer.services.xml_service import create_xml
@@ -58,9 +59,9 @@ class InvoiceExportService:
 
     def export_pdf(self, invoice: Invoice, filepath: str | Path) -> None:
         self._normalize(invoice)
-        missing = get_missing_required_fields(invoice, for_xml=False)
+        missing = self.get_missing_required_fields(invoice, for_xml=False)
         if missing:
-            raise ValueError(format_missing_fields(missing, "PDF"))
+            raise ValueError(self.format_missing_fields(missing, "PDF"))
 
         invoice.calculate(force=True)
         self._pdf_renderer(invoice, filepath)
@@ -73,9 +74,9 @@ class InvoiceExportService:
         self._normalize(invoice)
         self._ensure_self_billed_supplier_number(invoice)
 
-        missing = get_missing_required_fields(invoice, for_xml=True)
+        missing = self.get_missing_required_fields(invoice, for_xml=True)
         if missing:
-            raise ValueError(format_missing_fields(missing, "XML"))
+            raise ValueError(self.format_missing_fields(missing, "XML"))
 
         xml_bytes = self._xml_renderer(
             invoice,
@@ -101,6 +102,22 @@ class InvoiceExportService:
             xml_bytes=xml_bytes,
             validation_result=validation_result,
         )
+
+    @staticmethod
+    def is_required_field(invoice, section, attr, item_pos=None) -> bool:
+        return check_required_field(invoice, section, attr, item_pos=item_pos)
+
+    def get_missing_required_fields(self, invoice, for_xml=True):
+        if for_xml:
+            self._ensure_self_billed_supplier_number(invoice)
+        return find_missing_required_fields(invoice, for_xml=for_xml)
+
+    @staticmethod
+    def format_missing_fields(missing, export_name):
+        return format_export_issues(missing, export_name)
+
+    def check_required_fields(self, invoice, for_xml=True) -> bool:
+        return not self.get_missing_required_fields(invoice, for_xml=for_xml)
 
     @staticmethod
     def _normalize(invoice: Invoice) -> None:

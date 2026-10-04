@@ -8,8 +8,10 @@ from unittest.mock import MagicMock, patch
 from lxml import etree
 
 from rechnungshelfer.controller import InvoiceController
+from rechnungshelfer.application.errors import CustomerDuplicateError
 from rechnungshelfer.domain.models import Buyer, DEFAULT_BUYER_REFERENCE, Payment, Seller
 from rechnungshelfer.gui.export_workflow import ExportWorkflow
+from rechnungshelfer.gui.main_window import InvoiceGUI
 from rechnungshelfer.repositories.customer_repository import CustomerRepository
 from rechnungshelfer.repositories.database import Database
 from rechnungshelfer.repositories.invoice_repository import (
@@ -111,11 +113,61 @@ class RegressionTests(unittest.TestCase):
             existing.customer_number = "K-OLD"
             controller.customer_repo.save(existing)
 
-            with self.assertRaisesRegex(ValueError, "CUSTOMER_DUPLICATE_FOUND"):
-                controller.save_invoice(invoice)
+            try:
+                with self.assertRaises(CustomerDuplicateError) as raised:
+                    controller.save_invoice(invoice)
 
-            self.assertFalse(controller.repo.exists("DUP-1"))
-            controller.close()
+                self.assertEqual(
+                    [buyer.customer_number for buyer in raised.exception.duplicates],
+                    ["K-OLD"],
+                )
+                self.assertFalse(controller.repo.exists("DUP-1"))
+            finally:
+                controller.close()
+
+    def test_gui_handles_typed_customer_duplicate_error(self):
+        invoice = self._invoice()
+        duplicate = copy.deepcopy(invoice.buyer)
+        duplicate.customer_number = "K-OLD"
+        controller = MagicMock()
+        controller.invoice_exists.return_value = False
+        controller.save_invoice.side_effect = [
+            CustomerDuplicateError([duplicate]),
+            None,
+        ]
+        gui = InvoiceGUI.__new__(InvoiceGUI)
+        gui.invoice = invoice
+        gui.controller = controller
+
+        with (
+            patch(
+                "rechnungshelfer.gui.main_window.messagebox.askyesno",
+                return_value=True,
+            ) as ask,
+            patch("rechnungshelfer.gui.main_window.messagebox.showinfo"),
+        ):
+            gui.save_invoice()
+
+        self.assertIn("K-OLD", ask.call_args.args[1])
+        self.assertEqual(controller.save_invoice.call_count, 2)
+        controller.save_invoice.assert_called_with(
+            invoice,
+            allow_customer_duplicate=True,
+        )
+
+    def test_gui_startup_does_not_run_data_migrations(self):
+        gui = InvoiceGUI.__new__(InvoiceGUI)
+        gui.controller = MagicMock()
+        gui.root = MagicMock()
+        gui.on_ready = MagicMock()
+        gui.load_latest_invoice = MagicMock()
+
+        with patch.object(__import__("sys"), "frozen", False, create=True):
+            gui._do_startup_tasks()
+
+        gui.controller.migrate_customers_from_invoices_if_empty.assert_not_called()
+        gui.load_latest_invoice.assert_called_once_with()
+        gui.on_ready.assert_called_once_with()
 
     def test_supplier_and_invoice_are_rolled_back_together(self):
         with tempfile.TemporaryDirectory() as tmp:

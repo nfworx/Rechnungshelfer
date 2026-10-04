@@ -1,30 +1,23 @@
-# rechnungshelfer/controller.py
-from rechnungshelfer.services.xml_reader import read_xml_file, InvoiceParsingError
-from rechnungshelfer.services.export_service import InvoiceExportService
-from rechnungshelfer.services.kosit_validation_service import KositValidator
-from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
+"""Stabile GUI-Fassade für die Anwendungsfälle des Rechnungshelfers."""
+
+from rechnungshelfer.application.invoice_service import InvoiceApplicationService
+from rechnungshelfer.application.party_service import PartyApplicationService
+from rechnungshelfer.domain.invoice_factory import InvoiceFactory
+from rechnungshelfer.domain.models import (
+    Buyer,
+    DocumentType,
+    Invoice,
+    Payment,
+    Seller,
+)
 from rechnungshelfer.repositories.customer_repository import CustomerRepository
+from rechnungshelfer.repositories.database import Database
+from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
 from rechnungshelfer.repositories.master_data_repository import MasterDataRepository
 from rechnungshelfer.repositories.supplier_repository import SupplierRepository
-from rechnungshelfer.repositories.database import Database
-from rechnungshelfer.services.input_validation_service import (
-    InputValidationError,
-    normalize_invoice_input,
-)
-from rechnungshelfer.services.validation_service import (
-    format_missing_fields as format_export_issues,
-    get_missing_required_fields as find_missing_required_fields,
-    is_required_field as check_required_field,
-)
+from rechnungshelfer.services.export_service import InvoiceExportService
+from rechnungshelfer.services.kosit_validation_service import KositValidator
 
-from rechnungshelfer.domain.models import (
-    Seller,
-    Buyer,
-    Payment,
-    Invoice,
-    DocumentType,
-)
-from rechnungshelfer.domain.invoice_factory import InvoiceFactory
 
 class InvoiceController:
     def __init__(self):
@@ -34,7 +27,38 @@ class InvoiceController:
         self.master_data_repository = MasterDataRepository()
         self.supplier_repo = SupplierRepository(connection=self.database.connection)
         self.invoice_factory = InvoiceFactory()
+        self.invoice_service = self._create_invoice_service()
+        self.party_service = self._create_party_service()
         self.export_service = self._create_export_service()
+
+    def _create_invoice_service(self):
+        return InvoiceApplicationService(
+            database=self.database,
+            invoice_repository=self.repo,
+            customer_repository=self.customer_repo,
+            supplier_repository=self.supplier_repo,
+            master_data_repository=self.master_data_repository,
+            invoice_factory=getattr(self, "invoice_factory", InvoiceFactory()),
+        )
+
+    def _get_invoice_service(self):
+        if not hasattr(self, "invoice_service"):
+            self.invoice_service = self._create_invoice_service()
+        return self.invoice_service
+
+    def _create_party_service(self):
+        return PartyApplicationService(
+            database=self.database,
+            invoice_repository=self.repo,
+            customer_repository=self.customer_repo,
+            supplier_repository=self.supplier_repo,
+            master_data_repository=self.master_data_repository,
+        )
+
+    def _get_party_service(self):
+        if not hasattr(self, "party_service"):
+            self.party_service = self._create_party_service()
+        return self.party_service
 
     def _create_export_service(self):
         supplier_number_provider = (
@@ -52,155 +76,70 @@ class InvoiceController:
             self.export_service = self._create_export_service()
         return self.export_service
 
-    # ========================
-    # Neueste Invoice laden
-    # ========================
+    # Belege
     def load_latest_invoice(self):
-        return self.repo.load_latest()
+        return self._get_invoice_service().load_latest_invoice()
 
-    # ========================
-    # Invoice erstellen
-    # ========================
     def create_empty_invoice(self, document_type=DocumentType.INVOICE):
-        document_type = DocumentType.from_value(document_type)
-        own_company, own_payment = self.master_data_repository.load_into(
-            Seller(),
-            Payment(),
-        )
-        supplier_number = (
-            self.supplier_repo.next_supplier_number()
-            if document_type is DocumentType.SELF_BILLED_INVOICE
-            else ""
-        )
-        return self.invoice_factory.create(
-            document_type,
-            own_company=own_company,
-            own_payment=own_payment,
-            supplier_number=supplier_number,
-        )
+        return self._get_invoice_service().create_empty_invoice(document_type)
 
-    # ========================
-    # Invoice speichern
-    # ========================
     def save_invoice(self, invoice: Invoice, allow_customer_duplicate=False):
-        try:
-            normalize_invoice_input(invoice)
-        except InputValidationError as e:
-            raise ValueError(str(e))
+        return self._get_invoice_service().save_invoice(
+            invoice,
+            allow_customer_duplicate=allow_customer_duplicate,
+        )
 
-        invoice.calculate(force=True)
-
-        if not invoice.info.invoice_number:
-            raise ValueError("Belegnummer fehlt")
-
-        if not invoice.is_self_billed and invoice.buyer.customer_number and invoice.buyer.name:
-            duplicates = self.customer_repo.find_duplicates(invoice.buyer)
-
-            real_duplicates = [
-                d for d in duplicates
-                if d.customer_number != invoice.buyer.customer_number
-            ]
-
-            if real_duplicates and not allow_customer_duplicate:
-                names = "\n".join(
-                    f"- {d.customer_number} | {d.name}"
-                    for d in real_duplicates
-                )
-                raise ValueError(
-                    "CUSTOMER_DUPLICATE_FOUND\n"
-                    f"{names}"
-                )
-
-        with self.database.transaction():
-            if invoice.is_self_billed and invoice.seller.name:
-                self.supplier_repo.save(invoice.seller, invoice.payment, commit=False)
-
-            self.repo.save(invoice, commit=False)
-
-            if (
-                not invoice.is_self_billed
-                and invoice.buyer.customer_number
-                and invoice.buyer.name
-            ):
-                self.customer_repo.save(invoice.buyer, commit=False)
-    # ========================
-    # Prüfen ob Invoice vorhanden
-    # ========================
     def invoice_exists(self, invoice_number: str) -> bool:
-        if not invoice_number:
-            return False
-        return self.repo.exists(invoice_number)
+        return self._get_invoice_service().invoice_exists(invoice_number)
 
-    # ========================
-    # Invoice laden aus DB
-    # ========================
     def list_invoice_summaries(self):
-        return self.repo.list_invoice_summaries()
-
+        return self._get_invoice_service().list_invoice_summaries()
 
     def load_invoice(self, invoice_number):
-        invoice = self.repo.load(invoice_number)
+        return self._get_invoice_service().load_invoice(invoice_number)
 
-        if invoice is None:
-            raise ValueError(f"Rechnung nicht gefunden: {invoice_number}")
-
-        invoice.calculate(force=True)
-        return invoice
-
-    # ========================
-    # Invoice löschen
-    # ========================
     def delete_invoice(self, invoice_number):
-        if not invoice_number:
-            raise ValueError("Keine Rechnungsnummer angegeben")
-        self.repo.delete(invoice_number)
+        return self._get_invoice_service().delete_invoice(invoice_number)
 
-    # ========================
-    # XML laden
-    # ========================
     def load_from_xml(self, filepath):
-        try:
-            invoice = read_xml_file(filepath)
-            return invoice
-        except InvoiceParsingError as e:
-            raise ValueError(f"XML Fehler: {e}")
-        except Exception as e:
-            raise RuntimeError(f"Fehler beim Laden: {e}")
+        return self._get_invoice_service().load_from_xml(filepath)
 
-    # ========================
-    # PDF generieren
-    # ========================
+    def copy_invoice(self, invoice: Invoice) -> Invoice:
+        return self._get_invoice_service().copy_invoice(invoice)
+
+    def recalculate(self, invoice, force=False):
+        return self._get_invoice_service().recalculate(invoice, force=force)
+
+    # Export und Exportvorprüfung
     def generate_pdf(self, invoice, filepath):
         return self._get_export_service().export_pdf(invoice, filepath)
 
-    # ========================
-    # XML generieren
-    # ========================
     def generate_xml(self, invoice, filepath):
         return self._get_export_service().export_xml(invoice, filepath)
 
-    # ========================
-    # Pflichtfelder prüfen
-    # ========================
     def is_required_field(self, invoice, section, attr, item_pos=None):
-        return check_required_field(invoice, section, attr, item_pos=item_pos)
+        return self._get_export_service().is_required_field(
+            invoice,
+            section,
+            attr,
+            item_pos=item_pos,
+        )
 
     def get_missing_required_fields(self, invoice, for_xml=True):
-        """Liefert fehlende Pflichtfelder getrennt nach PDF- und XML-Export."""
-        if for_xml and invoice.is_self_billed and hasattr(self, "supplier_repo"):
-            self._ensure_self_billed_supplier_number(invoice)
-        return find_missing_required_fields(invoice, for_xml=for_xml)
-
-    def _ensure_self_billed_supplier_number(self, invoice):
-        if invoice.is_self_billed and not invoice.seller.supplier_number:
-            invoice.seller.supplier_number = self.supplier_repo.next_supplier_number()
+        return self._get_export_service().get_missing_required_fields(
+            invoice,
+            for_xml=for_xml,
+        )
 
     @staticmethod
     def format_missing_fields(missing, export_name):
-        return format_export_issues(missing, export_name)
+        return InvoiceExportService.format_missing_fields(missing, export_name)
 
     def check_required_fields(self, invoice, for_xml=True):
-        return not self.get_missing_required_fields(invoice, for_xml=for_xml)
+        return self._get_export_service().check_required_fields(
+            invoice,
+            for_xml=for_xml,
+        )
 
     def check_pdf_required_fields(self, invoice):
         return self.check_required_fields(invoice, for_xml=False)
@@ -208,18 +147,50 @@ class InvoiceController:
     def check_xml_required_fields(self, invoice):
         return self.check_required_fields(invoice, for_xml=True)
 
-    def copy_invoice(self, invoice: Invoice) -> Invoice:
-        return self.invoice_factory.copy(invoice)
+    # Kunden, Lieferanten und Stammdaten
+    def save_customer(self, buyer: Buyer):
+        return self._get_party_service().save_customer(buyer)
 
-    # ========================
-    # Invoice Recalculate
-    # ========================
-    def recalculate(self, invoice, force=False):
-        invoice.calculate(force=force)
+    def search_customers(self, field: str, query: str):
+        return self._get_party_service().search_customers(field, query)
 
-    # ========================
-    # Repository schließen
-    # ========================
+    def list_customers(self):
+        return self._get_party_service().list_customers()
+
+    def delete_customer(self, customer_number):
+        return self._get_party_service().delete_customer(customer_number)
+
+    def load_master_data(self, seller, payment):
+        return self._get_party_service().load_master_data(seller, payment)
+
+    def save_master_data(self, seller, payment):
+        return self._get_party_service().save_master_data(seller, payment)
+
+    def load_own_company_buyer(self):
+        return self._get_party_service().load_own_company_buyer()
+
+    def apply_master_data_to_invoice(self, invoice):
+        return self._get_party_service().apply_master_data_to_invoice(invoice)
+
+    def migrate_customers_from_invoices_if_empty(self):
+        return self._get_party_service().migrate_customers_from_invoices_if_empty()
+
+    def find_customer_duplicates(self, buyer: Buyer):
+        return self._get_party_service().find_customer_duplicates(buyer)
+
+    def list_suppliers(self):
+        return self._get_party_service().list_suppliers()
+
+    def save_supplier(self, seller: Seller, payment: Payment):
+        return self._get_party_service().save_supplier(seller, payment)
+
+    def delete_supplier(self, supplier_number: str):
+        return self._get_party_service().delete_supplier(supplier_number)
+
+    @staticmethod
+    def _seller_to_buyer(seller: Seller) -> Buyer:
+        return InvoiceFactory.seller_to_buyer(seller)
+
     def close(self):
         if hasattr(self, "database"):
             self.database.close()
@@ -227,105 +198,6 @@ class InvoiceController:
 
         # Kompatibilität für gezielt ohne __init__ erzeugte Test-Controller.
         self.repo.close()
-
         if hasattr(self.customer_repo, "close"):
             self.customer_repo.close()
-
         self.supplier_repo.close()
-
-    # ========================
-    # Kunde speichern
-    # ========================
-    def save_customer(self, buyer: Buyer):
-        if not buyer.customer_number:
-            raise ValueError("Kundennummer fehlt. Kunde kann nicht gespeichert werden.")
-        if not buyer.name:
-            raise ValueError("Name des Kunden fehlt. Kunde kann nicht gespeichert werden.")
-
-        self.customer_repo.save(buyer)
-
-    # ========================
-    # Kunde suchen (Autocomplete)
-    # ========================
-    def search_customers(self, field: str, query: str):
-        """
-        Sucht Kunden über die CustomerRepository-DB.
-        """
-        return self.customer_repo.search(field, query, limit=6)
-
-    # ========================
-    # Alle Kunden auflisten
-    # ========================
-    def list_customers(self):
-        """
-        Gibt alle Kunden zurück (CustomerRepository)
-        """
-        return self.customer_repo.list_customers()
-    
-    def delete_customer(self, customer_number):
-        if not customer_number:
-            raise ValueError("Keine Kundennummer angegeben")
-        self.customer_repo.delete(customer_number)
-    
-    def load_master_data(self, seller, payment):
-        return self.master_data_repository.load_into(seller, payment)
-
-
-    def save_master_data(self, seller, payment):
-        self.master_data_repository.save(seller, payment)
-
-    def load_own_company_buyer(self):
-        seller, _ = self.master_data_repository.load_into(Seller(), Payment())
-        return self._seller_to_buyer(seller)
-
-
-    def apply_master_data_to_invoice(self, invoice):
-        return self.master_data_repository.apply_to_invoice(invoice)
-    
-
-    
-    def migrate_customers_from_invoices_if_empty(self):
-        if self.customer_repo.count() > 0:
-            return
-
-        invoices = self.repo.list_invoice_numbers()
-
-        for invoice_number in invoices:
-            invoice = self.repo.load(invoice_number)
-
-            if not invoice:
-                continue
-
-            if invoice.is_self_billed:
-                continue
-
-            buyer = invoice.buyer
-
-            if not buyer.name:
-                continue
-
-            # Falls alte Rechnungen keine Kundennummer haben
-            if not buyer.customer_number:
-                buyer.customer_number = self._generate_customer_number_from_invoice(buyer)
-
-            self.customer_repo.save(buyer)
-
-
-    def _generate_customer_number_from_invoice(self, buyer):
-        return self.customer_repo.next_customer_number()
-    
-    def find_customer_duplicates(self, buyer: Buyer):
-        return self.customer_repo.find_duplicates(buyer)
-
-    def list_suppliers(self):
-        return self.supplier_repo.list_suppliers()
-
-    def save_supplier(self, seller: Seller, payment: Payment):
-        return self.supplier_repo.save(seller, payment)
-
-    def delete_supplier(self, supplier_number: str):
-        self.supplier_repo.delete(supplier_number)
-
-    @staticmethod
-    def _seller_to_buyer(seller: Seller) -> Buyer:
-        return InvoiceFactory.seller_to_buyer(seller)

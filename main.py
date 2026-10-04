@@ -16,6 +16,7 @@ if __name__ == "__main__":
 
     root = ctk.CTk()
     controller = InvoiceController()
+    controller.migrate_customers_from_invoices_if_empty()
     gui = InvoiceGUI(root, controller, on_ready=signal_ready)
 
     def on_close():
