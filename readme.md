@@ -86,7 +86,7 @@ Der Build erzeugt:
 
 ```text
 dist/<APP_ID>/<APP_ID>.exe
-dist/<APP_ID>/Updater.exe
+dist/<APP_ID>/_internal/Updater.exe
 release/<APP_ID>-<VERSION>-win64.zip
 release/<APP_ID>-<VERSION>-win64.zip.sha256
 release/<APP_ID>-<VERSION>-<CHANNEL>-manifest.json
@@ -117,11 +117,11 @@ Programmordner ab:
 ```text
 Rechnungshelfer/
 |-- Rechnungshelfer.exe
-|-- Updater.exe
 |-- data/
 |   |-- invoices.db
 |   `-- master_data.json
 `-- _internal/
+    `-- Updater.exe
 ```
 
 Der gesamte Ordner kann auf einen anderen beschreibbaren Datentraeger kopiert
@@ -145,7 +145,7 @@ Benutzeroberflaeche oder `Updater.exe` angeboten.
 
 Ein Programmupdate ersetzt den vollstaendigen One-Folder-Build. Eine laufende
 EXE kann ihren eigenen Ordner unter Windows nicht sicher austauschen. Deshalb
-wird `Updater.exe` vor dem Update nach `%TEMP%` kopiert und von dort
+wird `_internal/Updater.exe` vor dem Update nach `%TEMP%` kopiert und von dort
 gestartet. Er wartet auf das Ende des Hauptprogramms, prueft das Paket, tauscht
 den Programmordner ueber ein Staging-Verzeichnis aus und startet die neue
 Version. Erst nachdem diese ihren erfolgreichen Start bestaetigt hat, wird die

@@ -348,8 +348,10 @@ def _verify_artifacts(project_root: Path, version: Version, channel: str) -> dic
         raise BuilderError("Anwendungsmanifest stimmt nicht mit dem Release-ZIP ueberein.")
     with zipfile.ZipFile(archive) as package:
         names = {name.replace("\\", "/") for name in package.namelist()}
-    if "Rechnungshelfer.exe" not in names or "Updater.exe" not in names:
-        raise BuilderError("Release-ZIP enthaelt Rechnungshelfer.exe oder Updater.exe nicht.")
+    if "Rechnungshelfer.exe" not in names or "_internal/Updater.exe" not in names:
+        raise BuilderError(
+            "Release-ZIP enthaelt Rechnungshelfer.exe oder den internen Updater nicht."
+        )
     forbidden = [name for name in names if name.casefold().startswith("data/") or name.casefold().endswith(
         (".db", ".sqlite", ".sqlite3", "-report.xml", "-report.html")
     )]

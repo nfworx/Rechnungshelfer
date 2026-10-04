@@ -185,9 +185,9 @@ def check_for_application_update() -> OnlineUpdate | None:
 def _updater_command() -> tuple[list[str], Path | None]:
     if not getattr(sys, "frozen", False):
         return [sys.executable, "-m", "updater.runner"], None
-    source = application_install_root() / "Updater.exe"
+    source = application_install_root() / "_internal" / "Updater.exe"
     if not source.is_file():
-        raise UpdateError("Updater.exe fehlt im Programmordner.")
+        raise UpdateError("Interner Programm-Updater fehlt.")
     temp_dir = Path(tempfile.gettempdir()) / "Rechnungshelfer-Updater"
     temp_dir.mkdir(parents=True, exist_ok=True)
     target = temp_dir / "Updater.exe"

@@ -9,6 +9,7 @@ from packaging.version import Version
 
 from services.update_service import (
     _materialize_online_manifest,
+    _updater_command,
     check_for_application_update,
 )
 from updater.core import ApplicationManifest, UpdateError, load_manifest
@@ -88,6 +89,27 @@ class UpdateServiceTests(unittest.TestCase):
             pinned = load_manifest(path)
         self.assertIsInstance(pinned, ApplicationManifest)
         self.assertEqual(pinned.package.url, update.package_url)
+
+    def test_packaged_application_copies_internal_updater_to_temp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            install_root = root / "Rechnungshelfer"
+            updater = install_root / "_internal" / "Updater.exe"
+            updater.parent.mkdir(parents=True)
+            updater.write_bytes(b"internal updater")
+            temp_root = root / "temp"
+            temp_root.mkdir()
+
+            with (
+                patch("services.update_service.sys.frozen", True, create=True),
+                patch("services.update_service.application_install_root", return_value=install_root),
+                patch("services.update_service.tempfile.gettempdir", return_value=str(temp_root)),
+            ):
+                command, updater_temp = _updater_command()
+
+            self.assertEqual(Path(command[0]), temp_root / "Rechnungshelfer-Updater" / "Updater.exe")
+            self.assertEqual(Path(command[0]).read_bytes(), b"internal updater")
+            self.assertEqual(updater_temp, temp_root / "Rechnungshelfer-Updater")
 
 
 if __name__ == "__main__":

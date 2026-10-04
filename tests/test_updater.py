@@ -215,7 +215,7 @@ class UpdaterTests(unittest.TestCase):
                 {
                     "Rechnungshelfer.exe": b"new exe",
                     "_internal/new.txt": "new",
-                    "Updater.exe": b"new updater",
+                    "_internal/Updater.exe": b"new updater",
                 },
             )
             manifest_path = self._app_manifest(root, package)
@@ -231,6 +231,7 @@ class UpdaterTests(unittest.TestCase):
 
             self.assertEqual((install / "Rechnungshelfer.exe").read_bytes(), b"new exe")
             self.assertTrue((install / "_internal" / "new.txt").exists())
+            self.assertEqual((install / "_internal" / "Updater.exe").read_bytes(), b"new updater")
             self.assertFalse((install / "_internal" / "old.txt").exists())
             self.assertEqual((install / "data" / "invoices.db").read_bytes(), b"customer data")
 

@@ -266,7 +266,7 @@ class ReleaseToolTests(unittest.TestCase):
             archive = release_dir / "Rechnungshelfer-1.0.1-win64.zip"
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr("Rechnungshelfer.exe", b"app")
-                package.writestr("Updater.exe", b"updater")
+                package.writestr("_internal/Updater.exe", b"updater")
                 package.writestr("_internal/runtime.dat", b"runtime")
             digest = hashlib.sha256(archive.read_bytes()).hexdigest()
             Path(str(archive) + ".sha256").write_text(f"{digest}  {archive.name}\n", encoding="ascii")

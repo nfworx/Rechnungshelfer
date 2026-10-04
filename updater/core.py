@@ -26,7 +26,6 @@ MAX_UNCOMPRESSED_BYTES = 4 * 1024 * 1024 * 1024
 
 APPLICATION_MANAGED_PATHS = {
     "Rechnungshelfer.exe",
-    "Updater.exe",
     "_internal",
 }
 REQUIRED_APPLICATION_PATHS = {"Rechnungshelfer.exe", "_internal"}

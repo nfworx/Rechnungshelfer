@@ -25,8 +25,9 @@ core.py                             gemeinsame Sicherheitslogik
 data/                               wird von keinem Updateweg veraendert
 ```
 
-Die Anwendung kopiert `Updater.exe` vor dem Start in ein festes Verzeichnis
-unter `%TEMP%`. Danach beendet sie sich und schliesst die SQLite-Datenbank.
+Die Anwendung bewahrt den technischen Updater unter `_internal/Updater.exe`
+auf und kopiert ihn vor dem Start in ein festes Verzeichnis unter `%TEMP%`.
+Danach beendet sie sich und schliesst die SQLite-Datenbank.
 
 ## Sicherheitsregeln
 
@@ -34,7 +35,8 @@ unter `%TEMP%`. Danach beendet sie sich und schliesst die SQLite-Datenbank.
 - Paketgroesse und SHA-256 muessen exakt zum Manifest passen.
 - ZIP-Pfadtraversal, symbolische Links und doppelte Pfade werden abgelehnt.
 - Ein Anwendungsarchiv darf keinen `data/`-Ordner enthalten.
-- Erlaubte Anwendungspfade sind `Rechnungshelfer.exe`, `Updater.exe` und `_internal/`.
+- Erlaubte Anwendungspfade sind nur `Rechnungshelfer.exe` und `_internal/`;
+  der technische Updater liegt innerhalb von `_internal/`.
 - Komponenten duerfen nur ihre fest im Code hinterlegten Zielpfade ersetzen.
 - Austausch erfolgt ueber Staging und Rollback auf demselben Laufwerk.
 - KoSIT-Updates muessen einen Java-Smoke-Test bestehen.

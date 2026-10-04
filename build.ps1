@@ -72,7 +72,8 @@ $builtUpdater = Join-Path $updaterDist "Updater.exe"
 if (-not (Test-Path -LiteralPath $builtUpdater)) {
     throw "Erwarteter Updater fehlt: $builtUpdater"
 }
-Copy-Item -LiteralPath $builtUpdater -Destination (Join-Path $buildDirectory "Updater.exe") -Force
+$updaterTarget = Join-Path $buildDirectory "_internal\Updater.exe"
+Copy-Item -LiteralPath $builtUpdater -Destination $updaterTarget -Force
 
 $forbiddenBuildFiles = Get-ChildItem `
     -LiteralPath $buildDirectory `

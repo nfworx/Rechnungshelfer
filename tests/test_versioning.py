@@ -59,6 +59,14 @@ class VersioningTests(unittest.TestCase):
         self.assertEqual(data["schema_version"], 1)
         self.assertEqual(data["components"]["kosit-validator"], "1.6.2")
 
+    def test_onefolder_build_hides_updater_below_internal(self):
+        project_root = Path(__file__).resolve().parent.parent
+        build_script = (project_root / "build.ps1").read_text(encoding="utf-8")
+        update_service = (project_root / "services" / "update_service.py").read_text(encoding="utf-8")
+
+        self.assertIn('"_internal\\Updater.exe"', build_script)
+        self.assertIn('/ "_internal" / "Updater.exe"', update_service)
+
     def test_user_builds_explicitly_exclude_maintainer_tools(self):
         project_root = Path(__file__).resolve().parent.parent
         for name in ("Rechnungshelfer.spec", "Updater.spec"):
