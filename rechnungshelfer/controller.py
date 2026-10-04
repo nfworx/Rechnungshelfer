@@ -1,8 +1,7 @@
 # rechnungshelfer/controller.py
-from pathlib import Path
 from rechnungshelfer.services.xml_reader import read_xml_file, InvoiceParsingError
-from rechnungshelfer.services.pdf_service import create_pdf
-from rechnungshelfer.services.xml_service import create_xml
+from rechnungshelfer.services.export_service import InvoiceExportService
+from rechnungshelfer.services.kosit_validation_service import KositValidator
 from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
 from rechnungshelfer.repositories.customer_repository import CustomerRepository
 from rechnungshelfer.repositories.master_data_repository import MasterDataRepository
@@ -13,11 +12,9 @@ from rechnungshelfer.services.input_validation_service import (
     normalize_invoice_input,
 )
 from rechnungshelfer.services.validation_service import (
-    ExportValidationError,
     format_missing_fields as format_export_issues,
     get_missing_required_fields as find_missing_required_fields,
     is_required_field as check_required_field,
-    validate_invoice,
 )
 
 from rechnungshelfer.domain.models import (
@@ -37,7 +34,23 @@ class InvoiceController:
         self.master_data_repository = MasterDataRepository()
         self.supplier_repo = SupplierRepository(connection=self.database.connection)
         self.invoice_factory = InvoiceFactory()
-        self.last_validation_result = None
+        self.export_service = self._create_export_service()
+
+    def _create_export_service(self):
+        supplier_number_provider = (
+            self.supplier_repo.next_supplier_number
+            if hasattr(self, "supplier_repo")
+            else None
+        )
+        return InvoiceExportService(
+            external_validator=KositValidator(),
+            supplier_number_provider=supplier_number_provider,
+        )
+
+    def _get_export_service(self):
+        if not hasattr(self, "export_service"):
+            self.export_service = self._create_export_service()
+        return self.export_service
 
     # ========================
     # Neueste Invoice laden
@@ -158,69 +171,13 @@ class InvoiceController:
     # PDF generieren
     # ========================
     def generate_pdf(self, invoice, filepath):
-        try:
-            normalize_invoice_input(invoice)
-        except InputValidationError as e:
-            raise ValueError(str(e))   # GUI kann das anzeigen
-
-        missing = self.get_missing_required_fields(invoice, for_xml=False)
-        if missing:
-            raise ValueError(self.format_missing_fields(missing, "PDF"))
-
-        invoice.calculate(force=True)
-        create_pdf(invoice, filepath)
+        return self._get_export_service().export_pdf(invoice, filepath)
 
     # ========================
     # XML generieren
     # ========================
     def generate_xml(self, invoice, filepath):
-        try:
-            normalize_invoice_input(invoice)
-        except InputValidationError as e:
-            raise ValueError(str(e))
-
-        self._ensure_self_billed_supplier_number(invoice)
-
-        missing = self.get_missing_required_fields(invoice, for_xml=True)
-        if missing:
-            raise ValueError(self.format_missing_fields(missing, "XML"))
-
-        xml_final = create_xml(
-            invoice,
-            output_filename=None,
-            include_extensions=False,
-        )
-
-        validation_result = validate_invoice(
-            xml_final,
-            invoice,
-            use_kosit=True,
-        )
-
-        self.last_validation_result = validation_result
-
-        if validation_result.errors or validation_result.warnings:
-            messages = []
-
-            if validation_result.errors:
-                messages.append("XSD-Fehler:")
-                messages.extend(f"- {e}" for e in validation_result.errors)
-
-            if validation_result.warnings:
-                messages.append("")
-                messages.append("Validierungswarnungen:")
-                messages.extend(f"- {w}" for w in validation_result.warnings)
-
-            raise ExportValidationError(
-                "XML-Export wurde abgebrochen.\n\n"
-                "Die Validierung ist fehlgeschlagen.",
-                details="\n".join(messages),
-                report_html=validation_result.report_html,
-            )
-
-        Path(filepath).write_bytes(xml_final)
-
-        return xml_final
+        return self._get_export_service().export_xml(invoice, filepath)
 
     # ========================
     # Pflichtfelder prüfen

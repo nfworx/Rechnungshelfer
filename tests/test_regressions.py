@@ -48,7 +48,6 @@ class RegressionTests(unittest.TestCase):
             connection=controller.database.connection
         )
         controller.master_data_repository = MasterDataRepository(directory / "master.json")
-        controller.last_validation_result = None
         return controller
 
     def test_invalid_number_is_not_silently_converted_to_zero(self):
@@ -276,6 +275,26 @@ class RegressionTests(unittest.TestCase):
             "Export abgebrochen",
             "Pflichtfeld fehlt",
         )
+
+    def test_export_workflow_uses_validation_result_returned_by_export(self):
+        invoice = self._invoice()
+        validation_result = MagicMock()
+        export_result = MagicMock(validation_result=validation_result)
+        controller = MagicMock()
+        controller.generate_xml.return_value = export_result
+        root = MagicMock()
+        root.after.side_effect = lambda _delay, callback: callback()
+        progress = MagicMock()
+        workflow = ExportWorkflow(
+            root=root,
+            controller=controller,
+            invoice_provider=lambda: invoice,
+        )
+
+        with patch.object(workflow, "_finish_xml_export_success") as finish:
+            workflow._export_xml(progress, "rechnung.xml")
+
+        finish.assert_called_once_with(progress, validation_result)
 
     def test_xml_precheck_reports_invalid_contact_and_payment_values(self):
         invoice = self._invoice()

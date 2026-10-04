@@ -5,8 +5,8 @@ from functools import lru_cache
 from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import dataclass, field
+from typing import Protocol
 from lxml import etree
-from .kosit_validation_service import validate_with_kosit
 from .input_validation_service import (
     is_valid_bic,
     is_valid_email,
@@ -60,16 +60,14 @@ class LocalResolver(etree.Resolver):
 
         return None
     
-class ExportValidationError(Exception):
-    def __init__(
-        self,
-        message: str,
-        details: str = "",
-        report_html: str = "",
-    ):
-        super().__init__(message)
-        self.details = details
-        self.report_html = report_html
+class ExternalValidationResult(Protocol):
+    valid: bool
+    errors: list[str]
+    report_html: str
+
+
+class ExternalInvoiceValidator(Protocol):
+    def validate(self, xml_bytes: bytes) -> ExternalValidationResult: ...
 
 
 def is_required_field(invoice: Invoice, section: str, attr: str, item_pos=None) -> bool:
@@ -318,6 +316,7 @@ def validate_invoice(
     xml_bytes: bytes,
     invoice: Invoice,
     use_kosit: bool = False,
+    external_validator: ExternalInvoiceValidator | None = None,
 ) -> ValidationResult:
     final = ValidationResult()
 
@@ -334,8 +333,12 @@ def validate_invoice(
     if xsd_result.errors or document_result.errors:
         final.valid = False
 
-    if use_kosit:
-        kosit_result = validate_with_kosit(xml_bytes,open_report=False)
+    if use_kosit or external_validator is not None:
+        if external_validator is None:
+            from .kosit_validation_service import KositValidator
+
+            external_validator = KositValidator()
+        kosit_result = external_validator.validate(xml_bytes)
 
         final.report_html = kosit_result.report_html
 

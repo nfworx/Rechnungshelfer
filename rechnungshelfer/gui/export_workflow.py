@@ -3,8 +3,8 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
-from rechnungshelfer.services.kosit_validation_service import show_html_report
-from rechnungshelfer.services.validation_service import ExportValidationError
+from rechnungshelfer.gui.report_viewer import show_html_report
+from rechnungshelfer.services.export_service import ExportValidationError
 
 
 class ExportWorkflow:
@@ -65,13 +65,15 @@ class ExportWorkflow:
 
     def _export_xml(self, progress, filepath):
         try:
-            self.controller.generate_xml(self.invoice_provider(), filepath)
-            validation_result = self.controller.last_validation_result
+            export_result = self.controller.generate_xml(
+                self.invoice_provider(),
+                filepath,
+            )
             self.root.after(
                 0,
                 lambda: self._finish_xml_export_success(
                     progress,
-                    validation_result,
+                    export_result.validation_result,
                 ),
             )
         except ExportValidationError as exc:
