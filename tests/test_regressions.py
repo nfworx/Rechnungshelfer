@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 from lxml import etree
 
-from controller import InvoiceController
+from rechnungshelfer.controller import InvoiceController
 from rechnungshelfer.domain.models import DEFAULT_BUYER_REFERENCE, Payment, Seller
 from repositories.customer_repository import CustomerRepository
 from repositories.invoice_repository import InvoiceRepository, get_data_dir

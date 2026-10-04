@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from lxml import etree
 
-from controller import InvoiceController
+from rechnungshelfer.controller import InvoiceController
 from services.input_validation_service import (
     InputValidationError,
     normalize_invoice_input,
@@ -341,4 +341,3 @@ class ValidationDocumentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
