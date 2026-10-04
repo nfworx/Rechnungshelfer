@@ -2,6 +2,12 @@ from decimal import Decimal, ROUND_HALF_UP
 from enum import Enum
 from datetime import date, timedelta
 
+from rechnungshelfer.domain.calculation import (
+    TaxLine,
+    calculate_invoice,
+    calculate_line,
+)
+
 
 DEFAULT_BUYER_REFERENCE = "BUCHHALTUNG"
 
@@ -294,21 +300,13 @@ class InvoiceItem(Validatable):
         self.recalculate()
 
     def recalculate(self):
-        price_wo = Decimal(str(self.price_without_discount or 0))
-        discount = Decimal(str(self.discount or 0))
-        qty = Decimal(str(self.qty or 0))
-
-        # 👉 Preis nach Rabatt berechnen
-        price = price_wo - discount
-
-        if price < 0:
-            price = Decimal("0.00")
-
-        # 👉 setzen
-        self.price = price.quantize(Decimal("0.01"), ROUND_HALF_UP)
-
-        # 👉 Gesamt berechnen
-        self.net = (self.price * qty).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        result = calculate_line(
+            self.price_without_discount,
+            self.discount,
+            self.qty,
+        )
+        self.price = result.price
+        self.net = result.net
 
     def set_vat(self, value):
         self.vat = to_decimal(value)
@@ -489,55 +487,36 @@ class Invoice:
         if self.calculation_mode == CalculationMode.IMPORTED and not force:
             return
 
-        def r2(v): 
-            return Decimal(v).quantize(Decimal("0.01"), ROUND_HALF_UP)
-
         # Alle Positionen vor der Summenbildung neu berechnen
         for item in self.items:
             item.recalculate()
 
-        # Netto-Summe aller Items
-        sum_net = r2(sum(i.net for i in self.items))
-
-        # MwSt pro Satz berechnen (OHNE zu früh zu runden!)
-        vat_map = {}
-        taxable_map = {}
-
-        for i in self.items:
-            rate = i.vat
-            category = "Z" if rate == 0 else (i.tax_category or "S")
-            i.tax_category = category
-            key = (rate, category)
-            # ✅ KEIN rounding hier - speichere exakte Werte
-            vat_amount = i.net * rate / Decimal("100")
-            
-            vat_map.setdefault(key, Decimal("0.00"))
-            vat_map[key] += vat_amount  # Addiere exakte Werte
-
-            taxable_map.setdefault(key, Decimal("0.00"))
-            taxable_map[key] += i.net
-
-        # ✅ Erst AM ENDE runden, wenn alle addiert sind!
-        self.taxtotal = []
-        for (rate, category), amount in vat_map.items():
-            taxable_amount = taxable_map.get((rate, category), Decimal("0.00"))
-            # Hier wird erst gerundet, wenn alle MwSt-Beträge aufsummiert sind
-            self.taxtotal.append(
-                TaxTotal(
-                    amount=r2(amount),  # ← Runde erst hier!
-                    taxable_amount=r2(taxable_amount),
-                    tax_category=category,
-                    percent=rate
-                )
+        result = calculate_invoice(
+            TaxLine(
+                net=item.net,
+                vat_percent=item.vat,
+                tax_category=item.tax_category,
             )
+            for item in self.items
+        )
 
-        total_vat = r2(sum(t.amount for t in self.taxtotal))
+        for item, tax_category in zip(self.items, result.tax_categories):
+            item.tax_category = tax_category
 
-        # MonetaryTotal aktualisieren
-        self.monetarytotal.line_extension_amount = sum_net
-        self.monetarytotal.tax_exclusive_amount = sum_net
-        self.monetarytotal.tax_inclusive_amount = r2(sum_net + total_vat)
-        self.monetarytotal.payable_amount = r2(sum_net + total_vat)
+        self.taxtotal = [
+            TaxTotal(
+                amount=group.amount,
+                taxable_amount=group.taxable_amount,
+                tax_category=group.tax_category,
+                percent=group.percent,
+            )
+            for group in result.tax_groups
+        ]
+
+        self.monetarytotal.line_extension_amount = result.line_extension_amount
+        self.monetarytotal.tax_exclusive_amount = result.tax_exclusive_amount
+        self.monetarytotal.tax_inclusive_amount = result.tax_inclusive_amount
+        self.monetarytotal.payable_amount = result.payable_amount
 
         # Berechnung abgeschlossen
         self.calculation_mode = CalculationMode.AUTO

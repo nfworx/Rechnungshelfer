@@ -1,0 +1,1 @@
+"""Anwendungspaket des Rechnungshelfers."""
