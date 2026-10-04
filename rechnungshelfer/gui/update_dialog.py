@@ -9,8 +9,8 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from app_info import APP_VERSION, MAINTAINER_MODE_ENV
-from gui_ctk.components import button
-from gui_ctk.styles import FONT_NORMAL, FONT_SECTION, TEXT, TEXT_MUTED
+from .components import button
+from .styles import FONT_NORMAL, FONT_SECTION, TEXT, TEXT_MUTED
 from services.update_service import (
     OnlineUpdate,
     check_for_application_update,

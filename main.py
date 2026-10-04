@@ -1,6 +1,6 @@
 # main.py
 import customtkinter as ctk
-from gui_ctk.main_window import InvoiceGUI
+from rechnungshelfer.gui.main_window import InvoiceGUI
 from rechnungshelfer.controller import InvoiceController
 from updater.readiness import signal_ready
 from services.temp_report_service import (

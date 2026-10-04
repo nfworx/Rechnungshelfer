@@ -1,4 +1,6 @@
 #date_fields.py
+"""Datumseingaben und Datepicker-Anbindung fuer die Benutzeroberflaeche."""
+
 import customtkinter as ctk
 from tkcalendar import Calendar
 

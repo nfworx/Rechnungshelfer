@@ -1,0 +1,1 @@
+"""CustomTkinter-Benutzeroberflaeche des Rechnungshelfers."""

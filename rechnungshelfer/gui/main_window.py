@@ -1,4 +1,4 @@
-# gui_ctk/main_window.py
+# rechnungshelfer/gui/main_window.py
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -8,18 +8,18 @@ import sys
 import threading
 
 from app_info import APP_NAME, APP_VERSION
-from gui_ctk.styles import *
-from gui_ctk.components import button, clear_frame
-from gui_ctk.party_card import PartyCard
-from gui_ctk.item_table import ItemTable
-from gui_ctk.totals_card import TotalsCard
-from gui_ctk.show_seller_dialog import SellerDialog
-from gui_ctk.invoice_load_dialog import InvoiceLoadDialog
-from gui_ctk.customer_load_dialog import CustomerLoadDialog
-from gui_ctk.supplier_load_dialog import SupplierLoadDialog
-from gui_ctk.test_document_dialog import TestDocumentDialog
-from gui_ctk.update_dialog import UpdateDialog
-from gui_ctk.buffered_form import BufferedFormHost
+from .styles import *
+from .components import button, clear_frame
+from .party_card import PartyCard
+from .item_table import ItemTable
+from .totals_card import TotalsCard
+from .show_seller_dialog import SellerDialog
+from .invoice_load_dialog import InvoiceLoadDialog
+from .customer_load_dialog import CustomerLoadDialog
+from .supplier_load_dialog import SupplierLoadDialog
+from .test_document_dialog import TestDocumentDialog
+from .update_dialog import UpdateDialog
+from .buffered_form import BufferedFormHost
 from services.validation_service import ExportValidationError
 from services.kosit_validation_service import show_html_report
 from services.update_service import check_for_application_update

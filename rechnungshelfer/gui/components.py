@@ -1,7 +1,7 @@
-# gui_ctk/components.py
+# rechnungshelfer/gui/components.py
 
 import customtkinter as ctk
-from gui_ctk.styles import *
+from .styles import *
 
 
 class HoverTooltip:

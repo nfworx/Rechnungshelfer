@@ -1,9 +1,9 @@
-# gui_ctk/item_table.py
+# rechnungshelfer/gui/item_table.py
 
 import customtkinter as ctk
 
-from gui_ctk.styles import *
-from gui_ctk.components import (
+from .styles import *
+from .components import (
     card,
     button,
     small_button,

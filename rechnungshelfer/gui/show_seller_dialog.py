@@ -1,13 +1,13 @@
-# gui_ctk/show_seller_dialog.py
+# rechnungshelfer/gui/show_seller_dialog.py
 
 from copy import deepcopy
 from tkinter import messagebox
 
 import customtkinter as ctk
 
-from gui_ctk.components import button, clear_frame
-from gui_ctk.party_card import PartyCard
-from gui_ctk.styles import APP_BG
+from .components import button, clear_frame
+from .party_card import PartyCard
+from .styles import APP_BG
 
 
 class SellerDialog:

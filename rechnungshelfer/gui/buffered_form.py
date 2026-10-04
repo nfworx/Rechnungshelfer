@@ -7,7 +7,7 @@ bis dessen Widgets vollstaendig aufgebaut und vermessen wurden.
 
 import customtkinter as ctk
 
-from gui_ctk.styles import APP_BG
+from .styles import APP_BG
 
 
 class FormSurface:
@@ -152,4 +152,3 @@ class BufferedFormHost(ctk.CTkFrame):
             return
         self._pending_surface.frame.destroy()
         self._pending_surface = None
-

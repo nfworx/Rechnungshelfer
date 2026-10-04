@@ -1,4 +1,6 @@
 #customer_autocomplete.py
+"""Kunden-Autovervollstaendigung fuer die Benutzeroberflaeche."""
+
 import customtkinter as ctk
 
 

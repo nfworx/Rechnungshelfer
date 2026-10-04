@@ -1,9 +1,9 @@
-# gui_ctk/totals_card.py
+# rechnungshelfer/gui/totals_card.py
 
 import customtkinter as ctk
 
-from gui_ctk.styles import *
-from gui_ctk.components import HoverTooltip, card, button, set_button_enabled
+from .styles import *
+from .components import HoverTooltip, card, button, set_button_enabled
 from services.format_service import format_de, parse_de
 
 

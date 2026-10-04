@@ -1,8 +1,8 @@
 import customtkinter as ctk
 from tkinter import messagebox
 
-from gui_ctk.components import button
-from gui_ctk.styles import APP_BG, BORDER, FONT_NORMAL, FONT_SECTION, FONT_SMALL, PRIMARY, TEXT, TEXT_MUTED
+from .components import button
+from .styles import APP_BG, BORDER, FONT_NORMAL, FONT_SECTION, FONT_SMALL, PRIMARY, TEXT, TEXT_MUTED
 
 
 class SupplierLoadDialog:

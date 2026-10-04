@@ -1,4 +1,4 @@
-# gui_ctk/styles.py
+# rechnungshelfer/gui/styles.py
 
 APP_BG = "#6D6D6D"
 CARD_BG = "#ffffff"

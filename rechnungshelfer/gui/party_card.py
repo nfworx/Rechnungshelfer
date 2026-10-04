@@ -1,11 +1,11 @@
-# gui_ctk/party_card.py
+# rechnungshelfer/gui/party_card.py
 
 import customtkinter as ctk
 
-from gui_ctk.styles import *
-from gui_ctk.components import card, style_entry
-from gui_ctk.date_fields import attach_date_validation, open_datepicker
-from gui_ctk.customer_autocomplete import CustomerAutocomplete
+from .styles import *
+from .components import card, style_entry
+from .date_fields import attach_date_validation, open_datepicker
+from .customer_autocomplete import CustomerAutocomplete
 
 
 class PartyCard:
