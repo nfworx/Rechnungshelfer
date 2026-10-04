@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from packaging.version import Version
 
+from app_info import APP_VERSION
 from services.update_service import (
     _materialize_online_manifest,
     _updater_command,
@@ -16,7 +17,13 @@ from updater.core import ApplicationManifest, UpdateError, load_manifest
 
 
 class UpdateServiceTests(unittest.TestCase):
-    def _release_payloads(self, *, version="1.0.1", package_digest="a" * 64):
+    @staticmethod
+    def _newer_version() -> str:
+        current = Version(APP_VERSION)
+        return f"{current.major}.{current.minor}.{current.micro + 1}"
+
+    def _release_payloads(self, *, version=None, package_digest="a" * 64):
+        version = version or self._newer_version()
         package_name = f"Rechnungshelfer-{version}-win64.zip"
         manifest_name = f"Rechnungshelfer-{version}-stable-manifest.json"
         manifest = {
@@ -54,7 +61,7 @@ class UpdateServiceTests(unittest.TestCase):
 
     def test_current_release_returns_no_update_without_loading_assets(self):
         release = {
-            "tag_name": "v1.0.0",
+            "tag_name": f"v{APP_VERSION}",
             "draft": False,
             "prerelease": False,
             "assets": [],
@@ -64,12 +71,15 @@ class UpdateServiceTests(unittest.TestCase):
         request.assert_called_once()
 
     def test_new_release_is_verified_against_manifest_and_github_assets(self):
+        expected_version = self._newer_version()
         metadata, manifest = self._release_payloads()
         with patch("services.update_service._request_bytes", side_effect=[metadata, manifest]):
             update = check_for_application_update()
         self.assertIsNotNone(update)
-        self.assertEqual(update.summary.manifest.version, Version("1.0.1"))
-        self.assertTrue(update.package_url.endswith("Rechnungshelfer-1.0.1-win64.zip"))
+        self.assertEqual(update.summary.manifest.version, Version(expected_version))
+        self.assertTrue(
+            update.package_url.endswith(f"Rechnungshelfer-{expected_version}-win64.zip")
+        )
 
     def test_package_digest_mismatch_is_rejected(self):
         metadata, manifest = self._release_payloads(package_digest="b" * 64)

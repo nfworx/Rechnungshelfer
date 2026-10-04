@@ -23,6 +23,7 @@ Versionsschema folgt [Semantic Versioning](https://semver.org/lang/de/).
 ### Fixed
 
 - Ein erfolgreiches KoSIT-Update wird nicht mehr durch eine fest auf Version 1.6.2 gesetzte Build-Pruefung zurueckgerollt
+- Update-Service-Tests simulieren neue Releases relativ zur aktuellen Programmversion und bleiben nach `prepare` gueltig
 - Abgelehnte unsichere Download-Weiterleitungen hinterlassen keine leere Zieldatei
 
 ## [1.0.0] - 2026-10-04
