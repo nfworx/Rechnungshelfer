@@ -1,9 +1,12 @@
 import argparse
 import hashlib
+import io
 import json
+import sys
 import tempfile
 import unittest
 import zipfile
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -116,8 +119,8 @@ class ReleaseToolTests(unittest.TestCase):
             reporter = Reporter(Path(directory), "check")
             invocation = {}
 
-            def capture_process(step, command, cwd):
-                invocation.update(step=step, command=command, cwd=cwd)
+            def capture_process(step, command, cwd, **options):
+                invocation.update(step=step, command=command, cwd=cwd, options=options)
 
             with patch.object(reporter, "run_process", new=capture_process):
                 _run_tests(reporter, Path(directory))
@@ -125,13 +128,40 @@ class ReleaseToolTests(unittest.TestCase):
 
             self.assertEqual(invocation["step"], "TESTS")
             self.assertIn("-b", invocation["command"])
+            self.assertTrue(invocation["options"]["quiet_success"])
+
+    def test_successful_test_process_is_summarized_but_fully_logged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = io.StringIO()
+            with redirect_stdout(output):
+                reporter = Reporter(Path(directory), "check")
+                reporter.run_process(
+                    "TESTS",
+                    [
+                        sys.executable,
+                        "-c",
+                        (
+                            "print('test_example (tests.Example) ... ok'); "
+                            "print('Ran 82 tests in 1.234s'); print('OK')"
+                        ),
+                    ],
+                    Path(directory),
+                    quiet_success=True,
+                )
+                reporter.finish("success")
+
+            console = output.getvalue()
+            log = reporter.log_path.read_text(encoding="utf-8")
+            self.assertNotIn("[AUSGABE] [TESTS] test_example", console)
+            self.assertIn("82 Tests in 1.234s bestanden", console)
+            self.assertIn("test_example", log)
 
     def test_check_is_read_only(self):
         with tempfile.TemporaryDirectory() as directory:
             project = self._project(Path(directory))
             before = {path: path.read_bytes() for path in project.rglob("*") if path.is_file()}
 
-            def fake_process(reporter, step, _command, _cwd):
+            def fake_process(reporter, step, _command, _cwd, **_options):
                 reporter.ok(step, "Pruefung simuliert")
 
             with (
@@ -156,7 +186,7 @@ class ReleaseToolTests(unittest.TestCase):
                 data["components"]["kosit-validator"] = str(release.version)
                 path.write_text(json.dumps(data), encoding="utf-8")
 
-            def fake_process(reporter, step, _command, _cwd):
+            def fake_process(reporter, step, _command, _cwd, **_options):
                 reporter.ok(step, "Tests simuliert")
 
             with (
@@ -182,7 +212,7 @@ class ReleaseToolTests(unittest.TestCase):
                 data["components"]["kosit-validator"] = str(release.version)
                 path.write_text(json.dumps(data), encoding="utf-8")
 
-            def fail_tests(_reporter, _step, _command, _cwd):
+            def fail_tests(_reporter, _step, _command, _cwd, **_options):
                 raise OSError("Tests fehlgeschlagen")
 
             with (
@@ -213,7 +243,7 @@ class ReleaseToolTests(unittest.TestCase):
             before = {path: path.read_bytes() for path in tracked}
             steps = []
 
-            def fake_process(reporter, step, _command, _cwd):
+            def fake_process(reporter, step, _command, _cwd, **_options):
                 steps.append(step)
                 reporter.ok(step, "Simuliert")
 

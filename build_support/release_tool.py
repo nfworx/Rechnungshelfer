@@ -46,15 +46,25 @@ class Reporter:
         self._log = self.log_path.open("a", encoding="utf-8", buffering=1)
         self._record("INFO", "START", f"Release-Werkzeug gestartet: {command}")
 
-    def _record(self, level: str, step: str, message: str, *, persist_report: bool = True) -> None:
+    def _record(
+        self,
+        level: str,
+        step: str,
+        message: str,
+        *,
+        persist_report: bool = True,
+        echo: bool = True,
+    ) -> str:
         now = datetime.now().astimezone().isoformat(timespec="seconds")
         event = {"time": now, "level": level, "step": step, "message": message}
         self.events.append(event)
         line = f"[{now}] [{level}] [{step}] {message}"
-        print(line, file=sys.stderr if level == "FEHLER" else sys.stdout, flush=True)
+        if echo:
+            print(line, file=sys.stderr if level == "FEHLER" else sys.stdout, flush=True)
         self._log.write(line + "\n")
         if persist_report:
             self._write_report()
+        return line
 
     def start(self, step: str, message: str) -> None:
         self._record("INFO", step, message)
@@ -100,7 +110,14 @@ class Reporter:
         finally:
             temporary.unlink(missing_ok=True)
 
-    def run_process(self, step: str, command: list[str], cwd: Path) -> None:
+    def run_process(
+        self,
+        step: str,
+        command: list[str],
+        cwd: Path,
+        *,
+        quiet_success: bool = False,
+    ) -> None:
         self.start(step, "Starte: " + subprocess.list2cmdline(command))
         try:
             process = subprocess.Popen(
@@ -116,16 +133,36 @@ class Reporter:
         except OSError as exc:
             raise BuilderError(f"Prozess konnte nicht gestartet werden: {exc}") from exc
         assert process.stdout is not None
-        for line in process.stdout:
-            text = line.rstrip()
-            if text:
-                # Keep the human-readable stream complete, but persist the JSON
-                # only once when the subprocess finishes. This avoids hundreds
-                # of rapid file replacements on Windows during verbose tests.
-                self._record("AUSGABE", step, text, persist_report=False)
+        output_lines: list[str] = []
+        rendered_lines: list[str] = []
+        try:
+            for line in process.stdout:
+                text = line.rstrip()
+                if text:
+                    output_lines.append(text)
+                    # Keep the human-readable stream complete, but persist the JSON
+                    # only once when the subprocess finishes. This avoids hundreds
+                    # of rapid file replacements on Windows during verbose tests.
+                    rendered_lines.append(self._record(
+                        "AUSGABE", step, text, persist_report=False, echo=not quiet_success
+                    ))
+        finally:
+            process.stdout.close()
         if process.wait() != 0:
+            if quiet_success:
+                for rendered in rendered_lines:
+                    print(rendered, flush=True)
             raise BuilderError(f"Prozess endete mit Code {process.returncode}.")
-        self.ok(step, "Prozess erfolgreich abgeschlossen")
+        if quiet_success:
+            summary = next((line for line in reversed(output_lines) if re.match(r"Ran \d+ tests? in ", line)), None)
+            if summary:
+                match = re.match(r"Ran (\d+) tests? in (.+)", summary)
+                assert match is not None
+                self.ok(step, f"{match.group(1)} Tests in {match.group(2)} bestanden")
+            else:
+                self.ok(step, "Prozess erfolgreich abgeschlossen")
+        else:
+            self.ok(step, "Prozess erfolgreich abgeschlossen")
 
     def finish(self, status: str) -> None:
         self.status = status
@@ -255,7 +292,10 @@ def _run_dependency_audit(reporter: Reporter, project_root: Path) -> None:
 
 def _run_tests(reporter: Reporter, project_root: Path) -> None:
     reporter.run_process(
-        "TESTS", [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v", "-b"], project_root
+        "TESTS",
+        [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v", "-b"],
+        project_root,
+        quiet_success=True,
     )
 
 
@@ -459,6 +499,9 @@ def run_command(args, *, input_fn: Callable[[str], str] = input) -> int:
         reporter.error("ABBRUCH", str(exc))
         reporter.finish("failed")
         return 1
+    finally:
+        if not reporter._log.closed:
+            reporter._log.close()
 
 
 def build_parser() -> argparse.ArgumentParser:
