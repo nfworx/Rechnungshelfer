@@ -8,7 +8,7 @@ from unittest.mock import patch
 from lxml import etree
 
 from rechnungshelfer.controller import InvoiceController
-from rechnungshelfer.domain.models import DEFAULT_BUYER_REFERENCE, Payment, Seller
+from rechnungshelfer.domain.models import Buyer, DEFAULT_BUYER_REFERENCE, Payment, Seller
 from rechnungshelfer.repositories.customer_repository import CustomerRepository
 from rechnungshelfer.repositories.invoice_repository import (
     InvoiceRepository,
@@ -148,6 +148,54 @@ class RegressionTests(unittest.TestCase):
         )
 
         self.assertEqual(deliveries, [])
+
+    def test_delivery_toggle_synchronizes_address_and_required_fields(self):
+        invoice = self._invoice()
+        invoice.buyer.name = "Beispielkunde GmbH"
+        invoice.buyer.street = "Kundenweg 12"
+        invoice.buyer.postcode = "28195"
+        invoice.buyer.city = "Bremen"
+        invoice.buyer.country = "DE"
+
+        invoice.set_use_invoice_address_as_delivery(True)
+
+        self.assertTrue(invoice.buyer.use_invoice_address_as_delivery)
+        self.assertEqual(invoice.delivery.name, "Beispielkunde GmbH")
+        self.assertEqual(invoice.delivery.street, "Kundenweg 12")
+        self.assertEqual(invoice.delivery.postcode, "28195")
+        self.assertEqual(invoice.delivery.city, "Bremen")
+        self.assertEqual(invoice.delivery.country, "")
+        self.assertEqual(invoice.delivery.required_fields, [])
+
+        invoice.set_use_invoice_address_as_delivery(False)
+
+        self.assertFalse(invoice.buyer.use_invoice_address_as_delivery)
+        self.assertEqual(
+            invoice.delivery.required_fields,
+            ["name", "street", "postcode", "city", "country"],
+        )
+        self.assertEqual(invoice.delivery.country, "DE")
+
+    def test_replacing_buyer_synchronizes_shared_delivery_address(self):
+        invoice = self._invoice()
+        buyer = Buyer(
+            name="Neukunde AG",
+            street="Marktplatz 3",
+            postcode="20095",
+            city="Hamburg",
+            country="DE",
+            use_invoice_address_as_delivery=True,
+        )
+
+        invoice.replace_buyer(buyer)
+
+        self.assertIs(invoice.buyer, buyer)
+        self.assertEqual(invoice.delivery.name, "Neukunde AG")
+        self.assertEqual(invoice.delivery.street, "Marktplatz 3")
+        self.assertEqual(invoice.delivery.postcode, "20095")
+        self.assertEqual(invoice.delivery.city, "Hamburg")
+        self.assertEqual(invoice.delivery.country, "DE")
+        self.assertEqual(invoice.delivery.required_fields, [])
 
     def test_xml_precheck_reports_invalid_contact_and_payment_values(self):
         invoice = self._invoice()

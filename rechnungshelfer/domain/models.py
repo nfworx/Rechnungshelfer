@@ -480,6 +480,27 @@ class Invoice:
         self.info.invoice_type_code = self.document_type.invoice_type_code
         self._update_required_fields_for_document_type()
 
+    def set_use_invoice_address_as_delivery(self, enabled):
+        """Schaltet zwischen Rechnungsanschrift und eigener Lieferadresse um."""
+        self.buyer.use_invoice_address_as_delivery = bool(enabled)
+        if enabled:
+            self._copy_buyer_address_to_delivery()
+        self.delivery.update_required_fields(self.buyer)
+
+    def replace_buyer(self, buyer: Buyer):
+        """Ersetzt den Kunden und synchronisiert eine gekoppelte Lieferadresse."""
+        self.buyer = buyer
+        self.delivery.update_required_fields(self.buyer)
+        if self.buyer.use_invoice_address_as_delivery:
+            self._copy_buyer_address_to_delivery()
+
+    def _copy_buyer_address_to_delivery(self):
+        self.delivery.name = self.buyer.name
+        self.delivery.street = self.buyer.street
+        self.delivery.postcode = self.buyer.postcode
+        self.delivery.city = self.buyer.city
+        self.delivery.country = self.buyer.country
+
     # -------------------------
     # Berechnung
     # -------------------------

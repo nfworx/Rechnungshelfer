@@ -377,20 +377,7 @@ class InvoiceGUI:
             self.load_button.configure(text="Beleg laden")
 
     def _on_delivery_toggle(self, checked):
-        self.invoice.buyer.use_invoice_address_as_delivery = bool(checked)
-
-        if checked:
-            buyer = self.invoice.buyer
-            delivery = self.invoice.delivery
-
-            delivery.name = buyer.name
-            delivery.street = buyer.street
-            delivery.postcode = buyer.postcode
-            delivery.city = buyer.city
-            delivery.country = buyer.country
-            delivery.update_required_fields(buyer)
-        else:
-            self.invoice.delivery.update_required_fields(self.invoice.buyer)
+        self.invoice.set_use_invoice_address_as_delivery(checked)
 
         self._render_delivery_card()
         self.refresh_totals()
@@ -625,16 +612,7 @@ class InvoiceGUI:
         self.show_form()
 
     def _on_customer_selected(self, buyer):
-        self.invoice.buyer = deepcopy(buyer)
-
-        self.invoice.delivery.update_required_fields(self.invoice.buyer)
-
-        if self.invoice.buyer.use_invoice_address_as_delivery:
-            self.invoice.delivery.name = self.invoice.buyer.name
-            self.invoice.delivery.street = self.invoice.buyer.street
-            self.invoice.delivery.postcode = self.invoice.buyer.postcode
-            self.invoice.delivery.city = self.invoice.buyer.city
-            self.invoice.delivery.country = self.invoice.buyer.country
+        self.invoice.replace_buyer(deepcopy(buyer))
 
         self.show_form()
         self.refresh_totals()
