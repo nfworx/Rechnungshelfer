@@ -1,7 +1,7 @@
 # input_validation_service.py
 from datetime import datetime
 import re
-from models import Invoice
+from rechnungshelfer.domain.models import Invoice
 
 class InputValidationError(Exception):
     pass

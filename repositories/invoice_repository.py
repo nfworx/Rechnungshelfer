@@ -3,7 +3,7 @@ import sqlite3
 import json
 import os
 from datetime import datetime, timezone
-from models import Invoice, Buyer
+from rechnungshelfer.domain.models import Invoice, Buyer
 import sys
 from pathlib import Path
 

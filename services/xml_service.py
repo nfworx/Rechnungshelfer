@@ -1,6 +1,6 @@
 # xml_service.py
 from lxml import etree
-from models import Invoice
+from rechnungshelfer.domain.models import Invoice
 from datetime import datetime, timedelta
 from decimal import Decimal
 

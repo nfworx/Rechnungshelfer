@@ -1,5 +1,5 @@
 #unit_service.py
-from models import Unit
+from rechnungshelfer.domain.models import Unit
 
 
 def get_unit_options():

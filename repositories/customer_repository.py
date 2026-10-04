@@ -2,7 +2,7 @@ import sqlite3
 import json
 from pathlib import Path
 from datetime import datetime, timezone
-from models import Buyer
+from rechnungshelfer.domain.models import Buyer
 from repositories.invoice_repository import get_db_path
 
 

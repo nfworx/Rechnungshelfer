@@ -126,7 +126,7 @@ class ItemTable:
 
     def refresh(self):
         if not self.invoice.items:
-            from models import InvoiceItem
+            from rechnungshelfer.domain.models import InvoiceItem
 
             self.invoice.items.append(InvoiceItem())
 
@@ -150,7 +150,7 @@ class ItemTable:
         self._notify_change()
 
     def add_item(self):
-        from models import InvoiceItem
+        from rechnungshelfer.domain.models import InvoiceItem
 
         self.invoice.items.append(InvoiceItem())
         self.refresh()

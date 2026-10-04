@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from lxml import etree
 from services.kosit_validation_service import validate_with_kosit
 
-from models import Invoice
+from rechnungshelfer.domain.models import Invoice
 
 
 def get_base_dir() -> Path:

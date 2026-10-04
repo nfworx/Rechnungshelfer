@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 from decimal import Decimal
 from datetime import datetime
 
-from models import (
+from rechnungshelfer.domain.models import (
     Seller,
     Buyer,
     Delivery,

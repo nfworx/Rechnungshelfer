@@ -20,7 +20,7 @@ from services.input_validation_service import (
 )
 from services.validation_service import validate_invoice, ExportValidationError
 
-from models import (
+from rechnungshelfer.domain.models import (
     Seller, Buyer, Delivery, InvoiceInfo, Payment, Invoice, DocumentType,
     DEFAULT_BUYER_REFERENCE,
 )
@@ -43,7 +43,7 @@ class InvoiceController:
     # Invoice erstellen
     # ========================
     def create_empty_invoice(self, document_type=DocumentType.INVOICE):
-        from models import (
+        from rechnungshelfer.domain.models import (
             Invoice,
             Seller,
             Buyer,

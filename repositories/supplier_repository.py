@@ -3,7 +3,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from models import Payment, Seller
+from rechnungshelfer.domain.models import Payment, Seller
 from repositories.invoice_repository import get_db_path
 
 

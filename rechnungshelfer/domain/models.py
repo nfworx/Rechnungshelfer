@@ -2,7 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from enum import Enum
 from datetime import date, timedelta
 
-from rechnungshelfer.domain.calculation import (
+from .calculation import (
     TaxLine,
     calculate_invoice,
     calculate_line,

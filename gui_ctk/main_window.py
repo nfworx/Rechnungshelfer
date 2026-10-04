@@ -23,7 +23,7 @@ from gui_ctk.buffered_form import BufferedFormHost
 from services.validation_service import ExportValidationError
 from services.kosit_validation_service import show_html_report
 from services.update_service import check_for_application_update
-from models import DocumentType
+from rechnungshelfer.domain.models import DocumentType
 
 class InvoiceGUI:
     def __init__(self, root, controller, on_ready=None):

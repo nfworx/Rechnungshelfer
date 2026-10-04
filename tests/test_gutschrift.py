@@ -4,7 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from models import (
+from rechnungshelfer.domain.models import (
     Buyer,
     Delivery,
     DocumentType,

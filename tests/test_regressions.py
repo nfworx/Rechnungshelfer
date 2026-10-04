@@ -8,7 +8,7 @@ from unittest.mock import patch
 from lxml import etree
 
 from controller import InvoiceController
-from models import DEFAULT_BUYER_REFERENCE, Payment, Seller
+from rechnungshelfer.domain.models import DEFAULT_BUYER_REFERENCE, Payment, Seller
 from repositories.customer_repository import CustomerRepository
 from repositories.invoice_repository import InvoiceRepository, get_data_dir
 from app_info import DATA_DIR_ENV

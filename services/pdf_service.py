@@ -11,11 +11,11 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
-from models import Invoice
+from rechnungshelfer.domain.models import Invoice
 import os
 import sys
 from decimal import Decimal
-from models import Unit
+from rechnungshelfer.domain.models import Unit
 from pathlib import Path
 
 # ====================

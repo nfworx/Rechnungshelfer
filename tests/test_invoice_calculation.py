@@ -1,7 +1,7 @@
 import unittest
 from decimal import Decimal
 
-from models import (
+from rechnungshelfer.domain.models import (
     Buyer,
     CalculationMode,
     Delivery,
