@@ -251,7 +251,7 @@ def _preflight(project_root: Path) -> None:
     required = (
         "build.ps1", "version.py", "CHANGELOG.md", "readme.md", "requirements.txt",
         "requirements-dev.txt", "THIRD_PARTY_NOTICES.md", "external/components.json",
-        "external/java/bin/java.exe",
+        "external/java/bin/java.exe", "build_support/kosit_trusted_releases.json",
     )
     missing = [relative for relative in required if not (project_root / relative).exists()]
     if missing:
@@ -268,12 +268,21 @@ def _report_component_status(reporter: Reporter, project_root: Path):
     current = installed_version(project_root)
     release = fetch_latest_release()
     reporter.set_detail("kosit", {
-        "installed": str(current), "available": str(release.version), "release": release.page_url,
+        "installed": str(current),
+        "available": str(release.version),
+        "release": release.page_url,
+        "sha256": release.asset.sha256,
+        "immutable": release.immutable,
     })
     if release.version > current:
         reporter.warning("KOMPONENTEN", f"KoSIT-Update verfuegbar: {current} -> {release.version}")
     else:
         reporter.ok("KOMPONENTEN", f"KoSIT {current} ist aktuell")
+    if not release.immutable:
+        reporter.warning(
+            "KOMPONENTEN",
+            "KoSIT-Release ist laut GitHub nicht unveraenderlich; die lokale Hash-Freigabe ist zwingend",
+        )
     state = json.loads((project_root / "external" / "components.json").read_text(encoding="utf-8"))["components"]
     reporter.warning(
         "KOMPONENTEN",
@@ -406,7 +415,19 @@ def _run_update_components(args, reporter: Reporter, input_fn: Callable[[str], s
         root, ("external/kosit/validator", "external/components.json", "readme.md", "THIRD_PARTY_NOTICES.md")
     )
     try:
-        install_release(root, release)
+        def approve_execution(downloaded_release) -> bool:
+            reporter.ok(
+                "DOWNLOAD",
+                f"KoSIT {downloaded_release.version} heruntergeladen und geprueft; "
+                f"SHA-256: {downloaded_release.asset.sha256}",
+            )
+            return _ask_yes_no(
+                f"Geprueftes KoSIT {downloaded_release.version} jetzt erstmals ausfuehren und installieren?",
+                assume_yes=args.yes,
+                input_fn=input_fn,
+            )
+
+        install_release(root, release, approve_execution=approve_execution)
         changed = update_component_documentation(root)
         reporter.set_detail("documentation", [str(path.relative_to(root)) for path in changed])
         reporter.ok("KOMPONENTEN", f"KoSIT {release.version} installiert und Dokumentation synchronisiert")

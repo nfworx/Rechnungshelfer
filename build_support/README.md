@@ -26,9 +26,19 @@ Mit `--with-tests` wird zusaetzlich die komplette Testsuite ausgefuehrt.
 
 Dieser Befehl darf ausschliesslich externe Komponenten, deren Register und die
 eindeutig markierten generierten Dokumentationsabschnitte aendern. Aktuell ist
-KoSIT automatisch angebunden. Nach der Bestaetigung werden Download, Groesse
-und SHA-256 geprueft und die komplette Testsuite ausgefuehrt. Bei einem Fehler
-werden alle Aenderungen dieses Schrittes zurueckgerollt.
+KoSIT automatisch angebunden. Nach der ersten Bestaetigung werden Download,
+Groesse, HTTPS-Weiterleitungen und SHA-256 geprueft. Vor der ersten Ausfuehrung
+des neuen JAR zeigt das Werkzeug dessen SHA-256 an und verlangt eine zweite
+Bestaetigung. Anschliessend wird die komplette Testsuite ausgefuehrt. Bei einem
+Fehler werden alle Aenderungen dieses Schrittes zurueckgerollt.
+
+Ein KoSIT-Release wird nur installiert, wenn sein SHA-256 zusaetzlich in
+`build_support/kosit_trusted_releases.json` freigegeben ist. Neue Hashes werden
+niemals automatisch in diese Vertrauensliste uebernommen. Sie muessen zuerst
+ueber eine unabhaengige Quelle kontrolliert und danach bewusst eingetragen
+werden. Nicht als unveraenderlich markierte GitHub-Releases erzeugen eine
+Warnung. Aus einer als Administrator gestarteten Windows-Shell wird das
+Komponentenupdate aus Sicherheitsgruenden abgebrochen.
 
 `version.py`, Changelog und frei geschriebene README-Texte bleiben unveraendert.
 Die erzeugten Aenderungen werden danach bewusst als eigener Git-Commit

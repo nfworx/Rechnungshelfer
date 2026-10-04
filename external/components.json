@@ -2,7 +2,7 @@
   "schema_version": 1,
   "components": {
     "java-runtime": "21.0.12.1",
-    "kosit-validator": "1.6.2",
+    "kosit-validator": "1.6.3",
     "ubl-schemas": "2.1",
     "xrechnung-configuration": "2026.01.31"
   }

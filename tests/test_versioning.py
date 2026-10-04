@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import unittest
@@ -57,7 +58,24 @@ class VersioningTests(unittest.TestCase):
 
         self.assertIn('project_root / "external" / "components.json"', spec)
         self.assertEqual(data["schema_version"], 1)
-        self.assertEqual(data["components"]["kosit-validator"], "1.6.2")
+        kosit_version = data["components"]["kosit-validator"]
+        self.assertEqual(str(Version(kosit_version)), kosit_version)
+
+    def test_bundled_kosit_matches_locally_approved_digest(self):
+        project_root = Path(__file__).resolve().parent.parent
+        registry = json.loads(
+            (project_root / "external" / "components.json").read_text(encoding="utf-8")
+        )
+        trusted = json.loads(
+            (project_root / "build_support" / "kosit_trusted_releases.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        version = registry["components"]["kosit-validator"]
+        jar = project_root / "external" / "kosit" / "validator" / f"validator-{version}-standalone.jar"
+
+        self.assertTrue(jar.is_file())
+        self.assertEqual(hashlib.sha256(jar.read_bytes()).hexdigest(), trusted["releases"][version])
 
     def test_onefolder_build_hides_updater_below_internal(self):
         project_root = Path(__file__).resolve().parent.parent

@@ -22,9 +22,12 @@ Danach den Git-Diff kontrollieren und Komponentenupdate sowie generierte
 Dokumentationsabschnitte als eigenen Commit sichern. Programmversion und
 Changelog werden hierbei nicht veraendert.
 
-Fuer den geplanten Erst-Release bleibt KoSIT bewusst auf 1.6.2. Das Update auf
-1.6.3 wird anschliessend separat vorbereitet und mit Rechnungshelfer 1.0.1
-getestet.
+Neue KoSIT-Versionen muessen vor der Installation mit ihrem unabhaengig
+kontrollierten SHA-256 in `build_support/kosit_trusted_releases.json`
+freigegeben werden. Das Werkzeug prueft danach Download und Weiterleitungen,
+zeigt den Hash an und fragt vor der ersten Ausfuehrung des JAR erneut nach.
+Komponentenupdates niemals aus einer als Administrator gestarteten Shell
+ausfuehren.
 
 ## 3. Releasebeschreibung manuell pflegen
 

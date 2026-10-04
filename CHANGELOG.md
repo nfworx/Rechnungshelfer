@@ -5,6 +5,26 @@ Versionsschema folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-04
+
+### Changed
+
+- KoSIT XML Validator von Version 1.6.2 auf 1.6.3 aktualisiert
+- Komponentenpruefung akzeptiert kuenftige semantische KoSIT-Versionen, ohne auf einen veralteten exakten Versionswert festgelegt zu sein
+
+### Security
+
+- KoSIT-Downloads muessen neben dem GitHub-Digest einem lokal freigegebenen SHA-256 entsprechen
+- HTTPS wird auch nach Download-Weiterleitungen erneut erzwungen
+- Vor der ersten Ausfuehrung eines heruntergeladenen KoSIT-JAR werden SHA-256 und eine zweite Bestaetigung verlangt
+- Veraenderliche GitHub-Releases werden sichtbar gemeldet und KoSIT-Updates aus einer Administrator-Shell abgebrochen
+- Der eingecheckte KoSIT-Validator wird in der Testsuite gegen die lokale Vertrauensliste geprueft
+
+### Fixed
+
+- Ein erfolgreiches KoSIT-Update wird nicht mehr durch eine fest auf Version 1.6.2 gesetzte Build-Pruefung zurueckgerollt
+- Abgelehnte unsichere Download-Weiterleitungen hinterlassen keine leere Zieldatei
+
 ## [1.0.0] - 2026-10-04
 
 ### Added

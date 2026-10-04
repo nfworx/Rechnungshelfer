@@ -34,7 +34,7 @@ Dieser Abschnitt wird vom Release-Werkzeug aus `external/components.json` erzeug
 | Komponente | Mitgelieferter Stand |
 |---|---|
 | Java-Laufzeit | `21.0.12.1` |
-| KoSIT XML Validator | `1.6.2` |
+| KoSIT XML Validator | `1.6.3` |
 | OASIS UBL-Schemata | `2.1` |
 | XRechnung-Konfiguration | `2026.01.31` |
 <!-- END GENERATED EXTERNAL COMPONENTS -->

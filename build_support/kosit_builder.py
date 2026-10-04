@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -29,6 +32,7 @@ RELEASE_DOWNLOAD_PREFIX = "https://github.com/itplr-kosit/validator/releases/dow
 MAX_API_BYTES = 2 * 1024 * 1024
 MAX_JAR_BYTES = 250 * 1024 * 1024
 USER_AGENT = "Rechnungshelfer-KoSIT-Builder/1"
+TRUSTED_RELEASES_PATH = Path("build_support/kosit_trusted_releases.json")
 
 
 class KositBuilderError(RuntimeError):
@@ -48,6 +52,7 @@ class KositRelease:
     version: Version
     page_url: str
     asset: ReleaseAsset
+    immutable: bool = False
 
 
 def _open_url(url: str):
@@ -104,7 +109,12 @@ def _parse_release(data: dict) -> KositRelease:
     page_url = data.get("html_url")
     if not isinstance(page_url, str):
         page_url = f"https://github.com/itplr-kosit/validator/releases/tag/{tag}"
-    return KositRelease(version, page_url, ReleaseAsset(expected_name, url, size, sha256))
+    return KositRelease(
+        version,
+        page_url,
+        ReleaseAsset(expected_name, url, size, sha256),
+        immutable=data.get("immutable") is True,
+    )
 
 
 def fetch_latest_release() -> KositRelease:
@@ -133,13 +143,22 @@ def _download_verified(asset: ReleaseAsset, destination: Path) -> None:
     digest = hashlib.sha256()
     total = 0
     try:
-        with _open_url(asset.url) as response, destination.open("wb") as output:
-            while chunk := response.read(1024 * 1024):
-                total += len(chunk)
-                if total > asset.size or total > MAX_JAR_BYTES:
-                    raise KositBuilderError("KoSIT-Download ist groesser als im Release angegeben.")
-                digest.update(chunk)
-                output.write(chunk)
+        with _open_url(asset.url) as response:
+            final_url = response.geturl()
+            if urllib.parse.urlparse(final_url).scheme.lower() != "https":
+                raise KositBuilderError(
+                    "KoSIT-Download wurde auf eine unsichere URL umgeleitet."
+                )
+            with destination.open("wb") as output:
+                while chunk := response.read(1024 * 1024):
+                    total += len(chunk)
+                    if total > asset.size or total > MAX_JAR_BYTES:
+                        raise KositBuilderError("KoSIT-Download ist groesser als im Release angegeben.")
+                    digest.update(chunk)
+                    output.write(chunk)
+    except KositBuilderError:
+        destination.unlink(missing_ok=True)
+        raise
     except (OSError, urllib.error.URLError) as exc:
         destination.unlink(missing_ok=True)
         raise KositBuilderError(f"KoSIT konnte nicht heruntergeladen werden: {exc}") from exc
@@ -151,15 +170,59 @@ def _download_verified(asset: ReleaseAsset, destination: Path) -> None:
         raise KositBuilderError("SHA-256 des KoSIT-Downloads stimmt nicht mit GitHub ueberein.")
 
 
-def install_release(project_root: Path, release: KositRelease) -> None:
+def _trusted_release_digest(project_root: Path, release: KositRelease) -> str:
+    path = project_root / TRUSTED_RELEASES_PATH
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("schema_version") != 1 or not isinstance(data.get("releases"), dict):
+            raise ValueError("ungueltiges Format")
+        digest = data["releases"].get(str(release.version))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise KositBuilderError(f"KoSIT-Vertrauensliste ist unlesbar: {path}: {exc}") from exc
+    if digest is None:
+        raise KositBuilderError(
+            f"KoSIT {release.version} ist noch nicht freigegeben. Gepruefter SHA-256: "
+            f"{release.asset.sha256}. Hash nach unabhaengiger Kontrolle in {path} eintragen."
+        )
+    if not isinstance(digest, str) or digest.lower() != release.asset.sha256:
+        raise KositBuilderError(
+            f"Freigegebener SHA-256 fuer KoSIT {release.version} stimmt nicht mit dem Release ueberein."
+        )
+    return digest.lower()
+
+
+def _running_elevated() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except (AttributeError, OSError):
+        return False
+
+
+def install_release(
+    project_root: Path,
+    release: KositRelease,
+    *,
+    approve_execution: Callable[[KositRelease], bool] | None = None,
+) -> None:
     """Installiert genau den zuvor geprueften Release in das Quellprojekt."""
     project_root = project_root.resolve()
+    if _running_elevated():
+        raise KositBuilderError(
+            "KoSIT-Updates duerfen nicht aus einer als Administrator gestarteten Shell ausgefuehrt werden."
+        )
     with tempfile.TemporaryDirectory(prefix="Rechnungshelfer-KoSIT-") as directory:
         work_root = Path(directory)
         source = work_root / "source"
         source.mkdir()
         jar = source / release.asset.name
         _download_verified(release.asset, jar)
+        _trusted_release_digest(project_root, release)
+        if approve_execution is None or not approve_execution(release):
+            raise KositBuilderError(
+                "Ausfuehrung und Installation des heruntergeladenen KoSIT-JAR wurden nicht freigegeben."
+            )
         _, manifest = create_component_package(
             "kosit-validator",
             str(release.version),
@@ -170,13 +233,19 @@ def install_release(project_root: Path, release: KositRelease) -> None:
         update_external_components(manifest, project_root)
 
 
-def check_and_update(project_root: Path, *, check_only: bool = False) -> bool:
+def check_and_update(
+    project_root: Path,
+    *,
+    check_only: bool = False,
+    approve_execution: Callable[[KositRelease], bool] | None = None,
+) -> bool:
     project_root = project_root.resolve()
     current = installed_version(project_root)
     release = fetch_latest_release()
     print(f"Installiert: KoSIT {current}")
     print(f"Offiziell verfuegbar: KoSIT {release.version}")
     print(f"Release: {release.page_url}")
+    print(f"Unveraenderlicher GitHub-Release: {'ja' if release.immutable else 'nein'}")
     if release.version <= current:
         print("KoSIT ist aktuell; keine Aenderung erforderlich.")
         return False
@@ -184,7 +253,7 @@ def check_and_update(project_root: Path, *, check_only: bool = False) -> bool:
         print("Eine neuere KoSIT-Version ist verfuegbar.")
         return True
 
-    install_release(project_root, release)
+    install_release(project_root, release, approve_execution=approve_execution)
     print(f"KoSIT wurde erfolgreich auf {release.version} aktualisiert.")
     print("Vor einem Release jetzt die komplette Testsuite ausfuehren.")
     return True
@@ -198,7 +267,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--project-root", type=Path, default=PROJECT_ROOT)
     args = parser.parse_args(argv)
     try:
-        check_and_update(args.project_root, check_only=args.check_only)
+        check_and_update(
+            args.project_root,
+            check_only=args.check_only,
+            approve_execution=lambda release: input(
+                f"Geprueftes KoSIT {release.version} jetzt ausfuehren und installieren? "
+                f"SHA-256 {release.asset.sha256} [j/N]: "
+            ).strip().casefold() in {"j", "ja", "y", "yes"},
+        )
     except (KositBuilderError, UpdateError) as exc:
         parser.exit(1, f"Fehler: {exc}\n")
     return 0

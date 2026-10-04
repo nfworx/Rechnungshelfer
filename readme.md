@@ -135,7 +135,8 @@ Rechnungshelfer unterscheidet klar zwischen:
 - **Programmupdate:** aktualisiert Rechnungshelfer selbst, beispielsweise von
   Version `1.0.0` auf `1.0.1`.
 - **Komponentenpflege des Herausgebers:** aktualisiert vor einem neuen Release
-  externe Pruefwerkzeuge wie KoSIT, Java oder UBL-Schemata im Quellprojekt.
+  kontrolliert externe Bestandteile im Quellprojekt. Aktuell besitzt nur KoSIT
+  einen automatischen Quellenadapter.
 
 Endnutzer sehen und verwenden nur den Programm-Updater. Die Komponentenpflege
 ist ein separates Wartungsskript unter `build_support/` und wird nicht in der
@@ -151,14 +152,29 @@ den Programmordner ueber ein Staging-Verzeichnis aus und startet die neue
 Version. Erst nachdem diese ihren erfolgreichen Start bestaetigt hat, wird die
 Rollback-Kopie entfernt.
 
-Der Herausgeber kann Java, KoSIT, die XRechnung-Konfiguration oder UBL-Schemata
-vor einem Release getrennt pflegen. Die aktualisierten Komponenten werden erst
-mit dem naechsten vollstaendigen Rechnungshelfer-Release an Benutzer verteilt.
-Das interne Werkzeug `build_support/release_tool.py` trennt die rein lesende
-Pruefung, Komponentenpflege, Releasevorbereitung und den eigentlichen Build in
-eigene Befehle. Ein Build aktualisiert niemals Komponenten, Version oder
-Dokumentation nebenbei. Jeder Schritt meldet sofort Erfolg, Warnung oder Fehler.
-Details stehen in `build_support/README.md`.
+Der Herausgeber startet die KoSIT-Pflege bewusst mit
+`build_support/release_tool.py update-components`. Das Werkzeug fragt das
+offizielle KoSIT-Repository nach einem stabilen Release ab und verlangt vor dem
+Download eine Bestaetigung. Downloadadresse, HTTPS-Weiterleitungen, Groesse und
+GitHub-SHA-256 werden geprueft. Zusaetzlich muss derselbe Hash in
+`build_support/kosit_trusted_releases.json` lokal freigegeben sein. Vor der
+ersten Ausfuehrung des neuen JAR zeigt das Werkzeug den Hash an und fragt ein
+zweites Mal nach. Aus einer als Administrator gestarteten Windows-Shell wird
+das Komponentenupdate abgebrochen.
+
+Anschliessend laufen ein KoSIT-Smoke-Test und die komplette Testsuite. Bei
+einem Fehler werden Validator, Komponentenregister und generierte
+Dokumentation zurueckgerollt. Die aktualisierte KoSIT-Version wird erst mit dem
+naechsten vollstaendigen Rechnungshelfer-Release an Benutzer verteilt; der
+Endnutzer-Updater laedt KoSIT niemals direkt herunter.
+
+Java und die XRechnung-Konfiguration werden derzeit dokumentiert, besitzen aber
+noch keinen automatischen Quellenadapter. UBL 2.1 ist fest vorgegeben. Das
+interne Release-Werkzeug trennt die rein lesende Pruefung, Komponentenpflege,
+Releasevorbereitung und den eigentlichen Build in eigene Befehle. Ein Build
+aktualisiert niemals Komponenten, Version oder Dokumentation nebenbei. Jeder
+Schritt meldet sofort Erfolg, Warnung oder Fehler. Details stehen in
+`build_support/README.md`.
 
 Der Updater darf `data/` niemals entfernen oder ueberschreiben. Updater-Quelle,
 Architektur und Manifest liegen unter `updater/`.
@@ -231,7 +247,7 @@ Dieser Abschnitt wird vom Release-Werkzeug aus `external/components.json` erzeug
 | Komponente | Mitgelieferter Stand |
 |---|---|
 | Java-Laufzeit | `21.0.12.1` |
-| KoSIT XML Validator | `1.6.2` |
+| KoSIT XML Validator | `1.6.3` |
 | OASIS UBL-Schemata | `2.1` |
 | XRechnung-Konfiguration | `2026.01.31` |
 <!-- END GENERATED EXTERNAL COMPONENTS -->

@@ -45,6 +45,11 @@ class ReleaseToolTests(unittest.TestCase):
         (root / "requirements.txt").write_text("packaging==26.2\n", encoding="utf-8")
         (root / "requirements-dev.txt").write_text("-r requirements.txt\n", encoding="utf-8")
         (root / "THIRD_PARTY_NOTICES.md").write_text("# Drittanbieter\n", encoding="utf-8")
+        (root / "build_support").mkdir()
+        (root / "build_support" / "kosit_trusted_releases.json").write_text(
+            json.dumps({"schema_version": 1, "releases": {"1.6.3": "a" * 64}}),
+            encoding="utf-8",
+        )
         return root
 
     @staticmethod
@@ -180,7 +185,7 @@ class ReleaseToolTests(unittest.TestCase):
             original_version = (project / "version.py").read_bytes()
             original_changelog = (project / "CHANGELOG.md").read_bytes()
 
-            def fake_install(_project, release):
+            def fake_install(_project, release, **_options):
                 path = project / "external" / "components.json"
                 data = json.loads(path.read_text())
                 data["components"]["kosit-validator"] = str(release.version)
@@ -206,7 +211,7 @@ class ReleaseToolTests(unittest.TestCase):
             project = self._project(Path(directory))
             original = (project / "external" / "components.json").read_bytes()
 
-            def fake_install(_project, release):
+            def fake_install(_project, release, **_options):
                 path = project / "external" / "components.json"
                 data = json.loads(path.read_text())
                 data["components"]["kosit-validator"] = str(release.version)
