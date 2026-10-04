@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -44,14 +46,15 @@ class Reporter:
         self._log = self.log_path.open("a", encoding="utf-8", buffering=1)
         self._record("INFO", "START", f"Release-Werkzeug gestartet: {command}")
 
-    def _record(self, level: str, step: str, message: str) -> None:
+    def _record(self, level: str, step: str, message: str, *, persist_report: bool = True) -> None:
         now = datetime.now().astimezone().isoformat(timespec="seconds")
         event = {"time": now, "level": level, "step": step, "message": message}
         self.events.append(event)
         line = f"[{now}] [{level}] [{step}] {message}"
         print(line, file=sys.stderr if level == "FEHLER" else sys.stdout, flush=True)
         self._log.write(line + "\n")
-        self._write_report()
+        if persist_report:
+            self._write_report()
 
     def start(self, step: str, message: str) -> None:
         self._record("INFO", step, message)
@@ -77,9 +80,25 @@ class Reporter:
             "details": self.details,
             "events": self.events,
         }
-        temporary = self.report_path.with_suffix(".json.tmp")
-        temporary.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        temporary.replace(self.report_path)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix="release-report-", suffix=".tmp", dir=self.log_dir
+        )
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            temporary.write_text(
+                json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            for attempt in range(5):
+                try:
+                    temporary.replace(self.report_path)
+                    return
+                except PermissionError:
+                    if attempt == 4:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def run_process(self, step: str, command: list[str], cwd: Path) -> None:
         self.start(step, "Starte: " + subprocess.list2cmdline(command))
@@ -100,7 +119,10 @@ class Reporter:
         for line in process.stdout:
             text = line.rstrip()
             if text:
-                self._record("AUSGABE", step, text)
+                # Keep the human-readable stream complete, but persist the JSON
+                # only once when the subprocess finishes. This avoids hundreds
+                # of rapid file replacements on Windows during verbose tests.
+                self._record("AUSGABE", step, text, persist_report=False)
         if process.wait() != 0:
             raise BuilderError(f"Prozess endete mit Code {process.returncode}.")
         self.ok(step, "Prozess erfolgreich abgeschlossen")
@@ -233,7 +255,7 @@ def _run_dependency_audit(reporter: Reporter, project_root: Path) -> None:
 
 def _run_tests(reporter: Reporter, project_root: Path) -> None:
     reporter.run_process(
-        "TESTS", [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"], project_root
+        "TESTS", [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v", "-b"], project_root
     )
 
 

@@ -11,7 +11,7 @@ from packaging.version import Version
 
 from build_support.component_docs import BEGIN, update_component_documentation
 from build_support.kosit_builder import KositRelease, ReleaseAsset
-from build_support.release_tool import Reporter, _verify_artifacts, run_command
+from build_support.release_tool import Reporter, _run_tests, _verify_artifacts, run_command
 
 
 class ReleaseToolTests(unittest.TestCase):
@@ -89,6 +89,42 @@ class ReleaseToolTests(unittest.TestCase):
             self.assertIn("[WARNUNG] [TEST] Eine Warnung", reporter.log_path.read_text(encoding="utf-8"))
             report = json.loads(reporter.report_path.read_text(encoding="utf-8"))
             self.assertEqual(report["details"]["command"], "check")
+
+    def test_reporter_retries_short_windows_file_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reporter = Reporter(Path(directory), "check")
+            path_type = type(reporter.report_path)
+            original_replace = path_type.replace
+            attempts = 0
+
+            def temporarily_locked(path, target):
+                nonlocal attempts
+                attempts += 1
+                if attempts < 3:
+                    raise PermissionError("simulierte kurze Windows-Dateisperre")
+                return original_replace(path, target)
+
+            with patch.object(path_type, "replace", new=temporarily_locked):
+                reporter.warning("TEST", "Dateisperre wird wiederholt")
+            reporter.finish("success")
+
+            self.assertEqual(attempts, 3)
+            self.assertFalse(list(reporter.log_dir.glob("release-report-*.tmp")))
+
+    def test_test_runner_buffers_successful_simulation_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reporter = Reporter(Path(directory), "check")
+            invocation = {}
+
+            def capture_process(step, command, cwd):
+                invocation.update(step=step, command=command, cwd=cwd)
+
+            with patch.object(reporter, "run_process", new=capture_process):
+                _run_tests(reporter, Path(directory))
+            reporter.finish("success")
+
+            self.assertEqual(invocation["step"], "TESTS")
+            self.assertIn("-b", invocation["command"])
 
     def test_check_is_read_only(self):
         with tempfile.TemporaryDirectory() as directory:
