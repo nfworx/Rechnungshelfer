@@ -1,6 +1,4 @@
 # rechnungshelfer/controller.py
-from copy import deepcopy
-from datetime import date, timedelta
 from pathlib import Path
 from rechnungshelfer.services.xml_reader import read_xml_file, InvoiceParsingError
 from rechnungshelfer.services.pdf_service import create_pdf
@@ -22,9 +20,13 @@ from rechnungshelfer.services.validation_service import (
 )
 
 from rechnungshelfer.domain.models import (
-    Seller, Buyer, Delivery, InvoiceInfo, Payment, Invoice, DocumentType,
-    DEFAULT_BUYER_REFERENCE,
+    Seller,
+    Buyer,
+    Payment,
+    Invoice,
+    DocumentType,
 )
+from rechnungshelfer.domain.invoice_factory import InvoiceFactory
 
 class InvoiceController:
     def __init__(self):
@@ -32,6 +34,7 @@ class InvoiceController:
         self.customer_repo = CustomerRepository(connection=self.repo.conn)
         self.master_data_repository = MasterDataRepository()
         self.supplier_repo = SupplierRepository(connection=self.repo.conn)
+        self.invoice_factory = InvoiceFactory()
         self.last_validation_result = None
 
     # ========================
@@ -44,64 +47,22 @@ class InvoiceController:
     # Invoice erstellen
     # ========================
     def create_empty_invoice(self, document_type=DocumentType.INVOICE):
-        from rechnungshelfer.domain.models import (
-            Invoice,
-            Seller,
-            Buyer,
-            Delivery,
-            InvoiceInfo,
-            Payment,
-            InvoiceItem,
-        )
-
         document_type = DocumentType.from_value(document_type)
-        invoice = Invoice(
-            seller=Seller(),
-            buyer=Buyer(),
-            delivery=Delivery(),
-            info=InvoiceInfo(),
-            payment=Payment(),
-            items=[InvoiceItem()],
-            document_type=document_type,
+        own_company, own_payment = self.master_data_repository.load_into(
+            Seller(),
+            Payment(),
         )
-
-        # 🔥 HIER Stammdaten anwenden
-        self.master_data_repository.apply_to_invoice(invoice)
-
-        if document_type is DocumentType.SELF_BILLED_INVOICE:
-            own_company = invoice.seller
-            invoice.buyer = self._seller_to_buyer(own_company)
-            invoice.buyer.use_invoice_address_as_delivery = True
-            invoice.delivery = Delivery(
-                name=invoice.buyer.name,
-                street=invoice.buyer.street,
-                postcode=invoice.buyer.postcode,
-                city=invoice.buyer.city,
-                country=invoice.buyer.country,
-            )
-            invoice.seller = Seller(
-                name="", street="", postcode="", city="", country="DE",
-                phone="", email="", vat="", tax_number="",
-                registry_number="", contact_name="",
-                supplier_number=self.supplier_repo.next_supplier_number(),
-            )
-            invoice.seller.required_fields = [
-                "name", "street", "postcode", "city", "country", "email"
-            ]
-            invoice.payment = Payment(
-                iban="", bic="", account_holder="",
-                payment_means_code="58",
-                payment_terms="Der Auszahlungsbetrag wird auf das angegebene Konto überwiesen.",
-            )
-            invoice.payment.required_fields = [
-                "iban", "bic", "account_holder", "payment_means_code"
-            ]
-
-        invoice.set_document_type(document_type)
-
-        invoice.calculate(force=True)
-
-        return invoice
+        supplier_number = (
+            self.supplier_repo.next_supplier_number()
+            if document_type is DocumentType.SELF_BILLED_INVOICE
+            else ""
+        )
+        return self.invoice_factory.create(
+            document_type,
+            own_company=own_company,
+            own_payment=own_payment,
+            supplier_number=supplier_number,
+        )
 
     # ========================
     # Invoice speichern
@@ -293,15 +254,7 @@ class InvoiceController:
         return self.check_required_fields(invoice, for_xml=True)
 
     def copy_invoice(self, invoice: Invoice) -> Invoice:
-        copied = deepcopy(invoice)
-        copied.info.invoice_number = ""
-        copied.info.invoice_date = date.today().strftime("%d.%m.%Y")
-        copied.info.delivery_date = ""
-        copied.info.payment_due_date = (
-            date.today() + timedelta(days=14)
-        ).strftime("%d.%m.%Y")
-        copied.calculate(force=True)
-        return copied
+        return self.invoice_factory.copy(invoice)
 
     # ========================
     # Invoice Recalculate
@@ -415,17 +368,4 @@ class InvoiceController:
 
     @staticmethod
     def _seller_to_buyer(seller: Seller) -> Buyer:
-        return Buyer(
-            name=seller.name,
-            street=seller.street,
-            postcode=seller.postcode,
-            city=seller.city,
-            country=seller.country,
-            leitweg_id=seller.buyer_reference or DEFAULT_BUYER_REFERENCE,
-            email=seller.email,
-            contact_name=seller.contact_name,
-            phone=seller.phone,
-            vat=seller.vat,
-            tax_number=seller.tax_number,
-            registry_number=seller.registry_number,
-        )
+        return InvoiceFactory.seller_to_buyer(seller)
