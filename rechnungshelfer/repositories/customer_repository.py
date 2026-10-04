@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 from rechnungshelfer.domain.models import Buyer
-from repositories.invoice_repository import get_db_path
+from rechnungshelfer.repositories.invoice_repository import get_db_path
 
 
 

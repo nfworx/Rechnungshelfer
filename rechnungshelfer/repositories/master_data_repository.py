@@ -1,10 +1,10 @@
-# repositories/master_data_repository.py
+# rechnungshelfer/repositories/master_data_repository.py
 import json
 import os
 import tempfile
 from copy import deepcopy
 from pathlib import Path
-from repositories.invoice_repository import get_data_dir
+from rechnungshelfer.repositories.invoice_repository import get_data_dir
 
 
 class MasterDataRepository:

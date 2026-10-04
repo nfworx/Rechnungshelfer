@@ -1,4 +1,4 @@
-#invoice_repository.py
+# rechnungshelfer/repositories/invoice_repository.py
 import sqlite3
 import json
 import os
@@ -15,7 +15,7 @@ SCHEMA_VERSION = 2
 def get_exe_dir() -> Path:
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parents[2]
 
 
 def get_data_dir() -> Path:

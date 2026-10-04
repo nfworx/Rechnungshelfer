@@ -9,11 +9,15 @@ from lxml import etree
 
 from rechnungshelfer.controller import InvoiceController
 from rechnungshelfer.domain.models import DEFAULT_BUYER_REFERENCE, Payment, Seller
-from repositories.customer_repository import CustomerRepository
-from repositories.invoice_repository import InvoiceRepository, get_data_dir
+from rechnungshelfer.repositories.customer_repository import CustomerRepository
+from rechnungshelfer.repositories.invoice_repository import (
+    InvoiceRepository,
+    get_data_dir,
+    get_exe_dir,
+)
 from app_info import DATA_DIR_ENV
-from repositories.master_data_repository import MasterDataRepository
-from repositories.supplier_repository import SupplierRepository
+from rechnungshelfer.repositories.master_data_repository import MasterDataRepository
+from rechnungshelfer.repositories.supplier_repository import SupplierRepository
 from services.format_service import parse_de
 from services.validation_service import validate_document, validate_xsd
 from services.xml_service import create_xml
@@ -247,7 +251,7 @@ class RegressionTests(unittest.TestCase):
             repository.save(invoice)
 
             with patch(
-                "repositories.invoice_repository.json.loads",
+                "rechnungshelfer.repositories.invoice_repository.json.loads",
                 side_effect=AssertionError("JSON should not be parsed"),
             ):
                 summaries = repository.list_invoice_summaries()
@@ -275,6 +279,13 @@ class RegressionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict("os.environ", {DATA_DIR_ENV: tmp}):
                 self.assertEqual(get_data_dir(), Path(tmp))
+
+    def test_development_data_directory_stays_below_project_root(self):
+        project_root = Path(__file__).resolve().parents[1]
+
+        with patch.object(__import__("sys"), "frozen", False, create=True):
+            with patch.dict("os.environ", {}, clear=True):
+                self.assertEqual(get_exe_dir(), project_root)
 
     def test_packaged_app_always_uses_portable_data_directory(self):
         with tempfile.TemporaryDirectory() as tmp:

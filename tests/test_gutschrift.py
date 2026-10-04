@@ -14,8 +14,8 @@ from rechnungshelfer.domain.models import (
     Payment,
     Seller,
 )
-from repositories.invoice_repository import InvoiceRepository
-from repositories.supplier_repository import SupplierRepository
+from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
+from rechnungshelfer.repositories.supplier_repository import SupplierRepository
 from services.pdf_service import (
     _pdf_detail_layout,
     _pdf_invoice_details,

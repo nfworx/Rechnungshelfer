@@ -5,10 +5,10 @@ from pathlib import Path
 from services.xml_reader import read_xml_file, InvoiceParsingError
 from services.pdf_service import create_pdf
 from services.xml_service import create_xml
-from repositories.invoice_repository import InvoiceRepository
-from repositories.customer_repository import CustomerRepository
-from repositories.master_data_repository import MasterDataRepository
-from repositories.supplier_repository import SupplierRepository
+from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
+from rechnungshelfer.repositories.customer_repository import CustomerRepository
+from rechnungshelfer.repositories.master_data_repository import MasterDataRepository
+from rechnungshelfer.repositories.supplier_repository import SupplierRepository
 from services.input_validation_service import (
     InputValidationError,
     is_valid_bic,

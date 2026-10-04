@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rechnungshelfer.domain.models import Payment, Seller
-from repositories.invoice_repository import get_db_path
+from rechnungshelfer.repositories.invoice_repository import get_db_path
 
 
 class SupplierRepository:
