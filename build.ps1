@@ -79,7 +79,10 @@ $forbiddenBuildFiles = Get-ChildItem `
     -Recurse `
     -File |
     Where-Object {
-        $relativePath = [System.IO.Path]::GetRelativePath($buildDirectory, $_.FullName).Replace("\", "/")
+        # Windows PowerShell 5.1 runs on .NET Framework, which does not provide
+        # System.IO.Path.GetRelativePath(). Every item originates below the
+        # absolute build directory, so removing that prefix is sufficient here.
+        $relativePath = $_.FullName.Substring($buildDirectory.Length).TrimStart("\", "/").Replace("\", "/")
         $_.Name -ieq "master_data.json" -or
         $_.Extension -in ".db", ".sqlite", ".sqlite3" -or
         $_.Name -like "*-report.xml" -or
