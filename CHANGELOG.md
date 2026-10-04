@@ -8,10 +8,26 @@ Versionsschema folgt [Semantic Versioning](https://semver.org/lang/de/).
 ### Added
 
 - Der separate Programm-Updater zeigt waehrend Warten, Download, Pruefung und Installation ein sichtbares Fortschrittsfenster mit gruenem Balken
+- Sequenzielle, transaktionale Datenbankmigrationen mit automatischer Sicherung vor Schemaaenderungen
+- Eigene Anwendungsschicht fuer Beleg-, Kunden-, Lieferanten- und Stammdatenablaeufe
+- Injizierbarer KoSIT-Adapter sowie gezielte Tests fuer fehlende Ressourcen und Zeitueberschreitungen
 
 ### Changed
 
 - Die aktualisierte Anwendung wird erst gestartet, nachdem der Fortschritt sichtbar 100 Prozent erreicht hat
+- Belegerstellung und Kopieren werden zentral durch eine fachliche Factory ausgefuehrt
+- Datenbankverbindung, Transaktionen und Schemaaufbau werden an einer Stelle verwaltet
+- PDF- und XML-Export laufen ueber einen eigenen Exportservice; Validierungsergebnisse werden explizit an die Oberflaeche zurueckgegeben
+- Der Controller dient nur noch als stabile Fassade und delegiert fachliche Anwendungsfaelle
+- Kundenmigrationen laufen vor dem Aufbau der Benutzeroberflaeche statt innerhalb des Hauptfensters
+- Moegliche Kundenduplikate werden als strukturierter Anwendungsfehler statt ueber eine Steuerzeichenfolge gemeldet
+- Das Oeffnen von KoSIT-Pruefberichten wurde vom Java-Prozessadapter getrennt
+
+### Security
+
+- Fehlgeschlagene Datenbankmigrationen werden vollstaendig zurueckgerollt
+- Datenbanken mit einer neueren, nicht unterstuetzten Schema-Version werden ohne Veraenderung abgelehnt
+- XML-Dateien werden erst nach erfolgreicher lokaler und externer Validierung geschrieben
 
 ## [1.0.1] - 2026-10-04
 

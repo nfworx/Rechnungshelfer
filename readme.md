@@ -1,10 +1,12 @@
 # Rechnungshelfer
 
-Desktop-Anwendung zum Erstellen, Verwalten und Exportieren von Rechnungen und
-Gutschriften. Belege koennen als PDF und als XRechnung-XML (UBL 2.1) ausgegeben
-und vor dem Export mit XSD sowie dem KoSIT-Validator geprueft werden.
+Portable Windows-Desktop-Anwendung zum Erstellen, Verwalten und Exportieren von
+Rechnungen und Gutschriften. Belege koennen als PDF und als XRechnung-XML
+(UBL 2.1) ausgegeben und vor dem Export lokal mit XSD sowie dem
+KoSIT-Validator geprueft werden. Rechnungs- und Stammdaten bleiben im eigenen
+Programmordner; fuer die Belegerstellung ist kein Cloud-Dienst erforderlich.
 
-**Rechnungen und Gutschriften einfach erstellen.**
+**Rechnungen und Gutschriften lokal erstellen, verwalten und validieren.**
 
 Sichtbarer Name, technischer Bezeichner, EXE-Name und Hersteller werden zentral
 in `app_info.py` gepflegt. Die Programmversion steht ausschliesslich in
@@ -21,8 +23,11 @@ in `app_info.py` gepflegt. Die Programmversion steht ausschliesslich in
 - PDF-Export
 - XRechnung-Export nach UBL 2.1
 - XSD- und KoSIT-Validierung
+- KoSIT-Pruefbericht nach dem XML-Export anzeigen
 - Testrechnung und Testgutschrift direkt ins Formular laden
-- Lokale SQLite-Datenbank mit Migration und Sicherung
+- Lokale SQLite-Datenbank mit sequenziellen Migrationen, Sicherung und Rollback
+- Releasepakete werden vor Programmupdates anhand ihrer SHA-256-Pruefsumme
+  kontrolliert
 
 ## Voraussetzungen
 
@@ -62,6 +67,11 @@ Die XML-Dateien koennen so neu erzeugt werden:
 ```powershell
 .\.venv\Scripts\python.exe -m tests.generate_validator_fixtures
 ```
+
+Die Tests decken neben Berechnung, PDF/XML und KoSIT auch Datenbankmigrationen,
+Transaktions-Rollbacks, Exportfehler sowie sichere Programmupdates ab.
+Datenbank- und Dateisystemtests verwenden temporaere Verzeichnisse und duerfen
+reale Benutzerdaten nicht oeffnen oder veraendern.
 
 ### Anwendung schnell testen
 
@@ -216,7 +226,12 @@ in Rechnungshelfer eingebaut.
 
 Im portablen Modus gehoeren die Benutzerdaten zum transportierbaren Ordner,
 bleiben aber vom austauschbaren Programminhalt logisch getrennt. Vor
-Datenbankmigrationen wird automatisch eine Sicherung erstellt.
+Datenbankmigrationen wird automatisch eine Sicherung wie
+`invoices.backup-v<SCHEMA>-<ZEITSTEMPEL>.db` erstellt. Migrationen werden
+nummeriert und der Reihe nach innerhalb einer Transaktion ausgefuehrt. Bei
+einem Fehler bleibt die vorherige Schema-Version erhalten. Eine Datenbank mit
+einer neueren, vom Programm noch nicht unterstuetzten Schema-Version wird ohne
+Migration abgelehnt.
 
 Rechnungsdaten, Stammdaten, exportierte PDFs und erzeugte Validator-Berichte
 duerfen nicht in Git oder in ein Release-Paket aufgenommen werden. Der
@@ -231,17 +246,48 @@ assets/                         Schriftarten und Bilder
 build_support/                  Internes Release-Werkzeug und Buildhilfen
 external/                       Java, KoSIT und UBL-Schemata
 rechnungshelfer/                Python-Anwendungspaket
-  controller.py                 Anwendungslogik und Ablaufsteuerung
-  domain/                       Geschaeftsmodelle und Berechnung
+  application/                  Beleg- und Geschaeftspartner-Anwendungsfaelle
+  controller.py                 Stabile Fassade fuer die Benutzeroberflaeche
+  domain/                       Modelle, Belegfactory und reine Berechnung
   gui/                          CustomTkinter-Oberflaeche und Export-Workflow
-  repositories/                 SQLite- und Stammdatenzugriff
-  services/                     PDF-, XML- und Validierungslogik
+  repositories/                 SQLite, Migrationen und Stammdatenzugriff
+  services/                     Export, PDF, XML, Validierung und KoSIT-Adapter
 tests/                          Unit-, Regressions- und Validator-Tests
 updater/                        Updatearchitektur und Manifest
 app_info.py                     Produktmetadaten
 version.py                      Programmversion
 main.py                         Programmeinstieg
 ```
+
+### Architektur und Verantwortlichkeiten
+
+Die Abhaengigkeiten verlaufen von der Oberflaeche ueber eine schmale Fassade
+zu klar getrennten Anwendungsfaellen:
+
+```text
+GUI -> InvoiceController -> application -> domain
+                              |          -> repositories
+                              `----------> services
+```
+
+- `domain/` kennt weder GUI noch SQLite, Java oder Dateipfade. Die
+  Rechnungsberechnung besteht aus separat testbaren, reinen Funktionen.
+- `application/` koordiniert fachliche Anwendungsfaelle und Transaktionen, zum
+  Beispiel Belege speichern oder alte Kundenstammdaten uebernehmen.
+- `repositories/` besitzt Datenbankverbindung, nummerierte Migrationen und die
+  Abbildung gespeicherter Datensaetze.
+- `services/export_service.py` koordiniert Eingabepruefung, PDF/XML-Erzeugung,
+  Validierung und das anschliessende Schreiben der Ausgabedatei.
+- Der KoSIT-Aufruf ist ein austauschbarer Adapter. Nur dieser Adapter kennt den
+  externen Java-Prozess; das Anzeigen des HTML-Pruefberichts bleibt Aufgabe der
+  GUI.
+- `controller.py` behaelt die von den Dialogen verwendete API bei, enthaelt
+  aber keine umfangreichen Beleg-, Datenbank- oder Exportablaeufe mehr.
+
+Beim XML-Export wird die Zieldatei erst geschrieben, wenn lokale XSD- und
+fachliche Pruefungen sowie die KoSIT-Validierung erfolgreich waren. Das
+Validierungsergebnis wird explizit an die GUI zurueckgegeben und nicht als
+versteckter Controller-Zustand gespeichert.
 
 <!-- BEGIN GENERATED EXTERNAL COMPONENTS -->
 ## Mitgelieferte externe Komponenten

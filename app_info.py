@@ -11,7 +11,7 @@ APP_ID = "Rechnungshelfer"
 APP_EXECUTABLE_NAME = APP_ID
 APP_VERSION = __version__
 APP_PUBLISHER = "nfischer-code"
-APP_DESCRIPTION = "Rechnungen und Gutschriften einfach erstellen"
+APP_DESCRIPTION = "Rechnungen und Gutschriften erstellen, verwalten und validieren"
 
 DATA_DIR_ENV = "RECHNUNGSHELFER_DATA_DIR"
 MAINTAINER_MODE_ENV = "RECHNUNGSHELFER_MAINTAINER"
