@@ -15,6 +15,9 @@ from rechnungshelfer.services.kosit_validation_service import (
     SCENARIOS_XML,
 )
 from rechnungshelfer.services.validation_service import (
+    format_missing_fields,
+    get_missing_required_fields,
+    is_required_field,
     validate_document,
     validate_invoice,
     validate_totals,
@@ -43,6 +46,28 @@ class ValidationDocumentTests(unittest.TestCase):
     @staticmethod
     def _field_names(missing):
         return {field for _, _, field in missing}
+
+    def test_controller_delegates_export_field_rules_to_validation_service(self):
+        invoice = create_validator_invoice()
+        invoice.buyer.email = ""
+
+        for for_xml in (False, True):
+            with self.subTest(for_xml=for_xml):
+                expected = get_missing_required_fields(invoice, for_xml=for_xml)
+                actual = self.controller.get_missing_required_fields(
+                    invoice,
+                    for_xml=for_xml,
+                )
+                self.assertEqual(actual, expected)
+                self.assertEqual(
+                    self.controller.format_missing_fields(actual, "XML"),
+                    format_missing_fields(expected, "XML"),
+                )
+
+        self.assertEqual(
+            self.controller.is_required_field(invoice, "Buyer", "email"),
+            is_required_field(invoice, "Buyer", "email"),
+        )
 
     def test_checked_in_xml_fixtures_are_current_and_locally_valid(self):
         documents = {

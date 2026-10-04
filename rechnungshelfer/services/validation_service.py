@@ -7,6 +7,13 @@ from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import dataclass, field
 from lxml import etree
 from .kosit_validation_service import validate_with_kosit
+from .input_validation_service import (
+    is_valid_bic,
+    is_valid_email,
+    is_valid_iban,
+    is_valid_phone,
+    is_valid_vat_id,
+)
 
 from rechnungshelfer.domain.models import Invoice
 
@@ -63,6 +70,137 @@ class ExportValidationError(Exception):
         super().__init__(message)
         self.details = details
         self.report_html = report_html
+
+
+def is_required_field(invoice: Invoice, section: str, attr: str, item_pos=None) -> bool:
+    """Prueft, ob ein Modellattribut fuer den aktuellen Beleg erforderlich ist."""
+    if section == "Item":
+        if item_pos is None:
+            raise ValueError("Für 'Item' muss item_pos angegeben werden")
+        item = next((item for item in invoice.items if item.pos == item_pos), None)
+        return bool(item and attr in item.required_fields)
+
+    objects = {
+        "Seller": invoice.seller,
+        "Buyer": invoice.buyer,
+        "Delivery": invoice.delivery,
+        "Invoice": invoice.info,
+        "Payment": invoice.payment,
+    }
+    obj = objects.get(section)
+    return bool(obj and attr in getattr(obj, "required_fields", []))
+
+
+def get_missing_required_fields(invoice: Invoice, for_xml: bool = True) -> list[tuple]:
+    """Liefert fehlende oder ungueltige Felder fuer PDF- oder XML-Export."""
+    missing = []
+
+    def check(section_name, obj, fields):
+        for field_name in fields:
+            value = getattr(obj, field_name, None)
+            if value is None or (isinstance(value, str) and not value.strip()):
+                missing.append((section_name, obj, field_name))
+
+    if invoice.is_self_billed:
+        seller_required = ["name", "street", "postcode", "city", "country", "email"]
+        buyer_required = ["name", "street", "postcode", "city", "country"]
+        if for_xml:
+            buyer_required.extend(["email", "leitweg_id"])
+        payment_required = ["iban", "bic", "account_holder", "payment_means_code"]
+
+        check("Lieferant", invoice.seller, seller_required)
+        check("Eigener Betrieb", invoice.buyer, buyer_required)
+        check("Auszahlung", invoice.payment, payment_required)
+
+        if not (invoice.seller.vat or invoice.seller.tax_number):
+            missing.append(("Lieferant", invoice.seller, "vat_or_tax_number"))
+
+        sections = [("Invoice", invoice.info)]
+    else:
+        sections = [
+            ("Seller", invoice.seller),
+            ("Buyer", invoice.buyer),
+            ("Invoice", invoice.info),
+            ("Payment", invoice.payment),
+        ]
+
+    if not invoice.buyer.use_invoice_address_as_delivery:
+        sections.append(("Delivery", invoice.delivery))
+
+    for section_name, obj in sections:
+        fields = list(getattr(obj, "required_fields", []))
+        if for_xml and obj is invoice.buyer and "leitweg_id" not in fields:
+            fields.append("leitweg_id")
+        check(section_name, obj, fields)
+
+    for item in invoice.items:
+        section_name = f"Position {item.pos or 'unbekannt'}"
+        check(section_name, item, getattr(item, "required_fields", []))
+        if item.qty is None or item.qty <= 0:
+            missing.append((section_name, item, "qty"))
+
+    if for_xml:
+        _add_xml_format_issues(invoice, missing)
+
+    return missing
+
+
+def _add_xml_format_issues(invoice: Invoice, missing: list[tuple]) -> None:
+    parties = [
+        ("Lieferant" if invoice.is_self_billed else "Verkäufer", invoice.seller),
+        ("Eigener Betrieb" if invoice.is_self_billed else "Kunde", invoice.buyer),
+    ]
+    for section, party in parties:
+        if party.email and not is_valid_email(party.email):
+            missing.append((section, party, "email_invalid"))
+        if party.vat and not is_valid_vat_id(party.vat, party.country):
+            missing.append((section, party, "vat_invalid"))
+
+    seller_section = "Lieferant" if invoice.is_self_billed else "Verkäufer"
+    if not invoice.seller.phone:
+        missing.append((seller_section, invoice.seller, "phone"))
+    elif not is_valid_phone(invoice.seller.phone):
+        missing.append((seller_section, invoice.seller, "phone_invalid"))
+
+    payment_section = "Auszahlung" if invoice.is_self_billed else "Zahlung"
+    if invoice.payment.iban and not is_valid_iban(invoice.payment.iban):
+        missing.append((payment_section, invoice.payment, "iban_invalid"))
+    if invoice.payment.bic and not is_valid_bic(invoice.payment.bic):
+        missing.append((payment_section, invoice.payment, "bic_invalid"))
+
+    if not any(
+        (
+            invoice.seller.supplier_number,
+            invoice.seller.registry_number,
+            invoice.seller.vat,
+        )
+    ):
+        missing.append((seller_section, invoice.seller, "seller_identifier"))
+
+
+def format_missing_fields(missing: list[tuple], export_name: str) -> str:
+    labels = {
+        "vat_or_tax_number": "Steuernummer oder USt-ID",
+        "leitweg_id": "Käuferreferenz (BT-10)",
+        "email_invalid": "E-Mail-Adresse ist ungültig",
+        "phone_invalid": "Telefonnummer muss mindestens drei Ziffern enthalten",
+        "vat_invalid": "USt-ID benötigt ein Länderpräfix, z. B. DE123456789",
+        "iban_invalid": "IBAN ist ungültig",
+        "bic_invalid": "BIC ist ungültig",
+        "seller_identifier": "Lieferantennummer, Handelsregisternummer oder USt-ID",
+    }
+    lines = []
+    for section, obj, field_name in missing:
+        label = labels.get(field_name)
+        if label is None:
+            label = obj.get_label(field_name) if hasattr(obj, "get_label") else field_name
+        line = f"- {section}: {label}"
+        if line not in lines:
+            lines.append(line)
+    return (
+        f"{export_name}-Export nicht möglich. Angaben fehlen oder sind ungültig:\n\n"
+        + "\n".join(lines)
+    )
 
 
 @lru_cache(maxsize=4)

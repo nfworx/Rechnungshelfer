@@ -255,12 +255,15 @@ Dieser Abschnitt wird vom Release-Werkzeug aus `external/components.json` erzeug
 | XRechnung-Konfiguration | `2026.01.31` |
 <!-- END GENERATED EXTERNAL COMPONENTS -->
 
-## Fachlicher Hinweis
+## Haftungs- und Nutzungshinweis
 
-Die technische Validierung ersetzt keine steuerliche oder rechtliche Pruefung.
-Bei B2B-Empfaengern kann als interne Kaeuferreferenz beispielsweise
-`BUCHHALTUNG` verwendet werden. Oeffentliche Auftraggeber stellen fuer BT-10 in
-der Regel eine Leitweg-ID bereit.
+Die Nutzung der Software erfolgt auf eigene Verantwortung.
+
+Die Software dient als technisches Hilfsmittel zur Erstellung und Verarbeitung von Rechnungen und elektronischen Rechnungsdaten. Trotz sorgfältiger Entwicklung und technischer Validierung kann keine Gewähr für die Fehlerfreiheit, Vollständigkeit oder rechtliche bzw. steuerliche Richtigkeit der erzeugten Dokumente übernommen werden.
+
+Der Nutzer ist selbst dafür verantwortlich, die erzeugten Rechnungen und sonstigen Dokumente vor ihrer Verwendung auf inhaltliche, steuerliche und rechtliche Richtigkeit zu prüfen.
+
+Die technische Validierung, beispielsweise durch XSD- oder KoSIT-Prüfungen, stellt keine steuerliche oder rechtliche Beratung oder Prüfung dar.
 
 ## Lizenz
 

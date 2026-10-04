@@ -11,14 +11,15 @@ from rechnungshelfer.repositories.master_data_repository import MasterDataReposi
 from rechnungshelfer.repositories.supplier_repository import SupplierRepository
 from rechnungshelfer.services.input_validation_service import (
     InputValidationError,
-    is_valid_bic,
-    is_valid_email,
-    is_valid_iban,
-    is_valid_phone,
-    is_valid_vat_id,
     normalize_invoice_input,
 )
-from rechnungshelfer.services.validation_service import validate_invoice, ExportValidationError
+from rechnungshelfer.services.validation_service import (
+    ExportValidationError,
+    format_missing_fields as format_export_issues,
+    get_missing_required_fields as find_missing_required_fields,
+    is_required_field as check_required_field,
+    validate_invoice,
+)
 
 from rechnungshelfer.domain.models import (
     Seller, Buyer, Delivery, InvoiceInfo, Payment, Invoice, DocumentType,
@@ -266,121 +267,13 @@ class InvoiceController:
     # Pflichtfelder prüfen
     # ========================
     def is_required_field(self, invoice, section, attr, item_pos=None):
-        """
-        Prüft, ob ein Attribut Pflichtfeld ist.
-        - section: Seller | Buyer | Delivery | Invoice | Payment | Item
-        """
-        if section == "Item":
-            if item_pos is None:
-                raise ValueError("Für 'Item' muss item_pos angegeben werden")
-            item = next(
-                (i for i in invoice.items if i.pos == item_pos),
-                None
-            )
-            return bool(item and attr in item.required_fields)
-
-        obj_map = {
-            "Seller": invoice.seller,
-            "Buyer": invoice.buyer,
-            "Delivery": invoice.delivery,
-            "Invoice": invoice.info,
-            "Payment": invoice.payment
-        }
-
-        obj = obj_map.get(section)
-        return bool(obj and attr in getattr(obj, "required_fields", []))
+        return check_required_field(invoice, section, attr, item_pos=item_pos)
 
     def get_missing_required_fields(self, invoice, for_xml=True):
         """Liefert fehlende Pflichtfelder getrennt nach PDF- und XML-Export."""
         if for_xml and invoice.is_self_billed and hasattr(self, "supplier_repo"):
             self._ensure_self_billed_supplier_number(invoice)
-
-        missing = []
-
-        def check(section_name, obj, fields):
-            for field in fields:
-                value = getattr(obj, field, None)
-                if value is None or (isinstance(value, str) and not value.strip()):
-                    missing.append((section_name, obj, field))
-
-        if invoice.is_self_billed:
-            seller_required = ["name", "street", "postcode", "city", "country", "email"]
-            buyer_required = ["name", "street", "postcode", "city", "country"]
-            if for_xml:
-                buyer_required.extend(["email", "leitweg_id"])
-            payment_required = ["iban", "bic", "account_holder", "payment_means_code"]
-
-            check("Lieferant", invoice.seller, seller_required)
-            check("Eigener Betrieb", invoice.buyer, buyer_required)
-            check("Auszahlung", invoice.payment, payment_required)
-
-            if not (invoice.seller.vat or invoice.seller.tax_number):
-                missing.append(("Lieferant", invoice.seller, "vat_or_tax_number"))
-
-            sections = [("Invoice", invoice.info)]
-        else:
-            sections = [
-                ("Seller", invoice.seller),
-                ("Buyer", invoice.buyer),
-                ("Invoice", invoice.info),
-                ("Payment", invoice.payment),
-            ]
-
-        if not invoice.buyer.use_invoice_address_as_delivery:
-            sections.append(("Delivery", invoice.delivery))
-
-        for section_name, obj in sections:
-            fields = list(getattr(obj, "required_fields", []))
-            if for_xml and obj is invoice.buyer and "leitweg_id" not in fields:
-                fields.append("leitweg_id")
-            check(section_name, obj, fields)
-
-        for item in invoice.items:
-            check(
-                f"Position {item.pos or 'unbekannt'}",
-                item,
-                getattr(item, "required_fields", []),
-            )
-
-            if item.qty is None or item.qty <= 0:
-                missing.append((f"Position {item.pos or 'unbekannt'}", item, "qty"))
-
-        if for_xml:
-            self._add_xml_format_issues(invoice, missing)
-
-        return missing
-
-    @staticmethod
-    def _add_xml_format_issues(invoice, missing):
-        parties = [
-            ("Lieferant" if invoice.is_self_billed else "Verkäufer", invoice.seller),
-            ("Eigener Betrieb" if invoice.is_self_billed else "Kunde", invoice.buyer),
-        ]
-        for section, party in parties:
-            if party.email and not is_valid_email(party.email):
-                missing.append((section, party, "email_invalid"))
-            if party.vat and not is_valid_vat_id(party.vat, party.country):
-                missing.append((section, party, "vat_invalid"))
-
-        seller_section = "Lieferant" if invoice.is_self_billed else "Verkäufer"
-        if not invoice.seller.phone:
-            missing.append((seller_section, invoice.seller, "phone"))
-        elif not is_valid_phone(invoice.seller.phone):
-            missing.append((seller_section, invoice.seller, "phone_invalid"))
-
-        if invoice.payment.iban and not is_valid_iban(invoice.payment.iban):
-            missing.append(("Auszahlung" if invoice.is_self_billed else "Zahlung", invoice.payment, "iban_invalid"))
-        if invoice.payment.bic and not is_valid_bic(invoice.payment.bic):
-            missing.append(("Auszahlung" if invoice.is_self_billed else "Zahlung", invoice.payment, "bic_invalid"))
-
-        if not any(
-            (
-                invoice.seller.supplier_number,
-                invoice.seller.registry_number,
-                invoice.seller.vat,
-            )
-        ):
-            missing.append((seller_section, invoice.seller, "seller_identifier"))
+        return find_missing_required_fields(invoice, for_xml=for_xml)
 
     def _ensure_self_billed_supplier_number(self, invoice):
         if invoice.is_self_billed and not invoice.seller.supplier_number:
@@ -388,28 +281,7 @@ class InvoiceController:
 
     @staticmethod
     def format_missing_fields(missing, export_name):
-        labels = {
-            "vat_or_tax_number": "Steuernummer oder USt-ID",
-            "leitweg_id": "Käuferreferenz (BT-10)",
-            "email_invalid": "E-Mail-Adresse ist ungültig",
-            "phone_invalid": "Telefonnummer muss mindestens drei Ziffern enthalten",
-            "vat_invalid": "USt-ID benötigt ein Länderpräfix, z. B. DE123456789",
-            "iban_invalid": "IBAN ist ungültig",
-            "bic_invalid": "BIC ist ungültig",
-            "seller_identifier": "Lieferantennummer, Handelsregisternummer oder USt-ID",
-        }
-        lines = []
-        for section, obj, field in missing:
-            label = labels.get(field)
-            if label is None:
-                label = obj.get_label(field) if hasattr(obj, "get_label") else field
-            line = f"- {section}: {label}"
-            if line not in lines:
-                lines.append(line)
-        return (
-            f"{export_name}-Export nicht möglich. Angaben fehlen oder sind ungültig:\n\n"
-            + "\n".join(lines)
-        )
+        return format_export_issues(missing, export_name)
 
     def check_required_fields(self, invoice, for_xml=True):
         return not self.get_missing_required_fields(invoice, for_xml=for_xml)
