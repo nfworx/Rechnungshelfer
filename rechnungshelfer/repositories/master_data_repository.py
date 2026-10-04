@@ -4,7 +4,7 @@ import os
 import tempfile
 from copy import deepcopy
 from pathlib import Path
-from rechnungshelfer.repositories.invoice_repository import get_data_dir
+from rechnungshelfer.repositories.database import get_data_dir
 
 
 class MasterDataRepository:

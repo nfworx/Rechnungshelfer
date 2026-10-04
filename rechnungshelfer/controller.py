@@ -7,6 +7,7 @@ from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
 from rechnungshelfer.repositories.customer_repository import CustomerRepository
 from rechnungshelfer.repositories.master_data_repository import MasterDataRepository
 from rechnungshelfer.repositories.supplier_repository import SupplierRepository
+from rechnungshelfer.repositories.database import Database
 from rechnungshelfer.services.input_validation_service import (
     InputValidationError,
     normalize_invoice_input,
@@ -30,10 +31,11 @@ from rechnungshelfer.domain.invoice_factory import InvoiceFactory
 
 class InvoiceController:
     def __init__(self):
-        self.repo = InvoiceRepository()
-        self.customer_repo = CustomerRepository(connection=self.repo.conn)
+        self.database = Database()
+        self.repo = InvoiceRepository(connection=self.database.connection)
+        self.customer_repo = CustomerRepository(connection=self.database.connection)
         self.master_data_repository = MasterDataRepository()
-        self.supplier_repo = SupplierRepository(connection=self.repo.conn)
+        self.supplier_repo = SupplierRepository(connection=self.database.connection)
         self.invoice_factory = InvoiceFactory()
         self.last_validation_result = None
 
@@ -96,22 +98,18 @@ class InvoiceController:
                     f"{names}"
                 )
 
-        try:
-            with self.repo.conn:
-                if invoice.is_self_billed and invoice.seller.name:
-                    self.supplier_repo.save(invoice.seller, invoice.payment, commit=False)
+        with self.database.transaction():
+            if invoice.is_self_billed and invoice.seller.name:
+                self.supplier_repo.save(invoice.seller, invoice.payment, commit=False)
 
-                self.repo.save(invoice, commit=False)
+            self.repo.save(invoice, commit=False)
 
-                if (
-                    not invoice.is_self_billed
-                    and invoice.buyer.customer_number
-                    and invoice.buyer.name
-                ):
-                    self.customer_repo.save(invoice.buyer, commit=False)
-        except Exception:
-            self.repo.conn.rollback()
-            raise
+            if (
+                not invoice.is_self_billed
+                and invoice.buyer.customer_number
+                and invoice.buyer.name
+            ):
+                self.customer_repo.save(invoice.buyer, commit=False)
     # ========================
     # Prüfen ob Invoice vorhanden
     # ========================
@@ -266,6 +264,11 @@ class InvoiceController:
     # Repository schließen
     # ========================
     def close(self):
+        if hasattr(self, "database"):
+            self.database.close()
+            return
+
+        # Kompatibilität für gezielt ohne __init__ erzeugte Test-Controller.
         self.repo.close()
 
         if hasattr(self.customer_repo, "close"):

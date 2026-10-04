@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 from rechnungshelfer.domain.models import Buyer
-from rechnungshelfer.repositories.invoice_repository import get_db_path
+from rechnungshelfer.repositories.database import open_database
 
 
 
@@ -13,12 +13,8 @@ class CustomerRepository:
         db_path: Path | None = None,
         connection: sqlite3.Connection | None = None,
     ):
-        if db_path is None:
-            db_path = get_db_path()  # Standard DB-Pfad
         self._owns_connection = connection is None
-        self.conn = connection or sqlite3.connect(db_path, timeout=10)
-        self.conn.execute("PRAGMA busy_timeout=10000;")
-        self._create_table()
+        self.conn = connection or open_database(db_path)
 
     def count(self) -> int:
         cur = self.conn.execute("SELECT COUNT(*) FROM customers")
@@ -34,17 +30,6 @@ class CustomerRepository:
             if row[0][1:].isdigit()
         ]
         return f"K{(max(numbers, default=0) + 1):04d}"
-
-    def _create_table(self):
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS customers (
-                customer_number TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                data TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-        """)
-        self.conn.commit()
 
     # -----------------------
     # Kunden speichern

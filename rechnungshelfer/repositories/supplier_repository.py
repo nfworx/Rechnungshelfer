@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rechnungshelfer.domain.models import Payment, Seller
-from rechnungshelfer.repositories.invoice_repository import get_db_path
+from rechnungshelfer.repositories.database import open_database
 
 
 class SupplierRepository:
@@ -14,23 +14,7 @@ class SupplierRepository:
         connection: sqlite3.Connection | None = None,
     ):
         self._owns_connection = connection is None
-        self.conn = connection or sqlite3.connect(db_path or get_db_path(), timeout=10)
-        self.conn.execute("PRAGMA busy_timeout=10000;")
-        self._create_table()
-
-    def _create_table(self):
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS suppliers (
-                supplier_number TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                seller_data TEXT NOT NULL,
-                payment_data TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        self.conn.commit()
+        self.conn = connection or open_database(db_path)
 
     def next_supplier_number(self) -> str:
         rows = self.conn.execute(

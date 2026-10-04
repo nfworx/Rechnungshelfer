@@ -11,6 +11,7 @@ from rechnungshelfer.controller import InvoiceController
 from rechnungshelfer.domain.models import Buyer, DEFAULT_BUYER_REFERENCE, Payment, Seller
 from rechnungshelfer.gui.export_workflow import ExportWorkflow
 from rechnungshelfer.repositories.customer_repository import CustomerRepository
+from rechnungshelfer.repositories.database import Database
 from rechnungshelfer.repositories.invoice_repository import (
     InvoiceRepository,
     get_data_dir,
@@ -38,9 +39,14 @@ class RegressionTests(unittest.TestCase):
 
     def _controller_for(self, directory: Path) -> InvoiceController:
         controller = InvoiceController.__new__(InvoiceController)
-        controller.repo = InvoiceRepository(directory / "audit.db")
-        controller.customer_repo = CustomerRepository(connection=controller.repo.conn)
-        controller.supplier_repo = SupplierRepository(connection=controller.repo.conn)
+        controller.database = Database(directory / "audit.db")
+        controller.repo = InvoiceRepository(connection=controller.database.connection)
+        controller.customer_repo = CustomerRepository(
+            connection=controller.database.connection
+        )
+        controller.supplier_repo = SupplierRepository(
+            connection=controller.database.connection
+        )
         controller.master_data_repository = MasterDataRepository(directory / "master.json")
         controller.last_validation_result = None
         return controller
