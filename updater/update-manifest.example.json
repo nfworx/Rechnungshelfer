@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "kind": "application",
+  "channel": "stable",
+  "version": "1.0.1",
+  "published_at": "2026-10-04T00:00:00Z",
+  "package": {
+    "url": "https://example.invalid/releases/Rechnungshelfer-1.0.1-win64.zip",
+    "size": 250000000,
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "release_notes_url": "https://example.invalid/releases/v1.0.1",
+  "mandatory": false,
+  "minimum_updater_version": "1.0.0"
+}

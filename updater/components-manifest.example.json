@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "kind": "components",
+  "channel": "test",
+  "published_at": "2026-10-04T00:00:00Z",
+  "components": [
+    {
+      "id": "kosit-validator",
+      "version": "1.6.3",
+      "package": {
+        "url": "Rechnungshelfer-kosit-validator-1.6.3.zip",
+        "size": 10000000,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    }
+  ]
+}
