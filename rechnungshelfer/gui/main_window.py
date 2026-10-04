@@ -20,8 +20,7 @@ from .supplier_load_dialog import SupplierLoadDialog
 from .test_document_dialog import TestDocumentDialog
 from .update_dialog import UpdateDialog
 from .buffered_form import BufferedFormHost
-from rechnungshelfer.services.validation_service import ExportValidationError
-from rechnungshelfer.services.kosit_validation_service import show_html_report
+from .export_workflow import ExportWorkflow
 from rechnungshelfer.services.update_service import check_for_application_update
 from rechnungshelfer.domain.models import DocumentType
 
@@ -47,6 +46,11 @@ class InvoiceGUI:
         self.save_button = None
         self.load_button = None
         self.update_dialog = UpdateDialog(self.root, on_update_started=self._shutdown_for_update)
+        self.export_workflow = ExportWorkflow(
+            self.root,
+            self.controller,
+            lambda: self.invoice,
+        )
         self._startup_update_results = queue.SimpleQueue()
         self._startup_update_check_started = False
 
@@ -326,12 +330,12 @@ class InvoiceGUI:
         self.totals_card = TotalsCard(
             self.totals_area,
             self.invoice,
-            on_pdf=self.generate_pdf,
-            on_xml=self.generate_xml,
-            can_export_pdf=self.can_export_pdf,
-            can_export_xml=self.can_export_xml,
-            pdf_export_hint=self.pdf_export_hint,
-            xml_export_hint=self.xml_export_hint,
+            on_pdf=self.export_workflow.generate_pdf,
+            on_xml=self.export_workflow.generate_xml,
+            can_export_pdf=self.export_workflow.can_export_pdf,
+            can_export_xml=self.export_workflow.can_export_xml,
+            pdf_export_hint=self.export_workflow.pdf_export_hint,
+            xml_export_hint=self.export_workflow.xml_export_hint,
         )
         self.totals_card.render()
 
@@ -473,107 +477,6 @@ class InvoiceGUI:
         self.controller.close()
         self.root.destroy()
 
-    def generate_pdf(self):
-        fp = filedialog.asksaveasfilename(
-            defaultextension=".pdf",
-            filetypes=[("PDF Dateien", "*.pdf")],
-        )
-
-        if not fp:
-            return
-
-        try:
-            self.controller.generate_pdf(self.invoice, fp)
-            messagebox.showinfo("Export", "PDF wurde erstellt.")
-        except Exception as e:
-            messagebox.showerror("Fehler", str(e))
-
-    def generate_xml(self):
-        fp = filedialog.asksaveasfilename(
-            defaultextension=".xml",
-            filetypes=[("XML Dateien", "*.xml")],
-        )
-
-        if not fp:
-            return
-
-        progress = ctk.CTkToplevel(self.root)
-        progress.title("XML Export")
-        progress.geometry("360x130")
-        progress.resizable(False, False)
-        progress.transient(self.root)
-        progress.grab_set()
-
-        label = ctk.CTkLabel(
-            progress,
-            text="XML wird validiert und exportiert...\nBitte warten.",
-        )
-        label.pack(pady=(24, 12))
-
-        bar = ctk.CTkProgressBar(
-            progress,
-            mode="indeterminate"
-        )
-        bar.pack(fill="x", padx=30)
-        bar.start()
-
-        def worker():
-            try:
-                self.controller.generate_xml(self.invoice, fp)
-                validation_result = self.controller.last_validation_result
-                
-                self.root.after(
-                    0,
-                    lambda: self._finish_xml_export_success(
-                        progress,
-                        validation_result,
-                    )
-                )
-
-            except ExportValidationError as e:
-                message = str(e)
-                details = e.details
-                report_html = e.report_html
-
-                self.root.after(
-                    0,
-                    lambda message=message, details=details, report_html=report_html: (
-                        self._finish_xml_export_validation_error(
-                            progress,
-                            message,
-                            details,
-                            report_html,
-                        )
-                    )
-                )
-
-            except ValueError as e:
-                message = str(e)
-
-                self.root.after(
-                    0,
-                    lambda message=message: self._finish_xml_export_warning(
-                        progress,
-                        message,
-                    )
-                )
-
-            except Exception as e:
-                message = str(e)
-
-                self.root.after(
-                    0,
-                    lambda message=message: self._finish_xml_export_error(
-                        progress,
-                        message,
-                    )
-                )
-
-        threading.Thread(
-            target=worker,
-            daemon=True,
-        ).start()
-
     def load_xml(self):
         fp = filedialog.askopenfilename(filetypes=[("XML Dateien", "*.xml")])
 
@@ -666,141 +569,3 @@ class InvoiceGUI:
         self.invoice.buyer.use_invoice_address_as_delivery = True
         self.show_form()
 
-    def can_export_pdf(self):
-        try:
-            return self.controller.check_pdf_required_fields(self.invoice)
-        except Exception:
-            return False
-
-    def can_export_xml(self):
-        try:
-            return self.controller.check_xml_required_fields(self.invoice)
-        except Exception:
-            return False
-
-    def pdf_export_hint(self):
-        return self._export_hint(for_xml=False, export_name="PDF")
-
-    def xml_export_hint(self):
-        return self._export_hint(for_xml=True, export_name="XML")
-
-    def _export_hint(self, for_xml, export_name):
-        try:
-            missing = self.controller.get_missing_required_fields(
-                self.invoice,
-                for_xml=for_xml,
-            )
-            if not missing:
-                return ""
-            return self.controller.format_missing_fields(missing, export_name)
-        except Exception:
-            return f"{export_name}-Export ist derzeit nicht möglich."
-        
-    def _finish_xml_export_success(
-        self,
-        progress,
-        validation_result=None,
-    ):
-        self._close_progress(progress)
-
-        if (
-            validation_result
-            and validation_result.report_html
-        ):
-            if messagebox.askyesno(
-                "Export",
-                "XML wurde erstellt.\n\nPrüfbericht anzeigen?"
-            ):
-                show_html_report(
-                    validation_result.report_html
-                )
-        else:
-            messagebox.showinfo(
-                "Export",
-                "XML wurde erstellt."
-            )
-
-
-    def _finish_xml_export_warning(self, progress, message):
-        self._close_progress(progress)
-        messagebox.showwarning("Export abgebrochen", message)
-
-    def _close_progress(self, progress):
-        try:
-            if progress.winfo_exists():
-                progress.destroy()
-        except Exception:
-            pass
-
-    def _finish_xml_export_error(self, progress, message):
-        self._close_progress(progress)
-        messagebox.showerror("Fehler", message)
-
-    def _finish_xml_export_validation_error(self, progress, message, details, report_html):
-        self._close_progress(progress)
-        self._show_validation_error_dialog(message, details, report_html)
-
-    def _show_validation_error_dialog(self, message, details, report_html):
-        dialog = ctk.CTkToplevel(self.root)
-        dialog.title("Export abgebrochen")
-        dialog.geometry("520x230")
-        dialog.resizable(False, False)
-        dialog.transient(self.root)
-        dialog.grab_set()
-
-        label = ctk.CTkLabel(
-            dialog,
-            text=message,
-            justify="left",
-            wraplength=460,
-        )
-        label.pack(padx=24, pady=(28, 18), anchor="w")
-
-        button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        button_frame.pack(fill="x", padx=24, pady=(0, 20))
-
-        def show_report():
-            self._show_validation_report(report_html)
-
-        def export_log():
-            fp = filedialog.asksaveasfilename(
-                defaultextension=".txt",
-                filetypes=[("Textdatei", "*.txt")],
-                initialfile="validation-error-log.txt",
-            )
-
-            if not fp:
-                return
-
-            with open(fp, "w", encoding="utf-8") as f:
-                f.write(details)
-
-            messagebox.showinfo("Fehlerlog", "Fehlerlog wurde exportiert.")
-
-        ctk.CTkButton(
-            button_frame,
-            text="Fehlerlog exportieren",
-            command=export_log,
-        ).pack(side="left")
-
-        ctk.CTkButton(
-            button_frame,
-            text="Prüfbericht anzeigen",
-            command=show_report,
-        ).pack(side="left", padx=(10, 0))
-
-        ctk.CTkButton(
-            button_frame,
-            text="OK",
-            command=dialog.destroy,
-        ).pack(side="right")
-
-    def _show_validation_report(self, html_content):
-        if not html_content:
-            messagebox.showinfo(
-                "Prüfbericht",
-                "Kein Prüfbericht verfügbar.",
-            )
-            return
-
-        show_html_report(html_content)

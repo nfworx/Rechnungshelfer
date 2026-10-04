@@ -4,11 +4,12 @@ import tempfile
 import unittest
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from lxml import etree
 
 from rechnungshelfer.controller import InvoiceController
 from rechnungshelfer.domain.models import Buyer, DEFAULT_BUYER_REFERENCE, Payment, Seller
+from rechnungshelfer.gui.export_workflow import ExportWorkflow
 from rechnungshelfer.repositories.customer_repository import CustomerRepository
 from rechnungshelfer.repositories.invoice_repository import (
     InvoiceRepository,
@@ -196,6 +197,79 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(invoice.delivery.city, "Hamburg")
         self.assertEqual(invoice.delivery.country, "DE")
         self.assertEqual(invoice.delivery.required_fields, [])
+
+    def test_export_workflow_uses_the_current_invoice(self):
+        controller = MagicMock()
+        first_invoice = self._invoice()
+        current_invoice = [first_invoice]
+        workflow = ExportWorkflow(
+            root=MagicMock(),
+            controller=controller,
+            invoice_provider=lambda: current_invoice[0],
+        )
+        controller.check_pdf_required_fields.return_value = True
+
+        self.assertTrue(workflow.can_export_pdf())
+        controller.check_pdf_required_fields.assert_called_once_with(first_invoice)
+
+        second_invoice = copy.deepcopy(first_invoice)
+        current_invoice[0] = second_invoice
+        controller.get_missing_required_fields.return_value = []
+
+        self.assertEqual(workflow.xml_export_hint(), "")
+        controller.get_missing_required_fields.assert_called_once_with(
+            second_invoice,
+            for_xml=True,
+        )
+
+    def test_export_workflow_delegates_pdf_export(self):
+        invoice = self._invoice()
+        controller = MagicMock()
+        workflow = ExportWorkflow(
+            root=MagicMock(),
+            controller=controller,
+            invoice_provider=lambda: invoice,
+        )
+
+        with (
+            patch(
+                "rechnungshelfer.gui.export_workflow.filedialog.asksaveasfilename",
+                return_value="rechnung.pdf",
+            ),
+            patch(
+                "rechnungshelfer.gui.export_workflow.messagebox.showinfo"
+            ) as showinfo,
+        ):
+            workflow.generate_pdf()
+
+        controller.generate_pdf.assert_called_once_with(invoice, "rechnung.pdf")
+        showinfo.assert_called_once_with("Export", "PDF wurde erstellt.")
+
+    def test_export_workflow_closes_progress_after_xml_input_error(self):
+        invoice = self._invoice()
+        controller = MagicMock()
+        controller.generate_xml.side_effect = ValueError("Pflichtfeld fehlt")
+        root = MagicMock()
+        root.after.side_effect = lambda _delay, callback: callback()
+        progress = MagicMock()
+        progress.winfo_exists.return_value = True
+        workflow = ExportWorkflow(
+            root=root,
+            controller=controller,
+            invoice_provider=lambda: invoice,
+        )
+
+        with patch(
+            "rechnungshelfer.gui.export_workflow.messagebox.showwarning"
+        ) as showwarning:
+            workflow._export_xml(progress, "rechnung.xml")
+
+        controller.generate_xml.assert_called_once_with(invoice, "rechnung.xml")
+        progress.destroy.assert_called_once_with()
+        showwarning.assert_called_once_with(
+            "Export abgebrochen",
+            "Pflichtfeld fehlt",
+        )
 
     def test_xml_precheck_reports_invalid_contact_and_payment_values(self):
         invoice = self._invoice()

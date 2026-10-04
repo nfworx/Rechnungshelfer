@@ -227,19 +227,20 @@ Programmstart automatisch entfernt.
 ## Projektstruktur
 
 ```text
-assets/                 Schriftarten und Bilder
-build_support/          Internes Release-Werkzeug und Buildhilfen
-external/               Java, KoSIT und UBL-Schemata
-gui_ctk/                CustomTkinter-Oberflaeche
-repositories/           SQLite- und Stammdatenzugriff
-services/               PDF-, XML- und Validierungslogik
-tests/                  Unit-, Regressions- und Validator-Tests
-updater/                Updatearchitektur und Manifest
-app_info.py             Produktmetadaten
-version.py              Programmversion
-controller.py           Anwendungslogik
-models.py               Datenmodelle und Berechnung
-main.py                 Programmeinstieg
+assets/                         Schriftarten und Bilder
+build_support/                  Internes Release-Werkzeug und Buildhilfen
+external/                       Java, KoSIT und UBL-Schemata
+rechnungshelfer/                Python-Anwendungspaket
+  controller.py                 Anwendungslogik und Ablaufsteuerung
+  domain/                       Geschaeftsmodelle und Berechnung
+  gui/                          CustomTkinter-Oberflaeche und Export-Workflow
+  repositories/                 SQLite- und Stammdatenzugriff
+  services/                     PDF-, XML- und Validierungslogik
+tests/                          Unit-, Regressions- und Validator-Tests
+updater/                        Updatearchitektur und Manifest
+app_info.py                     Produktmetadaten
+version.py                      Programmversion
+main.py                         Programmeinstieg
 ```
 
 <!-- BEGIN GENERATED EXTERNAL COMPONENTS -->
