@@ -18,9 +18,15 @@ from rechnungshelfer.repositories.invoice_repository import (
 from app_info import DATA_DIR_ENV
 from rechnungshelfer.repositories.master_data_repository import MasterDataRepository
 from rechnungshelfer.repositories.supplier_repository import SupplierRepository
-from services.format_service import parse_de
-from services.validation_service import validate_document, validate_xsd
-from services.xml_service import create_xml
+from rechnungshelfer.services.format_service import parse_de
+from rechnungshelfer.services.validation_service import validate_document, validate_xsd
+from rechnungshelfer.services.xml_service import create_xml
+from rechnungshelfer.services import (
+    kosit_validation_service,
+    pdf_service,
+    update_service,
+    validation_service,
+)
 from tests import test_gutschrift as gutschrift_fixtures
 
 
@@ -286,6 +292,18 @@ class RegressionTests(unittest.TestCase):
         with patch.object(__import__("sys"), "frozen", False, create=True):
             with patch.dict("os.environ", {}, clear=True):
                 self.assertEqual(get_exe_dir(), project_root)
+
+    def test_service_resources_stay_below_project_root(self):
+        project_root = Path(__file__).resolve().parents[1]
+
+        with patch.object(__import__("sys"), "frozen", False, create=True):
+            self.assertEqual(
+                Path(pdf_service.resource_path("assets")),
+                project_root / "assets",
+            )
+            self.assertEqual(validation_service.get_base_dir(), project_root)
+            self.assertEqual(kosit_validation_service.get_base_dir(), project_root)
+            self.assertEqual(update_service.application_install_root(), project_root)
 
     def test_packaged_app_always_uses_portable_data_directory(self):
         with tempfile.TemporaryDirectory() as tmp:

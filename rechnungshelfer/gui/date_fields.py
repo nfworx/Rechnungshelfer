@@ -4,7 +4,7 @@
 import customtkinter as ctk
 from tkcalendar import Calendar
 
-from services.input_validation_service import normalize_date_de, InputValidationError
+from rechnungshelfer.services.input_validation_service import normalize_date_de, InputValidationError
 
 
 def attach_date_validation(entry: ctk.CTkEntry, field_name: str, required=True):

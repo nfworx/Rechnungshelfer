@@ -1,5 +1,6 @@
 """Vollstaendig ausgefuellte Beispieldokumente fuer Anwendung und Tests."""
 
+
 from rechnungshelfer.domain.models import (
     Buyer,
     Delivery,

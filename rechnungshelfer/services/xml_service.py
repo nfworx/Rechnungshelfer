@@ -1,4 +1,4 @@
-# xml_service.py
+# rechnungshelfer/services/xml_service.py
 from lxml import etree
 from rechnungshelfer.domain.models import Invoice
 from datetime import datetime, timedelta

@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from services.temp_report_service import (
+from rechnungshelfer.services.temp_report_service import (
     LEGACY_REPORT_PREFIX,
     REPORT_PREFIX,
     cleanup_current_temp_reports,

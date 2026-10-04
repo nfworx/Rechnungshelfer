@@ -1,4 +1,4 @@
-#format_service.py
+# rechnungshelfer/services/format_service.py
 from decimal import Decimal, InvalidOperation
 
 def parse_de(value: str) -> Decimal:

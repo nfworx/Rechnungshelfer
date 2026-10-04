@@ -46,7 +46,7 @@ class OnlineUpdate:
 def application_install_root() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parents[2]
 
 
 def _summary(manifest: ApplicationManifest) -> UpdateSummary:

@@ -6,7 +6,7 @@ import webbrowser
 from pathlib import Path
 from dataclasses import dataclass, field
 
-from services.temp_report_service import create_temp_report
+from .temp_report_service import create_temp_report
 
 
 @dataclass
@@ -19,7 +19,7 @@ class KositValidationResult:
 def get_base_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys._MEIPASS)
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parents[2]
 
 
 BASE_DIR = get_base_dir()

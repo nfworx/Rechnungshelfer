@@ -16,15 +16,15 @@ from rechnungshelfer.domain.models import (
 )
 from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
 from rechnungshelfer.repositories.supplier_repository import SupplierRepository
-from services.pdf_service import (
+from rechnungshelfer.services.pdf_service import (
     _pdf_detail_layout,
     _pdf_invoice_details,
     _pdf_parties,
     create_pdf,
 )
-from services.validation_service import validate_totals, validate_xsd
-from services.xml_reader import read_xml_file
-from services.xml_service import create_xml
+from rechnungshelfer.services.validation_service import validate_totals, validate_xsd
+from rechnungshelfer.services.xml_reader import read_xml_file
+from rechnungshelfer.services.xml_service import create_xml
 
 
 class SelfBilledInvoiceTests(unittest.TestCase):

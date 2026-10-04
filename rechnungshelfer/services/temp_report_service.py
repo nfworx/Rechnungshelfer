@@ -1,5 +1,6 @@
 """Lebenszyklus temporaerer HTML-Pruefberichte."""
 
+
 from __future__ import annotations
 
 import atexit

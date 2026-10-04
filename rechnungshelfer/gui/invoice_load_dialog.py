@@ -5,7 +5,7 @@ from tkinter import messagebox
 
 from .components import button
 from .styles import *
-from services.format_service import format_de, parse_de
+from rechnungshelfer.services.format_service import format_de, parse_de
 
 def truncate(text, max_len=45):
     text = str(text or "")

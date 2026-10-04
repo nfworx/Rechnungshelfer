@@ -5,22 +5,22 @@ from decimal import Decimal
 from lxml import etree
 
 from rechnungshelfer.controller import InvoiceController
-from services.input_validation_service import (
+from rechnungshelfer.services.input_validation_service import (
     InputValidationError,
     normalize_invoice_input,
 )
-from services.kosit_validation_service import (
+from rechnungshelfer.services.kosit_validation_service import (
     JAVA_EXE,
     KOSIT_JAR,
     SCENARIOS_XML,
 )
-from services.validation_service import (
+from rechnungshelfer.services.validation_service import (
     validate_document,
     validate_invoice,
     validate_totals,
     validate_xsd,
 )
-from services.xml_service import NSMAP, create_xml
+from rechnungshelfer.services.xml_service import NSMAP, create_xml
 from tests.generate_validator_fixtures import OUTPUT_DIR
 from tests.validation_documents import (
     create_validator_invoice,

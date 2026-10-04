@@ -3,7 +3,7 @@ import customtkinter as ctk
 from rechnungshelfer.gui.main_window import InvoiceGUI
 from rechnungshelfer.controller import InvoiceController
 from updater.readiness import signal_ready
-from services.temp_report_service import (
+from rechnungshelfer.services.temp_report_service import (
     cleanup_current_temp_reports,
     cleanup_stale_temp_reports,
 )

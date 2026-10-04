@@ -1,4 +1,4 @@
-#pdf_service.py
+# rechnungshelfer/services/pdf_service.py
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.platypus import (
@@ -25,7 +25,7 @@ def resource_path(relative_path):
     if getattr(sys, "frozen", False):
         base_path = Path(sys._MEIPASS)
     else:
-        base_path = Path(__file__).resolve().parent.parent
+        base_path = Path(__file__).resolve().parents[2]
 
     return str(base_path / relative_path)
 

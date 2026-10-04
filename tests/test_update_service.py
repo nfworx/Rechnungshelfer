@@ -8,7 +8,7 @@ from unittest.mock import patch
 from packaging.version import Version
 
 from app_info import APP_VERSION
-from services.update_service import (
+from rechnungshelfer.services.update_service import (
     _materialize_online_manifest,
     _updater_command,
     check_for_application_update,
@@ -66,14 +66,14 @@ class UpdateServiceTests(unittest.TestCase):
             "prerelease": False,
             "assets": [],
         }
-        with patch("services.update_service._request_bytes", return_value=json.dumps(release).encode()) as request:
+        with patch("rechnungshelfer.services.update_service._request_bytes", return_value=json.dumps(release).encode()) as request:
             self.assertIsNone(check_for_application_update())
         request.assert_called_once()
 
     def test_new_release_is_verified_against_manifest_and_github_assets(self):
         expected_version = self._newer_version()
         metadata, manifest = self._release_payloads()
-        with patch("services.update_service._request_bytes", side_effect=[metadata, manifest]):
+        with patch("rechnungshelfer.services.update_service._request_bytes", side_effect=[metadata, manifest]):
             update = check_for_application_update()
         self.assertIsNotNone(update)
         self.assertEqual(update.summary.manifest.version, Version(expected_version))
@@ -84,17 +84,17 @@ class UpdateServiceTests(unittest.TestCase):
     def test_package_digest_mismatch_is_rejected(self):
         metadata, manifest = self._release_payloads(package_digest="b" * 64)
         with (
-            patch("services.update_service._request_bytes", side_effect=[metadata, manifest]),
+            patch("rechnungshelfer.services.update_service._request_bytes", side_effect=[metadata, manifest]),
             self.assertRaisesRegex(UpdateError, "Programm-ZIP stimmt nicht"),
         ):
             check_for_application_update()
 
     def test_online_manifest_is_pinned_locally_with_absolute_package_url(self):
         metadata, manifest = self._release_payloads()
-        with patch("services.update_service._request_bytes", side_effect=[metadata, manifest]):
+        with patch("rechnungshelfer.services.update_service._request_bytes", side_effect=[metadata, manifest]):
             update = check_for_application_update()
         with tempfile.TemporaryDirectory() as directory:
-            with patch("services.update_service.tempfile.gettempdir", return_value=directory):
+            with patch("rechnungshelfer.services.update_service.tempfile.gettempdir", return_value=directory):
                 path = _materialize_online_manifest(update)
             pinned = load_manifest(path)
         self.assertIsInstance(pinned, ApplicationManifest)
@@ -111,9 +111,9 @@ class UpdateServiceTests(unittest.TestCase):
             temp_root.mkdir()
 
             with (
-                patch("services.update_service.sys.frozen", True, create=True),
-                patch("services.update_service.application_install_root", return_value=install_root),
-                patch("services.update_service.tempfile.gettempdir", return_value=str(temp_root)),
+                patch("rechnungshelfer.services.update_service.sys.frozen", True, create=True),
+                patch("rechnungshelfer.services.update_service.application_install_root", return_value=install_root),
+                patch("rechnungshelfer.services.update_service.tempfile.gettempdir", return_value=str(temp_root)),
             ):
                 command, updater_temp = _updater_command()
 

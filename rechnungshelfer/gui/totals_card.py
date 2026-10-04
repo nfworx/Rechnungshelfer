@@ -4,7 +4,7 @@ import customtkinter as ctk
 
 from .styles import *
 from .components import HoverTooltip, card, button, set_button_enabled
-from services.format_service import format_de, parse_de
+from rechnungshelfer.services.format_service import format_de, parse_de
 
 
 class TotalsCard:

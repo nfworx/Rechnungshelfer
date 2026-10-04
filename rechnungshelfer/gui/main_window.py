@@ -20,9 +20,9 @@ from .supplier_load_dialog import SupplierLoadDialog
 from .test_document_dialog import TestDocumentDialog
 from .update_dialog import UpdateDialog
 from .buffered_form import BufferedFormHost
-from services.validation_service import ExportValidationError
-from services.kosit_validation_service import show_html_report
-from services.update_service import check_for_application_update
+from rechnungshelfer.services.validation_service import ExportValidationError
+from rechnungshelfer.services.kosit_validation_service import show_html_report
+from rechnungshelfer.services.update_service import check_for_application_update
 from rechnungshelfer.domain.models import DocumentType
 
 class InvoiceGUI:

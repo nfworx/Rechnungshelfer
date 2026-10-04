@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from services.kosit_validation_service import validate_with_kosit
+from rechnungshelfer.services.kosit_validation_service import validate_with_kosit
 
 
 class KositValidationProcessTests(unittest.TestCase):
@@ -22,11 +22,11 @@ class KositValidationProcessTests(unittest.TestCase):
 
             completed = subprocess.CompletedProcess([], 0, stdout="", stderr="")
             with (
-                patch("services.kosit_validation_service.JAVA_EXE", java),
-                patch("services.kosit_validation_service.KOSIT_JAR", jar),
-                patch("services.kosit_validation_service.SCENARIOS_XML", scenarios),
-                patch("services.kosit_validation_service.XRECHNUNG_DIR", xrechnung),
-                patch("services.kosit_validation_service.subprocess.run", return_value=completed) as run,
+                patch("rechnungshelfer.services.kosit_validation_service.JAVA_EXE", java),
+                patch("rechnungshelfer.services.kosit_validation_service.KOSIT_JAR", jar),
+                patch("rechnungshelfer.services.kosit_validation_service.SCENARIOS_XML", scenarios),
+                patch("rechnungshelfer.services.kosit_validation_service.XRECHNUNG_DIR", xrechnung),
+                patch("rechnungshelfer.services.kosit_validation_service.subprocess.run", return_value=completed) as run,
             ):
                 result = validate_with_kosit(b"<Invoice/>")
 

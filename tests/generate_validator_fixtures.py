@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from services.xml_service import create_xml
+from rechnungshelfer.services.xml_service import create_xml
 from tests.validation_documents import (
     create_validator_invoice,
     create_validator_self_billed_invoice,
@@ -24,4 +24,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

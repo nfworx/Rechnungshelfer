@@ -10,8 +10,8 @@ from .components import (
     set_entry_value,
     style_entry,
 )
-from services.format_service import format_de, parse_de
-from services.unit_service import (
+from rechnungshelfer.services.format_service import format_de, parse_de
+from rechnungshelfer.services.unit_service import (
     get_unit_options,
     unit_code_to_display,
     unit_display_to_code,

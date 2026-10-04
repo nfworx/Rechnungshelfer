@@ -2,7 +2,7 @@ import customtkinter as ctk
 
 from .components import button
 from .styles import FONT_NORMAL, FONT_SECTION, TEXT, TEXT_MUTED
-from services.sample_document_service import (
+from rechnungshelfer.services.sample_document_service import (
     create_sample_invoice,
     create_sample_self_billed_invoice,
 )

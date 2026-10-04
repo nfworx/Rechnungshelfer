@@ -11,7 +11,7 @@ import customtkinter as ctk
 from app_info import APP_VERSION, MAINTAINER_MODE_ENV
 from .components import button
 from .styles import FONT_NORMAL, FONT_SECTION, TEXT, TEXT_MUTED
-from services.update_service import (
+from rechnungshelfer.services.update_service import (
     OnlineUpdate,
     check_for_application_update,
     describe_application_update,

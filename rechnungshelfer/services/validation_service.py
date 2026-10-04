@@ -1,4 +1,4 @@
-# services/validation_service.py
+# rechnungshelfer/services/validation_service.py
 
 import sys
 from functools import lru_cache
@@ -6,7 +6,7 @@ from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import dataclass, field
 from lxml import etree
-from services.kosit_validation_service import validate_with_kosit
+from .kosit_validation_service import validate_with_kosit
 
 from rechnungshelfer.domain.models import Invoice
 
@@ -14,7 +14,7 @@ from rechnungshelfer.domain.models import Invoice
 def get_base_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys._MEIPASS)
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parents[2]
 
 
 BASE_DIR = get_base_dir()
