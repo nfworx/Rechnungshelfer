@@ -158,6 +158,10 @@ def validate_with_kosit(
                 errors="replace",
                 cwd=str(tmp_dir),
                 timeout=60,
+                # Rechnungshelfer ist eine GUI-Anwendung. Java darf bei jeder
+                # Validierung nicht kurz ein Konsolenfenster einblenden; seine
+                # Ausgaben werden trotzdem ueber stdout/stderr erfasst.
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
 
         except subprocess.TimeoutExpired:
