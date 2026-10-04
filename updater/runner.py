@@ -15,6 +15,7 @@ import time
 import urllib.parse
 import uuid
 from pathlib import Path
+from typing import Callable
 
 from updater.application_update import prepare_application_update
 from updater.core import ApplicationManifest, UpdateError, load_manifest
@@ -22,6 +23,12 @@ from updater.readiness import READY_ARGUMENT, READY_PREFIX
 
 
 LOG_PATH = Path(tempfile.gettempdir()) / "Rechnungshelfer-Updater.log"
+ProgressCallback = Callable[[int, str], None]
+
+
+def _report(progress: ProgressCallback | None, percent: int, message: str) -> None:
+    if progress is not None:
+        progress(percent, message)
 
 
 def _configure_logging() -> None:
@@ -129,24 +136,34 @@ def _wait_until_ready(process: subprocess.Popen, ready_file: Path, timeout: floa
     raise UpdateError("Die neue Anwendung hat ihren erfolgreichen Start nicht bestaetigt.")
 
 
-def _run_application(args, manifest: ApplicationManifest, manifest_source, install_root: Path) -> None:
+def _run_application(
+    args,
+    manifest: ApplicationManifest,
+    manifest_source,
+    install_root: Path,
+    progress: ProgressCallback | None = None,
+) -> None:
     transaction, work_root = prepare_application_update(
         manifest,
         manifest_source,
         install_root,
         current_version=args.current_version,
         allow_downgrade=args.allow_downgrade,
+        progress=progress,
     )
     ready_file = Path(tempfile.gettempdir()) / f"{READY_PREFIX}{uuid.uuid4().hex}.txt"
     ready_file.unlink(missing_ok=True)
     try:
         if args.no_restart:
+            _report(progress, 100, "Update erfolgreich abgeschlossen.")
             transaction.commit()
             return
+        _report(progress, 100, "Update ist installiert. Rechnungshelfer wird gestartet ...")
         process = _launch(_restart_command(args, install_root), ready_file)
         _wait_until_ready(process, ready_file, args.ready_timeout)
         _release_detached_process(process)
         transaction.commit()
+        _report(progress, 100, "Update erfolgreich abgeschlossen.")
     except Exception:
         transaction.rollback()
         if not args.no_restart:
@@ -173,9 +190,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run(argv: list[str] | None = None) -> int:
+def run(
+    argv: list[str] | None = None,
+    *,
+    progress: ProgressCallback | None = None,
+) -> int:
     args = build_parser().parse_args(argv)
     _configure_logging()
+    _report(progress, 1, "Updateinformationen werden geprueft ...")
     install_root = Path(args.install_root).resolve()
     if not install_root.is_dir():
         raise UpdateError(f"Installationsordner fehlt: {install_root}")
@@ -186,10 +208,12 @@ def run(argv: list[str] | None = None) -> int:
         else Path(args.manifest).resolve()
     )
     manifest = load_manifest(manifest_source)
+    _report(progress, 4, "Rechnungshelfer wird fuer das Update beendet ...")
     wait_for_process(args.pid)
     if not isinstance(manifest, ApplicationManifest):
         raise UpdateError("Updater.exe akzeptiert nur Rechnungshelfer-Programmupdates.")
-    _run_application(args, manifest, manifest_source, install_root)
+    _report(progress, 6, "Update wird vorbereitet ...")
+    _run_application(args, manifest, manifest_source, install_root, progress)
     logging.info("Rechnungshelfer-Programmupdate erfolgreich abgeschlossen")
     return 0
 
@@ -205,7 +229,10 @@ def _show_error(message: str) -> None:
 
 def main() -> int:
     try:
-        return run()
+        _configure_logging()
+        from updater.progress_ui import run_with_progress
+
+        return run_with_progress(lambda progress: run(progress=progress), LOG_PATH)
     except Exception as exc:
         _configure_logging()
         logging.exception("Update fehlgeschlagen")

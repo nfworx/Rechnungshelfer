@@ -150,7 +150,10 @@ wird `_internal/Updater.exe` vor dem Update nach `%TEMP%` kopiert und von dort
 gestartet. Er wartet auf das Ende des Hauptprogramms, prueft das Paket, tauscht
 den Programmordner ueber ein Staging-Verzeichnis aus und startet die neue
 Version. Erst nachdem diese ihren erfolgreichen Start bestaetigt hat, wird die
-Rollback-Kopie entfernt.
+Rollback-Kopie entfernt. Waehrend Warten, Download, Pruefung und Installation
+zeigt der Updater ein eigenes Fortschrittsfenster mit gruenem Balken. Der
+Neustart beginnt erst, nachdem der Fortschritt sichtbar 100 Prozent erreicht
+hat.
 
 Der Herausgeber startet die KoSIT-Pflege bewusst mit
 `build_support/release_tool.py update-components`. Das Werkzeug fragt das

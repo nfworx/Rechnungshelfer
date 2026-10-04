@@ -116,6 +116,13 @@ class ComponentsManifest:
 
 
 Manifest = ApplicationManifest | ComponentsManifest
+ByteProgress = Callable[[int, int], None]
+UpdateProgress = Callable[[int, str], None]
+
+
+def _report_progress(progress: UpdateProgress | None, percent: int, message: str) -> None:
+    if progress is not None:
+        progress(max(0, min(100, percent)), message)
 
 
 def _read_source(source: str | Path, *, limit: int = MAX_MANIFEST_BYTES) -> bytes:
@@ -229,6 +236,8 @@ def download_verified_package(
     package: PackageSpec,
     manifest_source: str | Path,
     destination_dir: Path,
+    *,
+    progress: ByteProgress | None = None,
 ) -> Path:
     destination_dir.mkdir(parents=True, exist_ok=True)
     destination = destination_dir / "package.zip"
@@ -256,6 +265,8 @@ def download_verified_package(
                     raise UpdateError("Paket ist groesser als im Manifest angegeben.")
                 digest.update(chunk)
                 output.write(chunk)
+                if progress is not None:
+                    progress(written, package.size)
     except UpdateError:
         destination.unlink(missing_ok=True)
         raise
@@ -296,11 +307,18 @@ def _safe_archive_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
     return members
 
 
-def extract_verified_archive(package_path: Path, destination: Path) -> set[str]:
+def extract_verified_archive(
+    package_path: Path,
+    destination: Path,
+    *,
+    progress: ByteProgress | None = None,
+) -> set[str]:
     destination.mkdir(parents=True, exist_ok=False)
     try:
         with zipfile.ZipFile(package_path) as archive:
             members = _safe_archive_members(archive)
+            total_size = sum(info.file_size for info in members)
+            extracted_size = 0
             top_level = set()
             for info in members:
                 relative = PurePosixPath(info.filename)
@@ -312,6 +330,9 @@ def extract_verified_archive(package_path: Path, destination: Path) -> set[str]:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with archive.open(info) as source, target.open("wb") as output:
                     shutil.copyfileobj(source, output, length=1024 * 1024)
+                extracted_size += info.file_size
+                if progress is not None:
+                    progress(extracted_size, total_size)
             return top_level
     except UpdateError:
         shutil.rmtree(destination, ignore_errors=True)
@@ -467,15 +488,36 @@ def prepare_application_update(
     *,
     current_version: str,
     allow_downgrade: bool = False,
+    progress: UpdateProgress | None = None,
 ) -> tuple[UpdateTransaction, Path]:
     if not allow_downgrade and manifest.version <= _version(current_version, "current_version"):
         raise UpdateError(f"Version {manifest.version} ist nicht neuer als {current_version}.")
     install_root = install_root.resolve()
     work_root = Path(tempfile.mkdtemp(prefix=".application-update-", dir=install_root.parent))
     try:
-        package = download_verified_package(manifest.package, manifest_source, work_root)
+        _report_progress(progress, 8, "Download wird vorbereitet ...")
+        package = download_verified_package(
+            manifest.package,
+            manifest_source,
+            work_root,
+            progress=lambda done, total: _report_progress(
+                progress,
+                10 + int((done / total) * 60) if total else 70,
+                f"Update wird heruntergeladen ... {int((done / total) * 100) if total else 100}%",
+            ),
+        )
+        _report_progress(progress, 72, "Download und SHA-256 wurden geprueft.")
         extracted = work_root / "extracted"
-        top_level = extract_verified_archive(package, extracted)
+        top_level = extract_verified_archive(
+            package,
+            extracted,
+            progress=lambda done, total: _report_progress(
+                progress,
+                75 + int((done / total) * 15) if total else 90,
+                "Updatepaket wird entpackt ...",
+            ),
+        )
+        _report_progress(progress, 92, "Updatepaket wird kontrolliert ...")
         folded = {item.casefold() for item in top_level}
         if "data" in folded:
             raise UpdateError("Anwendungsupdate darf keinen data-Ordner enthalten.")
@@ -487,7 +529,9 @@ def prepare_application_update(
             raise UpdateError("Anwendungsupdate enthaelt unbekannte Hauptpfade: " + ", ".join(sorted(unexpected)))
         managed = tuple(sorted(top_level))
         transaction = UpdateTransaction(install_root, extracted, managed)
+        _report_progress(progress, 95, "Programmdateien werden ausgetauscht ...")
         transaction.apply()
+        _report_progress(progress, 98, "Programmdateien wurden erfolgreich installiert.")
         return transaction, work_root
     except Exception:
         shutil.rmtree(work_root, ignore_errors=True)
@@ -502,6 +546,7 @@ def apply_application_update(
     current_version: str,
     validator: Callable[[Path], None] | None = None,
     allow_downgrade: bool = False,
+    progress: UpdateProgress | None = None,
 ) -> None:
     transaction, work_root = prepare_application_update(
         manifest,
@@ -509,6 +554,7 @@ def apply_application_update(
         install_root,
         current_version=current_version,
         allow_downgrade=allow_downgrade,
+        progress=progress,
     )
     try:
         if validator:

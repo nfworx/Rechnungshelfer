@@ -5,6 +5,14 @@ Versionsschema folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Added
+
+- Der separate Programm-Updater zeigt waehrend Warten, Download, Pruefung und Installation ein sichtbares Fortschrittsfenster mit gruenem Balken
+
+### Changed
+
+- Die aktualisierte Anwendung wird erst gestartet, nachdem der Fortschritt sichtbar 100 Prozent erreicht hat
+
 ## [1.0.1] - 2026-10-04
 
 ### Changed

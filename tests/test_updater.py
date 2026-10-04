@@ -220,6 +220,7 @@ class UpdaterTests(unittest.TestCase):
             )
             manifest_path = self._app_manifest(root, package)
             manifest = load_manifest(manifest_path)
+            progress = []
 
             self.assertIsInstance(manifest, ApplicationManifest)
             apply_application_update(
@@ -227,6 +228,7 @@ class UpdaterTests(unittest.TestCase):
                 manifest_path,
                 install,
                 current_version="1.0.0",
+                progress=lambda percent, message: progress.append((percent, message)),
             )
 
             self.assertEqual((install / "Rechnungshelfer.exe").read_bytes(), b"new exe")
@@ -234,6 +236,8 @@ class UpdaterTests(unittest.TestCase):
             self.assertEqual((install / "_internal" / "Updater.exe").read_bytes(), b"new updater")
             self.assertFalse((install / "_internal" / "old.txt").exists())
             self.assertEqual((install / "data" / "invoices.db").read_bytes(), b"customer data")
+            self.assertTrue(any(percent == 70 for percent, _message in progress))
+            self.assertEqual(progress[-1][0], 98)
 
     def test_application_package_with_data_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -351,6 +355,7 @@ class UpdaterTests(unittest.TestCase):
                 {"Rechnungshelfer.exe": b"new", "_internal/new.txt": b"new"},
             )
             manifest = self._app_manifest(root, package)
+            progress = []
             signal_code = (
                 "import pathlib,sys; "
                 "p=pathlib.Path(sys.argv[sys.argv.index('--update-ready-file')+1]); "
@@ -364,13 +369,17 @@ class UpdaterTests(unittest.TestCase):
                     "--current-version", "1.0.0",
                     "--restart-command-json", json.dumps([sys.executable, "-c", signal_code]),
                     "--ready-timeout", "5",
-                ]
+                ],
+                progress=lambda percent, message: progress.append((percent, message)),
             )
 
             self.assertEqual(result, 0)
             self.assertEqual((install / "Rechnungshelfer.exe").read_bytes(), b"new")
             self.assertTrue((install / "_internal" / "new.txt").exists())
             self.assertEqual((install / "data" / "invoices.db").read_bytes(), b"data")
+            self.assertEqual(progress[-1], (100, "Update erfolgreich abgeschlossen."))
+            first_complete = next(index for index, event in enumerate(progress) if event[0] == 100)
+            self.assertIn("wird gestartet", progress[first_complete][1])
 
     def test_runner_rolls_back_when_new_application_exits(self):
         with tempfile.TemporaryDirectory() as directory:
