@@ -71,7 +71,7 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[],
-    hookspath=[],
+    hookspath=[str(project_root / "build_support" / "pyinstaller_hooks")],
     hooksconfig={},
     runtime_hooks=[],
     # Herausgeberwerkzeuge und Tests duerfen nie Teil der Benutzeranwendung sein.

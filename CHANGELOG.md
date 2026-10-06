@@ -7,6 +7,7 @@ Versionsschema folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Added
 
+- Jeder Release-Build erzeugt einen maschinenlesbaren Groessenbericht als Basis fuer spaetere Vergleiche
 - Der separate Programm-Updater zeigt waehrend Warten, Download, Pruefung und Installation ein sichtbares Fortschrittsfenster mit gruenem Balken
 - Sequenzielle, transaktionale Datenbankmigrationen mit automatischer Sicherung vor Schemaaenderungen
 - Eigene Anwendungsschicht fuer Beleg-, Kunden-, Lieferanten- und Stammdatenablaeufe
@@ -14,6 +15,7 @@ Versionsschema folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Changed
 
+- Der deutsche Datepicker liefert nur noch die benoetigten Babel-Sprachdaten aus
 - Die aktualisierte Anwendung wird erst gestartet, nachdem der Fortschritt sichtbar 100 Prozent erreicht hat
 - Belegerstellung und Kopieren werden zentral durch eine fachliche Factory ausgefuehrt
 - Datenbankverbindung, Transaktionen und Schemaaufbau werden an einer Stelle verwaltet

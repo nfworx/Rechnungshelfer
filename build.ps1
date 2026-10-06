@@ -120,7 +120,17 @@ if ($LASTEXITCODE -ne 0) {
     throw "Update-Manifest konnte nicht erzeugt werden."
 }
 
+$sizeReportPath = Join-Path $releaseDirectory "$($metadata.name)-$($metadata.version)-size-report.json"
+& $python build_support\size_report.py `
+    --build-dir $buildDirectory `
+    --archive $archivePath `
+    --output $sizeReportPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Groessenbericht konnte nicht erzeugt werden."
+}
+
 Write-Host "Build erstellt: $executable"
 Write-Host "Portabler Datenordner: $buildDirectory\data"
 Write-Host "Release-Paket: $archivePath"
 Write-Host "SHA-256: $hash"
+Write-Host "Groessenbericht: $sizeReportPath"

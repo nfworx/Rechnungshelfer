@@ -360,7 +360,8 @@ def _verify_artifacts(project_root: Path, version: Version, channel: str) -> dic
     archive = project_root / "release" / f"Rechnungshelfer-{version}-{architecture}.zip"
     checksum_path = Path(str(archive) + ".sha256")
     manifest_path = project_root / "release" / f"Rechnungshelfer-{version}-{channel}-manifest.json"
-    for path in (archive, checksum_path, manifest_path):
+    size_report_path = project_root / "release" / f"Rechnungshelfer-{version}-size-report.json"
+    for path in (archive, checksum_path, manifest_path, size_report_path):
         if not path.is_file():
             raise BuilderError(f"Erwartetes Release-Artefakt fehlt: {path}")
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
@@ -396,9 +397,20 @@ def _verify_artifacts(project_root: Path, version: Version, channel: str) -> dic
             owner_files.append(name)
     if owner_files:
         raise BuilderError("Release-ZIP enthaelt interne Herausgeberwerkzeuge oder Tests.")
+    size_report = json.loads(size_report_path.read_text(encoding="utf-8"))
+    if not isinstance(size_report, dict) or size_report.get("schema_version") != 1:
+        raise BuilderError("Groessenbericht besitzt kein unterstuetztes Format.")
+    measurements = size_report.get("measurements")
+    if not isinstance(measurements, dict):
+        raise BuilderError("Groessenbericht enthaelt keine Messwerte.")
+    archive_measurement = measurements.get("release_archive")
+    if not isinstance(archive_measurement, dict):
+        raise BuilderError("Groessenbericht enthaelt keine Messung des Release-ZIP.")
+    if archive_measurement.get("bytes") != archive.stat().st_size:
+        raise BuilderError("Groessenbericht stimmt nicht mit dem Release-ZIP ueberein.")
     return {
         "archive": str(archive), "checksum": str(checksum_path), "sha256": digest,
-        "manifest": str(manifest_path),
+        "manifest": str(manifest_path), "size_report": str(size_report_path),
     }
 
 

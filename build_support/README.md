@@ -81,7 +81,20 @@ Der Build-Befehl veraendert keine Quelldateien. Er:
 3. fuehrt die komplette Testsuite aus,
 4. fragt vor dem One-Folder-Build nach,
 5. erstellt ZIP, SHA-256-Datei und Update-Manifest,
-6. kontrolliert Artefakte und Datenschutzregeln.
+6. misst Build, ZIP, Python-Anwendung, Java, KoSIT, XRechnung, UBL und Babel,
+7. kontrolliert Artefakte und Datenschutzregeln.
+
+Der maschinenlesbare Groessenbericht liegt als
+`release/Rechnungshelfer-<VERSION>-size-report.json` neben den anderen
+Release-Artefakten. Eine vorhandene Messung kann jederzeit als Vergleichsbasis
+verwendet werden:
+
+```powershell
+.\.venv\Scripts\python.exe build_support\size_report.py `
+  --build-dir dist\Rechnungshelfer `
+  --archive release\Rechnungshelfer-<VERSION>-win64.zip `
+  --baseline release\Rechnungshelfer-<ALTE-VERSION>-size-report.json
+```
 
 Ein stabiler Build sollte aus einem sauberen Commit erfolgen. Fuer lokale
 Testbauten existiert `--allow-dirty`. Falls Git in der aktuellen Shell nicht
