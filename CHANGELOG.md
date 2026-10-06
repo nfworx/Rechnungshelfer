@@ -5,6 +5,8 @@ Versionsschema folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-07
+
 ### Added
 
 - Jeder Release-Build erzeugt einen maschinenlesbaren Groessenbericht als Basis fuer spaetere Vergleiche
@@ -15,6 +17,7 @@ Versionsschema folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Changed
 
+- Die gebuendelte Java-Laufzeit verwendet eine reproduzierbar festgelegte Temurin-JRE statt eines vollstaendigen JDK
 - Der deutsche Datepicker liefert nur noch die benoetigten Babel-Sprachdaten aus
 - Die aktualisierte Anwendung wird erst gestartet, nachdem der Fortschritt sichtbar 100 Prozent erreicht hat
 - Belegerstellung und Kopieren werden zentral durch eine fachliche Factory ausgefuehrt
@@ -25,6 +28,7 @@ Versionsschema folgt [Semantic Versioning](https://semver.org/lang/de/).
 - Moegliche Kundenduplikate werden als strukturierter Anwendungsfehler statt ueber eine Steuerzeichenfolge gemeldet
 - Das Oeffnen von KoSIT-Pruefberichten wurde vom Java-Prozessadapter getrennt
 - Lokale XSD- und KoSIT-Pruefung verwenden denselben UBL-2.1-Schemabestand aus der XRechnung-Konfiguration
+- Java-, UBL- und Babel-Konsolidierung reduzieren den entpackten Release-Build deutlich
 
 ### Security
 

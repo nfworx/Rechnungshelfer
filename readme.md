@@ -102,10 +102,14 @@ dist/<APP_ID>/_internal/Updater.exe
 release/<APP_ID>-<VERSION>-win64.zip
 release/<APP_ID>-<VERSION>-win64.zip.sha256
 release/<APP_ID>-<VERSION>-<CHANNEL>-manifest.json
+release/<APP_ID>-<VERSION>-size-report.json
 ```
 
 Die Windows-Dateieigenschaften werden beim Build aus `app_info.py` und
-`version.py` generiert. Details zum Release-Ablauf stehen in `RELEASING.md`.
+`version.py` generiert. Der JSON-Groessenbericht dokumentiert den vollstaendigen
+Build und das ZIP sowie Python-Anwendung, Java, KoSIT, XRechnung, UBL und Babel
+getrennt. Er kann beim naechsten Release als Vergleichsbasis verwendet werden.
+Details zum Release-Ablauf stehen in `RELEASING.md`.
 
 ## Versionierung
 
@@ -215,6 +219,7 @@ lesbaren HTTPS-Adressen erreichbar sein. Zu einem Release gehoeren:
 - stabiles Update-Manifest als Release-Asset
 - versioniertes One-Folder-ZIP
 - SHA-256-Pruefsumme
+- maschinenlesbarer Groessenbericht
 - kurze Versionshinweise
 
 Der Release-Tag muss zur Version passen, beispielsweise `v1.0.1`. Manifest und
