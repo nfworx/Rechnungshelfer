@@ -37,6 +37,7 @@ def open_datepicker(entry: ctk.CTkEntry, field_name="Datum"):
     cal = Calendar(
         dialog,
         selectmode="day",
+        locale="de_DE",
         date_pattern="dd.mm.yyyy"
     )
     cal.pack(padx=20, pady=20, fill="both", expand=True)

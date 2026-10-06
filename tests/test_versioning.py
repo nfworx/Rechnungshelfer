@@ -122,6 +122,21 @@ class VersioningTests(unittest.TestCase):
             self.assertIn('"tests"', spec)
             self.assertIn('"updater.external_components_update"', spec)
 
+    def test_babel_build_is_limited_to_the_explicit_german_locale(self):
+        project_root = Path(__file__).resolve().parent.parent
+        date_fields = (project_root / "rechnungshelfer" / "gui" / "date_fields.py").read_text(
+            encoding="utf-8"
+        )
+        spec = (project_root / "Rechnungshelfer.spec").read_text(encoding="utf-8")
+        hook = (
+            project_root / "build_support" / "pyinstaller_hooks" / "hook-babel.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('locale="de_DE"', date_fields)
+        self.assertIn('"build_support" / "pyinstaller_hooks"', spec)
+        self.assertIn('(\"root.dat\", \"de.dat\", \"de_DE.dat\")', hook)
+        self.assertNotIn("collect_data_files", hook)
+
 
 if __name__ == "__main__":
     unittest.main()

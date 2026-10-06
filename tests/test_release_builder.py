@@ -336,9 +336,43 @@ class ReleaseToolTests(unittest.TestCase):
                 "version": "1.0.1",
                 "package": {"url": archive.name, "size": archive.stat().st_size, "sha256": digest},
             }), encoding="utf-8")
+            size_report = release_dir / "Rechnungshelfer-1.0.1-size-report.json"
+            size_report.write_text(json.dumps({
+                "schema_version": 1,
+                "measurements": {"release_archive": {"bytes": archive.stat().st_size}},
+            }), encoding="utf-8")
             with patch("build_support.release_tool.platform.architecture", return_value=("64bit", "")):
                 result = _verify_artifacts(project, Version("1.0.1"), "test")
             self.assertEqual(result["sha256"], digest)
+            self.assertEqual(result["size_report"], str(size_report))
+
+    def test_release_rejects_size_report_without_measurements(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            release_dir = project / "release"
+            release_dir.mkdir()
+            archive = release_dir / "Rechnungshelfer-1.0.1-win64.zip"
+            with zipfile.ZipFile(archive, "w") as package:
+                package.writestr("Rechnungshelfer.exe", b"app")
+                package.writestr("_internal/Updater.exe", b"updater")
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            Path(str(archive) + ".sha256").write_text(digest, encoding="ascii")
+            (release_dir / "Rechnungshelfer-1.0.1-test-manifest.json").write_text(json.dumps({
+                "schema_version": 1,
+                "kind": "application",
+                "channel": "test",
+                "version": "1.0.1",
+                "package": {"url": archive.name, "size": archive.stat().st_size, "sha256": digest},
+            }), encoding="utf-8")
+            (release_dir / "Rechnungshelfer-1.0.1-size-report.json").write_text(
+                json.dumps({"schema_version": 1}), encoding="utf-8"
+            )
+
+            with (
+                patch("build_support.release_tool.platform.architecture", return_value=("64bit", "")),
+                self.assertRaisesRegex(RuntimeError, "keine Messwerte"),
+            ):
+                _verify_artifacts(project, Version("1.0.1"), "test")
 
 
 if __name__ == "__main__":

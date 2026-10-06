@@ -66,6 +66,11 @@ Der Build startet nur aus einem vorbereiteten Zustand, fuehrt `pip-audit` und
 alle Tests aus und fragt vor PyInstaller nochmals nach. Fuer ein offizielles
 Release muss der Git-Arbeitsbaum sauber sein.
 
+Neben ZIP, Pruefsumme und Manifest entsteht ein JSON-Groessenbericht. Er misst
+den vollstaendigen Build, das komprimierte ZIP, die Python-Anwendung ohne
+externe Laufzeiten sowie Java, KoSIT-Validator, XRechnung, UBL und Babel
+getrennt und dient als Ausgangsbasis fuer spaetere Releasevergleiche.
+
 Nur fuer beaufsichtigte Testbauten:
 
 ```powershell
@@ -103,6 +108,7 @@ werden:
 Rechnungshelfer-1.0.0-win64.zip
 Rechnungshelfer-1.0.0-win64.zip.sha256
 Rechnungshelfer-1.0.0-stable-manifest.json
+Rechnungshelfer-1.0.0-size-report.json
 ```
 
 Als Beschreibung dient `build/release-notes-1.0.0.md`.
