@@ -117,13 +117,18 @@ class PartyCard:
                 )
 
             if field in date_fields and not self.disabled:
-                ctk.CTkButton(
+                calendar_button = ctk.CTkButton(
                     self.frame,
                     text="📅",
                     width=30,
                     height=24,
-                    command=lambda ent=entry, name=label_text: open_datepicker(ent, name),
-                ).grid(row=row, column=2, sticky="e", padx=(0, 14), pady=2)
+                )
+                calendar_button.configure(
+                    command=lambda ent=entry, name=label_text, anchor=calendar_button: open_datepicker(
+                        ent, name, anchor
+                    )
+                )
+                calendar_button.grid(row=row, column=2, sticky="e", padx=(0, 14), pady=2)
 
             self.field_entries[(id(model), field)] = entry
 

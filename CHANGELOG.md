@@ -36,6 +36,10 @@ Versionsschema folgt [Semantic Versioning](https://semver.org/lang/de/).
 - Datenbanken mit einer neueren, nicht unterstuetzten Schema-Version werden ohne Veraenderung abgelehnt
 - XML-Dateien werden erst nach erfolgreicher lokaler und externer Validierung geschrieben
 
+### Fixed
+
+- Der Datepicker oeffnet sich am zugehoerigen Kalenderbutton und bleibt innerhalb des sichtbaren Bildschirms
+
 ## [1.0.1] - 2026-10-04
 
 ### Changed
