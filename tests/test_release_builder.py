@@ -21,6 +21,20 @@ class ReleaseToolTests(unittest.TestCase):
     def _project(self, root: Path) -> Path:
         (root / "external" / "java" / "bin").mkdir(parents=True)
         (root / "external" / "java" / "bin" / "java.exe").write_bytes(b"java")
+        (root / "external" / "java" / "release").write_text(
+            '\n'.join([
+                'IMPLEMENTOR="Eclipse Adoptium"',
+                'IMPLEMENTOR_VERSION="Temurin-21.0.12.1+1"',
+                'JAVA_RUNTIME_VERSION="21.0.12.1+1-LTS"',
+                'JAVA_VERSION="21.0.12.1"',
+                'MODULES="java.base java.compiler java.desktop java.logging java.xml jdk.httpserver"',
+                'OS_ARCH="x86_64"',
+                'OS_NAME="Windows"',
+                'JVM_VARIANT="Hotspot"',
+                'IMAGE_TYPE="JRE"',
+            ]) + '\n',
+            encoding="utf-8",
+        )
         (root / "external" / "kosit" / "validator").mkdir(parents=True)
         (root / "external" / "kosit" / "validator" / "validator-1.6.2-standalone.jar").write_bytes(b"old")
         (root / "external" / "components.json").write_text(json.dumps({
@@ -48,6 +62,29 @@ class ReleaseToolTests(unittest.TestCase):
         (root / "build_support").mkdir()
         (root / "build_support" / "kosit_trusted_releases.json").write_text(
             json.dumps({"schema_version": 1, "releases": {"1.6.3": "a" * 64}}),
+            encoding="utf-8",
+        )
+        (root / "build_support" / "java_trusted_releases.json").write_text(
+            json.dumps({
+                "schema_version": 1,
+                "releases": {
+                    "21.0.12.1": {
+                        "implementor": "Eclipse Adoptium",
+                        "implementor_version": "Temurin-21.0.12.1+1",
+                        "runtime_version": "21.0.12.1+1-LTS",
+                        "image_type": "JRE",
+                        "os_name": "Windows",
+                        "os_arch": "x86_64",
+                        "jvm": "hotspot",
+                        "package": {
+                            "filename": "runtime.zip",
+                            "url": "https://github.com/adoptium/temurin21-binaries/releases/download/test/runtime.zip",
+                            "size": 3,
+                            "sha256": "b" * 64,
+                        },
+                    }
+                },
+            }),
             encoding="utf-8",
         )
         return root

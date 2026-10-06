@@ -40,6 +40,15 @@ werden. Nicht als unveraenderlich markierte GitHub-Releases erzeugen eine
 Warnung. Aus einer als Administrator gestarteten Windows-Shell wird das
 Komponentenupdate aus Sicherheitsgruenden abgebrochen.
 
+Die portable Java-Laufzeit ist entsprechend in
+`build_support/java_trusted_releases.json` festgelegt. Die Datei dokumentiert
+Hersteller, JRE-Typ, Plattform, offiziellen Paketnamen, HTTPS-Quelle, Groesse
+und SHA-256. Das Release-Werkzeug gleicht die lokale `external/java/release`
+mit dieser Freigabe ab und verlangt alle vom KoSIT-Validator statisch
+referenzierten Java-Module. Das Java-Paket wird derzeit bewusst manuell
+heruntergeladen, gegen den freigegebenen SHA-256 geprueft und so nach
+`external/java/` entpackt, dass `external/java/bin/java.exe` existiert.
+
 `version.py`, Changelog und frei geschriebene README-Texte bleiben unveraendert.
 Die erzeugten Aenderungen werden danach bewusst als eigener Git-Commit
 kontrolliert.
@@ -95,7 +104,7 @@ Jeder Zwischenschritt meldet sofort `INFO`, `OK`, `WARNUNG`, `FEHLER` oder
 - Das Werkzeug committed, taggt, pusht und veroeffentlicht nicht automatisch.
 - Python-Pakete werden geprueft, aber nicht waehrend eines Releases automatisch aktualisiert.
 - Release Notes und Changelogtexte bleiben menschlich gepflegt.
-- Java und XRechnung werden dokumentiert, besitzen aber noch keinen automatischen Quellenadapter.
+- Java ist mit Quelle und SHA-256 reproduzierbar festgelegt; Java und XRechnung besitzen noch keinen automatischen Quellenadapter.
 - UBL 2.1 ist ein festgelegter Dokumentstandard und kein automatisch anzuhebendes Werkzeug.
 
 `release_builder.py` bleibt nur als kompatibler Einstiegspunkt erhalten und

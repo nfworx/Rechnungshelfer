@@ -22,8 +22,10 @@ Lizenzbedingungen bleiben unberuehrt.
 
 ## Java-Laufzeit
 
-Die portable Java-Laufzeit wird nicht im Git-Repository gespeichert. Ihre
-Lizenz- und Hinweistexte werden im One-Folder-Paket innerhalb der Laufzeit unter
+Die portable Eclipse-Temurin-JRE wird nicht im Git-Repository gespeichert. Das
+freigegebene Originalpaket und sein SHA-256 sind unter
+`build_support/java_trusted_releases.json` dokumentiert. Die Lizenz- und
+Hinweistexte werden im One-Folder-Paket innerhalb der Laufzeit unter
 `external/java/legal/` und `external/java/NOTICE` mitgeliefert.
 
 <!-- BEGIN GENERATED EXTERNAL COMPONENTS -->

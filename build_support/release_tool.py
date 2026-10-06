@@ -25,6 +25,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from packaging.version import InvalidVersion, Version
 
 from build_support.component_docs import outdated_component_documentation, update_component_documentation
+from build_support.java_runtime import JavaRuntimeError, validate_installed_runtime
 from build_support.kosit_builder import KositBuilderError, fetch_latest_release, install_release, installed_version
 from updater.core import ApplicationManifest, UpdateError, load_manifest
 
@@ -251,7 +252,8 @@ def _preflight(project_root: Path) -> None:
     required = (
         "build.ps1", "version.py", "CHANGELOG.md", "readme.md", "requirements.txt",
         "requirements-dev.txt", "THIRD_PARTY_NOTICES.md", "external/components.json",
-        "external/java/bin/java.exe", "build_support/kosit_trusted_releases.json",
+        "external/java/bin/java.exe", "external/java/release",
+        "build_support/java_trusted_releases.json", "build_support/kosit_trusted_releases.json",
     )
     missing = [relative for relative in required if not (project_root / relative).exists()]
     if missing:
@@ -262,9 +264,26 @@ def _preflight(project_root: Path) -> None:
     ]
     if reports:
         raise BuilderError("Erzeugte KoSIT-Berichte muessen vor dem Build entfernt werden.")
+    try:
+        validate_installed_runtime(project_root)
+    except JavaRuntimeError as exc:
+        raise BuilderError(str(exc)) from exc
 
 
 def _report_component_status(reporter: Reporter, project_root: Path):
+    java = validate_installed_runtime(project_root)
+    reporter.set_detail("java", {
+        "version": java.version,
+        "runtime": java.runtime_version,
+        "distribution": java.implementor_version,
+        "image_type": java.image_type,
+        "package": java.package_filename,
+        "sha256": java.package_sha256,
+    })
+    reporter.ok(
+        "KOMPONENTEN",
+        f"Java {java.runtime_version} ({java.image_type}) entspricht der lokalen Freigabe",
+    )
     current = installed_version(project_root)
     release = fetch_latest_release()
     reporter.set_detail("kosit", {
@@ -286,7 +305,7 @@ def _report_component_status(reporter: Reporter, project_root: Path):
     state = json.loads((project_root / "external" / "components.json").read_text(encoding="utf-8"))["components"]
     reporter.warning(
         "KOMPONENTEN",
-        "Java und XRechnung werden dokumentiert, besitzen aber noch keinen automatischen Quellenadapter",
+        "Java ist reproduzierbar festgelegt, besitzt aber wie XRechnung noch keinen automatischen Quellenadapter",
     )
     reporter.ok("KOMPONENTEN", f"UBL {state.get('ubl-schemas', 'unbekannt')} ist fest vorgegeben")
     return current, release

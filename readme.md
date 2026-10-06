@@ -33,12 +33,14 @@ in `app_info.py` gepflegt. Die Programmversion steht ausschliesslich in
 
 - Windows 10 oder neuer, 64 Bit
 - Python 3.12 fuer die Entwicklung
-- Vollstaendige portable Java-Laufzeit unter `external/java/`
+- Portable Eclipse-Temurin-JRE unter `external/java/`
 - KoSIT-Validator und XRechnung-Konfiguration unter `external/kosit/`
 
 Die portable Java-Laufzeit wird wegen ihrer Groesse nicht im Repository
 versioniert. Nur `java.exe` zu kopieren reicht nicht aus; Java benoetigt das
-vollstaendige Runtime-Verzeichnis.
+vollstaendige Runtime-Verzeichnis. Das freigegebene Windows-x64-JRE-Paket mit
+Quelle, Groesse und SHA-256 ist unter
+`build_support/java_trusted_releases.json` reproduzierbar festgelegt.
 
 Hinweise zu den mitgelieferten Komponenten und deren Lizenzen stehen in
 `THIRD_PARTY_NOTICES.md`.
@@ -181,8 +183,9 @@ Dokumentation zurueckgerollt. Die aktualisierte KoSIT-Version wird erst mit dem
 naechsten vollstaendigen Rechnungshelfer-Release an Benutzer verteilt; der
 Endnutzer-Updater laedt KoSIT niemals direkt herunter.
 
-Java und die XRechnung-Konfiguration werden derzeit dokumentiert, besitzen aber
-noch keinen automatischen Quellenadapter. UBL 2.1 ist fest vorgegeben. Das
+Java ist mit offizieller Quelle und SHA-256 festgelegt, besitzt aber wie die
+XRechnung-Konfiguration noch keinen automatischen Quellenadapter. UBL 2.1 ist
+fest vorgegeben. Das
 interne Release-Werkzeug trennt die rein lesende Pruefung, Komponentenpflege,
 Releasevorbereitung und den eigentlichen Build in eigene Befehle. Ein Build
 aktualisiert niemals Komponenten, Version oder Dokumentation nebenbei. Jeder
