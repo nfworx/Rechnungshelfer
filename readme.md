@@ -34,7 +34,7 @@ in `app_info.py` gepflegt. Die Programmversion steht ausschliesslich in
 - Windows 10 oder neuer, 64 Bit
 - Python 3.12 fuer die Entwicklung
 - Portable Eclipse-Temurin-JRE unter `external/java/`
-- KoSIT-Validator und XRechnung-Konfiguration unter `external/kosit/`
+- KoSIT-Validator und XRechnung-Konfiguration inklusive UBL 2.1 unter `external/kosit/`
 
 Die portable Java-Laufzeit wird wegen ihrer Groesse nicht im Repository
 versioniert. Nur `java.exe` zu kopieren reicht nicht aus; Java benoetigt das
@@ -184,8 +184,8 @@ naechsten vollstaendigen Rechnungshelfer-Release an Benutzer verteilt; der
 Endnutzer-Updater laedt KoSIT niemals direkt herunter.
 
 Java ist mit offizieller Quelle und SHA-256 festgelegt, besitzt aber wie die
-XRechnung-Konfiguration noch keinen automatischen Quellenadapter. UBL 2.1 ist
-fest vorgegeben. Das
+XRechnung-Konfiguration noch keinen automatischen Quellenadapter. Die lokale
+XSD-Pruefung verwendet dieselben UBL-2.1-Schemata wie KoSIT. Das
 interne Release-Werkzeug trennt die rein lesende Pruefung, Komponentenpflege,
 Releasevorbereitung und den eigentlichen Build in eigene Befehle. Ein Build
 aktualisiert niemals Komponenten, Version oder Dokumentation nebenbei. Jeder
@@ -247,7 +247,7 @@ Programmstart automatisch entfernt.
 ```text
 assets/                         Schriftarten und Bilder
 build_support/                  Internes Release-Werkzeug und Buildhilfen
-external/                       Java, KoSIT und UBL-Schemata
+external/                       Java sowie KoSIT mit XRechnung und UBL 2.1
 rechnungshelfer/                Python-Anwendungspaket
   application/                  Beleg- und Geschaeftspartner-Anwendungsfaelle
   controller.py                 Stabile Fassade fuer die Benutzeroberflaeche
@@ -301,7 +301,6 @@ Dieser Abschnitt wird vom Release-Werkzeug aus `external/components.json` erzeug
 |---|---|
 | Java-Laufzeit | `21.0.12.1` |
 | KoSIT XML Validator | `1.6.3` |
-| OASIS UBL-Schemata | `2.1` |
 | XRechnung-Konfiguration | `2026.01.31` |
 <!-- END GENERATED EXTERNAL COMPONENTS -->
 

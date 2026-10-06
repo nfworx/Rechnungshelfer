@@ -105,7 +105,7 @@ Jeder Zwischenschritt meldet sofort `INFO`, `OK`, `WARNUNG`, `FEHLER` oder
 - Python-Pakete werden geprueft, aber nicht waehrend eines Releases automatisch aktualisiert.
 - Release Notes und Changelogtexte bleiben menschlich gepflegt.
 - Java ist mit Quelle und SHA-256 reproduzierbar festgelegt; Java und XRechnung besitzen noch keinen automatischen Quellenadapter.
-- UBL 2.1 ist ein festgelegter Dokumentstandard und kein automatisch anzuhebendes Werkzeug.
+- UBL 2.1 wird aus der XRechnung-Konfiguration bezogen und nicht als separate Komponente gepflegt.
 
 `release_builder.py` bleibt nur als kompatibler Einstiegspunkt erhalten und
 erwartet dieselben Unterbefehle. Neue Dokumentation und Aufrufe verwenden

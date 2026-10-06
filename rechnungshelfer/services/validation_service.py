@@ -25,8 +25,18 @@ def get_base_dir() -> Path:
 
 
 BASE_DIR = get_base_dir()
-XSD_DIR = BASE_DIR / "external" / "ubl"
-XSD_PATH = XSD_DIR / "UBL-Invoice-2.1.xsd"
+XSD_PATH = (
+    BASE_DIR
+    / "external"
+    / "kosit"
+    / "xrechnung"
+    / "resources"
+    / "ubl"
+    / "2.1"
+    / "xsd"
+    / "maindoc"
+    / "UBL-Invoice-2.1.xsd"
+)
 
 
 def round2(value: Decimal) -> Decimal:
@@ -48,18 +58,6 @@ class ValidationResult:
         self.warnings.append(message)
 
 
-class LocalResolver(etree.Resolver):
-    def resolve(self, url, pubid, context):
-        local_path = XSD_DIR / url
-
-        if not local_path.exists():
-            local_path = XSD_DIR / Path(url).name
-
-        if local_path.exists():
-            return self.resolve_filename(str(local_path), context)
-
-        return None
-    
 class ExternalValidationResult(Protocol):
     valid: bool
     errors: list[str]
@@ -204,9 +202,7 @@ def format_missing_fields(missing: list[tuple], export_name: str) -> str:
 @lru_cache(maxsize=4)
 def _load_xsd_schema(xsd_path: str, modified_ns: int) -> etree.XMLSchema:
     del modified_ns  # Bestandteil des Cache-Schlüssels, damit Schema-Updates neu geladen werden.
-    xsd_parser = etree.XMLParser()
-    xsd_parser.resolvers.add(LocalResolver())
-    schema_doc = etree.parse(xsd_path, xsd_parser)
+    schema_doc = etree.parse(xsd_path)
     return etree.XMLSchema(schema_doc)
 
 

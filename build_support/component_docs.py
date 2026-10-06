@@ -11,7 +11,6 @@ END = "<!-- END GENERATED EXTERNAL COMPONENTS -->"
 COMPONENT_NAMES = {
     "java-runtime": "Java-Laufzeit",
     "kosit-validator": "KoSIT XML Validator",
-    "ubl-schemas": "OASIS UBL-Schemata",
     "xrechnung-configuration": "XRechnung-Konfiguration",
 }
 

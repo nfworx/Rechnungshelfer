@@ -37,12 +37,28 @@ class ReleaseToolTests(unittest.TestCase):
         )
         (root / "external" / "kosit" / "validator").mkdir(parents=True)
         (root / "external" / "kosit" / "validator" / "validator-1.6.2-standalone.jar").write_bytes(b"old")
+        ubl_schema = (
+            root
+            / "external"
+            / "kosit"
+            / "xrechnung"
+            / "resources"
+            / "ubl"
+            / "2.1"
+            / "xsd"
+            / "maindoc"
+            / "UBL-Invoice-2.1.xsd"
+        )
+        ubl_schema.parent.mkdir(parents=True)
+        ubl_schema.write_text(
+            '<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" version="2.1"/>',
+            encoding="utf-8",
+        )
         (root / "external" / "components.json").write_text(json.dumps({
             "schema_version": 1,
             "components": {
                 "java-runtime": "21.0.12.1",
                 "kosit-validator": "1.6.2",
-                "ubl-schemas": "2.1",
                 "xrechnung-configuration": "2026.01.31",
             },
         }), encoding="utf-8")

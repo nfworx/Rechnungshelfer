@@ -22,6 +22,7 @@ Versionsschema folgt [Semantic Versioning](https://semver.org/lang/de/).
 - Kundenmigrationen laufen vor dem Aufbau der Benutzeroberflaeche statt innerhalb des Hauptfensters
 - Moegliche Kundenduplikate werden als strukturierter Anwendungsfehler statt ueber eine Steuerzeichenfolge gemeldet
 - Das Oeffnen von KoSIT-Pruefberichten wurde vom Java-Prozessadapter getrennt
+- Lokale XSD- und KoSIT-Pruefung verwenden denselben UBL-2.1-Schemabestand aus der XRechnung-Konfiguration
 
 ### Security
 

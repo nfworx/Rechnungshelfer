@@ -32,7 +32,6 @@ REQUIRED_APPLICATION_PATHS = {"Rechnungshelfer.exe", "_internal"}
 COMPONENT_MANAGED_PATHS = {
     "kosit-validator": ("external/kosit/validator",),
     "xrechnung-configuration": ("external/kosit/xrechnung",),
-    "ubl-schemas": ("external/ubl",),
     "java-runtime": ("external/java",),
 }
 

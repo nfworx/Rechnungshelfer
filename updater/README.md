@@ -19,7 +19,7 @@ Updater.exe / runner.py
 
 Herausgeber/Projektpflege:
 build_support/update_external_components.py
-`-- external_components_update.py  Java, KoSIT, XRechnung oder UBL
+`-- external_components_update.py  Java, KoSIT oder XRechnung
 
 core.py                             gemeinsame Sicherheitslogik
 data/                               wird von keinem Updateweg veraendert
@@ -60,10 +60,11 @@ Komponenten und ihre erlaubten Ziele:
 |---|---|
 | `kosit-validator` | `external/kosit/validator` |
 | `xrechnung-configuration` | `external/kosit/xrechnung` |
-| `ubl-schemas` | `external/ubl` |
 | `java-runtime` | `external/java` |
 
 Die installierten Komponentenstaende stehen in `external/components.json`.
+Die von der lokalen XSD-Pruefung verwendeten UBL-2.1-Schemata sind Bestandteil
+der XRechnung-Konfiguration und werden nicht separat aktualisiert.
 
 ## Manueller Kommandozeilentest
 

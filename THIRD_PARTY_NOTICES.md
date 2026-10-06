@@ -19,6 +19,8 @@ Lizenzbedingungen bleiben unberuehrt.
 
 - Herausgeber: OASIS Open
 - Spezifikation: https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.html
+- Die verwendeten Runtime-Schemata sind Bestandteil der mitgelieferten
+  XRechnung-Konfiguration.
 
 ## Java-Laufzeit
 
@@ -37,6 +39,5 @@ Dieser Abschnitt wird vom Release-Werkzeug aus `external/components.json` erzeug
 |---|---|
 | Java-Laufzeit | `21.0.12.1` |
 | KoSIT XML Validator | `1.6.3` |
-| OASIS UBL-Schemata | `2.1` |
 | XRechnung-Konfiguration | `2026.01.31` |
 <!-- END GENERATED EXTERNAL COMPONENTS -->

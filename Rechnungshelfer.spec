@@ -11,13 +11,27 @@ required_directories = (
     project_root / "assets",
     project_root / "external" / "java",
     project_root / "external" / "kosit",
-    project_root / "external" / "ubl",
 )
 component_registry = project_root / "external" / "components.json"
+ubl_invoice_schema = (
+    project_root
+    / "external"
+    / "kosit"
+    / "xrechnung"
+    / "resources"
+    / "ubl"
+    / "2.1"
+    / "xsd"
+    / "maindoc"
+    / "UBL-Invoice-2.1.xsd"
+)
 
 missing = [str(path) for path in required_directories if not path.is_dir()]
-if not component_registry.is_file():
-    missing.append(str(component_registry))
+missing.extend(
+    str(path)
+    for path in (component_registry, ubl_invoice_schema)
+    if not path.is_file()
+)
 if missing:
     raise SystemExit(
         "Fuer den One-Folder-Build fehlen benoetigte Verzeichnisse:\n- "
@@ -47,7 +61,6 @@ datas.extend(
         (str(project_root / "assets"), "assets"),
         (str(project_root / "external" / "java"), "external/java"),
         (str(project_root / "external" / "kosit"), "external/kosit"),
-        (str(project_root / "external" / "ubl"), "external/ubl"),
         (str(component_registry), "external"),
     ]
 )

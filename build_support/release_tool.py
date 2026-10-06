@@ -253,6 +253,7 @@ def _preflight(project_root: Path) -> None:
         "build.ps1", "version.py", "CHANGELOG.md", "readme.md", "requirements.txt",
         "requirements-dev.txt", "THIRD_PARTY_NOTICES.md", "external/components.json",
         "external/java/bin/java.exe", "external/java/release",
+        "external/kosit/xrechnung/resources/ubl/2.1/xsd/maindoc/UBL-Invoice-2.1.xsd",
         "build_support/java_trusted_releases.json", "build_support/kosit_trusted_releases.json",
     )
     missing = [relative for relative in required if not (project_root / relative).exists()]
@@ -302,12 +303,11 @@ def _report_component_status(reporter: Reporter, project_root: Path):
             "KOMPONENTEN",
             "KoSIT-Release ist laut GitHub nicht unveraenderlich; die lokale Hash-Freigabe ist zwingend",
         )
-    state = json.loads((project_root / "external" / "components.json").read_text(encoding="utf-8"))["components"]
     reporter.warning(
         "KOMPONENTEN",
         "Java ist reproduzierbar festgelegt, besitzt aber wie XRechnung noch keinen automatischen Quellenadapter",
     )
-    reporter.ok("KOMPONENTEN", f"UBL {state.get('ubl-schemas', 'unbekannt')} ist fest vorgegeben")
+    reporter.ok("KOMPONENTEN", "UBL 2.1 wird einheitlich aus der XRechnung-Konfiguration verwendet")
     return current, release
 
 

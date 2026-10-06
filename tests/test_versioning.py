@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from packaging.version import Version
+from lxml import etree
 
 from app_info import APP_EXECUTABLE_NAME, APP_ID, APP_NAME, APP_VERSION
 from build_support.generate_windows_version_info import (
@@ -12,6 +13,7 @@ from build_support.generate_windows_version_info import (
     _windows_version_tuple,
     generate,
 )
+from rechnungshelfer.services.validation_service import XSD_PATH
 from version import __version__
 
 
@@ -60,6 +62,31 @@ class VersioningTests(unittest.TestCase):
         self.assertEqual(data["schema_version"], 1)
         kosit_version = data["components"]["kosit-validator"]
         self.assertEqual(str(Version(kosit_version)), kosit_version)
+
+    def test_local_xsd_uses_ubl_from_xrechnung_configuration(self):
+        project_root = Path(__file__).resolve().parent.parent
+        expected = (
+            project_root
+            / "external"
+            / "kosit"
+            / "xrechnung"
+            / "resources"
+            / "ubl"
+            / "2.1"
+            / "xsd"
+            / "maindoc"
+            / "UBL-Invoice-2.1.xsd"
+        )
+        registry = json.loads(
+            (project_root / "external" / "components.json").read_text(encoding="utf-8")
+        )
+        spec = (project_root / "Rechnungshelfer.spec").read_text(encoding="utf-8")
+
+        self.assertEqual(XSD_PATH, expected)
+        self.assertEqual(etree.parse(str(expected)).getroot().get("version"), "2.1")
+        self.assertNotIn("ubl-schemas", registry["components"])
+        self.assertNotIn('project_root / "external" / "ubl"', spec)
+        self.assertFalse((project_root / "external" / "ubl").exists())
 
     def test_bundled_kosit_matches_locally_approved_digest(self):
         project_root = Path(__file__).resolve().parent.parent
