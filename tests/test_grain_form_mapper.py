@@ -19,6 +19,8 @@ from rechnungshelfer.gui.grain_form_mapper import (
 )
 from rechnungshelfer.gui.main_window import InvoiceGUI
 from rechnungshelfer.gui.grain_settlement_view import GrainSettlementView
+from rechnungshelfer.gui.grain_settlement_dialogs import delivery_input_errors
+from rechnungshelfer.gui.grain_rule_presets import grain_rule_preset
 
 
 class GrainFormMapperTests(unittest.TestCase):
@@ -221,6 +223,105 @@ class GrainFormMapperTests(unittest.TestCase):
         restored = deserialize_rule_set(payload)
 
         self.assertEqual(restored, (features, rules))
+
+    def test_delivery_table_creates_one_detail_row_per_adjustment(self):
+        price_rule = RuleFormValue(
+            code="drying",
+            label="Trocknungskosten",
+            kind="absolute_per_tonne",
+            feature_code="",
+            quantity_reference="",
+            parameters="amount_per_tonne=5",
+            phase="price_adjustment",
+            order=1,
+        )
+        form = self._form(rules=(*self._form().rules, price_rule))
+        result = calculate_settlement_preview(form).delivery_results[0]
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.features = form.features
+
+        rows = view._adjustment_rows(result)
+
+        self.assertEqual(
+            len(rows),
+            len(result.quantity_deductions) + len(result.monetary_adjustments),
+        )
+        self.assertIn("Mengenabzug · Besatzabzug", rows[0][3])
+        self.assertEqual(rows[0][5], "−330,000")
+        self.assertEqual(rows[0][6], "-66,00")
+        self.assertEqual(rows[0][7], "1.934,00")
+        self.assertIn("Preisabzug · Trocknungskosten", rows[1][3])
+        self.assertEqual(rows[1][6], "-48,35")
+        self.assertEqual(view._gross_base_amount(result), Decimal("2000.00"))
+        self.assertEqual(
+            view._residual_row(result)[3],
+            "= Verbleibender Abrechnungsbetrag",
+        )
+        self.assertEqual(view._residual_row(result)[7], "1.885,65")
+
+    def test_delivery_input_validation_reports_fields_individually(self):
+        features = (
+            FeatureFormValue("moisture", "Feuchtigkeit", required=True),
+            FeatureFormValue("protein", "Protein", required=False),
+        )
+
+        errors = delivery_input_errors(
+            delivery_date="abc",
+            ticket_number=" ",
+            gross_quantity="null",
+            base_price="-1",
+            features=features,
+            analyses={
+                "moisture": ("", ""),
+                "protein": ("", "12,5"),
+            },
+        )
+
+        self.assertEqual(
+            set(errors),
+            {
+                "delivery_date",
+                "ticket_number",
+                "gross_quantity",
+                "base_price",
+                "analysis:moisture:raw",
+                "analysis:protein:corrected",
+            },
+        )
+
+    def test_delivery_input_validation_accepts_german_numbers_and_date(self):
+        errors = delivery_input_errors(
+            delivery_date="8.10.26",
+            ticket_number="WS-1",
+            gross_quantity="10.000,5",
+            base_price="200,00",
+            features=(FeatureFormValue("moisture", "Feuchtigkeit"),),
+            analyses={"moisture": ("14,5", "")},
+        )
+
+        self.assertEqual(errors, {})
+
+    def test_zero_effect_rules_are_not_shown_as_adjustment_rows(self):
+        preset = grain_rule_preset("wheat")
+        form = GrainSettlementForm(
+            supplier_number="L0001",
+            features=preset.features,
+            rules=preset.rules,
+            deliveries=(
+                self._delivery(
+                    analyses=(
+                        AnalysisFormValue("moisture", "14,5"),
+                        AnalysisFormValue("dockage", "2,0"),
+                    )
+                ),
+            ),
+        )
+        result = calculate_settlement_preview(form).delivery_results[0]
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.features = form.features
+
+        self.assertGreater(len(result.quantity_deductions), 0)
+        self.assertEqual(view._adjustment_rows(result), ())
 
 
 class GrainWorkspaceNavigationTests(unittest.TestCase):

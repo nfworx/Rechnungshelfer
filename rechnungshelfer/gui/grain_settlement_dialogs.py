@@ -8,8 +8,14 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from rechnungshelfer.domain.grain_models import GrainValidationError
+from rechnungshelfer.services.format_service import parse_de
+from rechnungshelfer.services.input_validation_service import (
+    InputValidationError,
+    normalize_date_de,
+)
 
-from .components import button, form_entry, small_button
+from .components import button, form_entry, small_button, style_entry
+from .date_fields import attach_date_validation, open_datepicker
 from .grain_form_mapper import (
     AnalysisFormValue,
     DeliveryFormValue,
@@ -137,6 +143,85 @@ def _tiers_for_storage(value: str) -> str:
     return " | ".join(result)
 
 
+def delivery_input_errors(
+    *,
+    delivery_date: str,
+    ticket_number: str,
+    gross_quantity: str,
+    base_price: str,
+    features: tuple[FeatureFormValue, ...],
+    analyses: dict[str, tuple[str, str]],
+) -> dict[str, str]:
+    """Validiert eine Lieferung feldbezogen vor dem Domain-Mapping."""
+
+    errors = {}
+    try:
+        normalize_date_de(delivery_date, "Lieferdatum")
+    except InputValidationError as exc:
+        errors["delivery_date"] = str(exc)
+
+    if not str(ticket_number or "").strip():
+        errors["ticket_number"] = "Wiegescheinnummer fehlt."
+
+    _validate_number(
+        errors,
+        "gross_quantity",
+        gross_quantity,
+        "Bruttomenge",
+        strictly_positive=True,
+    )
+    _validate_number(
+        errors,
+        "base_price",
+        base_price,
+        "Basispreis",
+        strictly_positive=False,
+    )
+
+    for feature in features:
+        raw, corrected = analyses.get(feature.code, ("", ""))
+        raw_key = f"analysis:{feature.code}:raw"
+        corrected_key = f"analysis:{feature.code}:corrected"
+        if feature.required and not str(raw or "").strip():
+            errors[raw_key] = f"Analysewert {feature.label} fehlt."
+        elif str(raw or "").strip():
+            _validate_number(errors, raw_key, raw, feature.label)
+        if str(corrected or "").strip():
+            if not str(raw or "").strip():
+                errors[corrected_key] = (
+                    f"Korrektur für {feature.label} benötigt einen Ausgangswert."
+                )
+            else:
+                _validate_number(
+                    errors,
+                    corrected_key,
+                    corrected,
+                    f"Korrektur {feature.label}",
+                )
+    return errors
+
+
+def _validate_number(
+    errors: dict[str, str],
+    key: str,
+    value: str,
+    label: str,
+    *,
+    strictly_positive: bool = False,
+) -> None:
+    if not str(value or "").strip():
+        errors[key] = f"{label} fehlt."
+        return
+    try:
+        number = parse_de(value)
+    except ValueError:
+        errors[key] = f"{label} ist keine gültige Zahl."
+        return
+    if number < 0 or (strictly_positive and number == 0):
+        qualifier = "größer als null" if strictly_positive else "nicht negativ"
+        errors[key] = f"{label} muss {qualifier} sein."
+
+
 class DeliveryDialog(ctk.CTkToplevel):
     def __init__(
         self,
@@ -156,6 +241,7 @@ class DeliveryDialog(ctk.CTkToplevel):
         self.delivery_id = delivery_id
         self.features = features
         self.on_save = on_save
+        self._entries = {}
         existing_analyses = {
             analysis.feature_code: analysis
             for analysis in (value.analyses if value else ())
@@ -164,7 +250,7 @@ class DeliveryDialog(ctk.CTkToplevel):
         content = ctk.CTkScrollableFrame(self, fg_color="white")
         content.pack(fill="both", expand=True, padx=12, pady=12)
         content.grid_columnconfigure(1, weight=1)
-        self.delivery_date = self._field(
+        self.delivery_date = self._date_field(
             content, 0, "Lieferdatum", value.delivery_date if value else ""
         )
         self.ticket_number = self._field(
@@ -195,6 +281,14 @@ class DeliveryDialog(ctk.CTkToplevel):
             4,
             "Basispreis EUR/t",
             value.base_price_per_tonne if value else "",
+        )
+        self._entries.update(
+            {
+                "delivery_date": self.delivery_date,
+                "ticket_number": self.ticket_number,
+                "gross_quantity": self.gross_quantity,
+                "base_price": self.base_price,
+            }
         )
 
         ctk.CTkLabel(
@@ -234,6 +328,10 @@ class DeliveryDialog(ctk.CTkToplevel):
                 text_color=TEXT_MUTED,
             ).pack(side="left", padx=8)
             self.analysis_entries[feature.code] = (raw, corrected)
+            self._entries[f"analysis:{feature.code}:raw"] = raw
+            self._entries[f"analysis:{feature.code}:corrected"] = corrected
+
+        self._configure_validation()
 
         actions = ctk.CTkFrame(self, fg_color="transparent")
         actions.pack(fill="x", padx=12, pady=(0, 12))
@@ -250,7 +348,113 @@ class DeliveryDialog(ctk.CTkToplevel):
         widget.grid(row=row, column=1, sticky="ew", pady=5)
         return widget
 
+    @staticmethod
+    def _date_field(parent, row: int, label: str, value: str):
+        ctk.CTkLabel(
+            parent, text=label, font=FONT_NORMAL, text_color=TEXT
+        ).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
+        field = ctk.CTkFrame(parent, fg_color="transparent")
+        field.grid(row=row, column=1, sticky="ew", pady=5)
+        field.grid_columnconfigure(0, weight=1)
+        entry = form_entry(field, value)
+        entry.grid(row=0, column=0, sticky="ew")
+        calendar_button = ctk.CTkButton(
+            field,
+            text="📅",
+            width=32,
+            height=28,
+            command=lambda: open_datepicker(
+                entry,
+                label,
+                calendar_button,
+            ),
+        )
+        calendar_button.grid(row=0, column=1, padx=(6, 0))
+        attach_date_validation(entry, label, required=True)
+        return entry
+
+    def _analysis_values(self):
+        return {
+            feature_code: (raw.get(), corrected.get())
+            for feature_code, (raw, corrected) in self.analysis_entries.items()
+        }
+
+    def _validation_errors(self):
+        return delivery_input_errors(
+            delivery_date=self.delivery_date.get(),
+            ticket_number=self.ticket_number.get(),
+            gross_quantity=self.gross_quantity.get(),
+            base_price=self.base_price.get(),
+            features=self.features,
+            analyses=self._analysis_values(),
+        )
+
+    def _configure_validation(self):
+        required_keys = {
+            "delivery_date",
+            "ticket_number",
+            "gross_quantity",
+            "base_price",
+            *(
+                f"analysis:{feature.code}:raw"
+                for feature in self.features
+                if feature.required
+            ),
+        }
+        for key, entry in self._entries.items():
+            style_entry(
+                entry,
+                required=key in required_keys,
+                filled=bool(entry.get().strip()),
+            )
+            entry.bind(
+                "<FocusOut>",
+                lambda _event: self._validate_entries(),
+                add="+",
+            )
+
+    def _validate_entries(self):
+        errors = self._validation_errors()
+        for key, entry in self._entries.items():
+            if key in errors:
+                entry.configure(border_color="#ef4444")
+            else:
+                required = key in {
+                    "delivery_date",
+                    "ticket_number",
+                    "gross_quantity",
+                    "base_price",
+                } or any(
+                    key == f"analysis:{feature.code}:raw" and feature.required
+                    for feature in self.features
+                )
+                style_entry(
+                    entry,
+                    required=required,
+                    filled=bool(entry.get().strip()),
+                    focused=False,
+                )
+        return errors
+
     def _save(self):
+        errors = self._validate_entries()
+        if errors:
+            first_key = next(iter(errors))
+            first_entry = self._entries[first_key]
+            first_entry.focus_set()
+            messagebox.showerror(
+                "Lieferung prüfen",
+                "Bitte folgende Eingaben korrigieren:\n\n"
+                + "\n".join(f"• {message}" for message in errors.values()),
+                parent=self,
+            )
+            return
+        normalized_date = normalize_date_de(
+            self.delivery_date.get(),
+            "Lieferdatum",
+        )
+        self.delivery_date.delete(0, "end")
+        self.delivery_date.insert(0, normalized_date)
         analyses = tuple(
             AnalysisFormValue(
                 feature_code=feature.code,
@@ -262,8 +466,8 @@ class DeliveryDialog(ctk.CTkToplevel):
         saved = self.on_save(
             DeliveryFormValue(
                 id=self.delivery_id,
-                delivery_date=self.delivery_date.get(),
-                ticket_number=self.ticket_number.get(),
+                delivery_date=normalized_date,
+                ticket_number=self.ticket_number.get().strip(),
                 grain_type_code=GRAIN_TYPES[self.grain_type.get()],
                 gross_quantity_kg=self.gross_quantity.get(),
                 base_price_per_tonne=self.base_price.get(),

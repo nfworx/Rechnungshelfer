@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import sqlite3
 from tkinter import messagebox
 
@@ -439,13 +439,11 @@ class GrainSettlementView(ctk.CTkFrame):
             "Datum",
             "Wiegeschein",
             "Getreideart",
-            "Brutto kg",
-            "Analysewerte",
-            "Abzug kg",
-            "Abrechnungsmenge kg",
-            "Basiswarenwert EUR",
-            "Preis-/Kostenabzug EUR",
-            "Endbetrag EUR",
+            "Analyse / Abrechnungsposition",
+            "Menge kg",
+            "Δ Menge kg",
+            "Δ Wert EUR",
+            "Betrag EUR",
             "",
         )
         for column, title in enumerate(headers):
@@ -464,42 +462,31 @@ class GrainSettlementView(ctk.CTkFrame):
             result.delivery_id: result
             for result in (batch.delivery_results if batch else ())
         }
-        for row_number, delivery in enumerate(self.deliveries, start=1):
+        grid_row = 1
+        for index, delivery in enumerate(self.deliveries):
             result = results.get(delivery.id)
             values = (
                 delivery.delivery_date,
                 delivery.ticket_number,
-                GRAIN_TYPE_LABELS.get(
-                    delivery.grain_type_code,
-                    delivery.grain_type_code,
-                ),
+                self._grain_table_label(delivery.grain_type_code),
+                self._analysis_summary(delivery),
                 (
                     self._quantity(result.gross_quantity_kg)
                     if result
                     else delivery.gross_quantity_kg
                 ),
-                self._analysis_summary(delivery),
-                self._quantity(self._deduction(result)) if result else "–",
-                self._quantity(result.settlement_quantity_kg) if result else "–",
-                format_de(result.base_amount) if result else "–",
-                (
-                    format_de(result.base_amount - result.net_amount)
-                    if result
-                    else "–"
-                ),
-                format_de(result.net_amount) if result else "–",
+                "",
+                "",
+                format_de(self._gross_base_amount(result)) if result else "–",
             )
-            for column, value in enumerate(values):
-                ctk.CTkLabel(
-                    self.delivery_host,
-                    text=value,
-                    font=FONT_SMALL,
-                    text_color=TEXT,
-                    anchor="w",
-                ).grid(row=row_number, column=column, sticky="w", padx=5, pady=4)
+            self._render_delivery_values(
+                values,
+                row=grid_row,
+                font=("Segoe UI", 12, "bold"),
+                text_color=TEXT,
+            )
             action_frame = ctk.CTkFrame(self.delivery_host, fg_color="transparent")
-            action_frame.grid(row=row_number, column=10, padx=5, pady=4)
-            index = row_number - 1
+            action_frame.grid(row=grid_row, column=8, padx=5, pady=4)
             small_button(
                 action_frame,
                 "✎",
@@ -510,6 +497,37 @@ class GrainSettlementView(ctk.CTkFrame):
                 "−",
                 lambda i=index: self.remove_delivery(i),
             ).pack(side="left", padx=(4, 0))
+            grid_row += 1
+
+            if result:
+                for detail_values in self._adjustment_rows(result):
+                    self._render_delivery_values(
+                        detail_values,
+                        row=grid_row,
+                        font=FONT_SMALL,
+                        text_color=TEXT_MUTED,
+                        detail=True,
+                    )
+                    grid_row += 1
+
+                residual_values = self._residual_row(result)
+                self._render_delivery_values(
+                    residual_values,
+                    row=grid_row,
+                    font=("Segoe UI", 12, "bold"),
+                    text_color=TEXT,
+                    detail=True,
+                    pady=(4, 2),
+                )
+                grid_row += 1
+
+            spacer = ctk.CTkFrame(
+                self.delivery_host,
+                height=5,
+                fg_color="transparent",
+            )
+            spacer.grid(row=grid_row, column=0, columnspan=len(headers), sticky="ew")
+            grid_row += 1
 
         if not self.deliveries:
             ctk.CTkLabel(
@@ -518,6 +536,136 @@ class GrainSettlementView(ctk.CTkFrame):
                 font=FONT_NORMAL,
                 text_color=TEXT_MUTED,
             ).grid(row=1, column=0, columnspan=len(headers), pady=18)
+
+    def _render_delivery_values(
+        self,
+        values,
+        *,
+        row,
+        font,
+        text_color,
+        detail=False,
+        pady=2,
+    ):
+        for column, value in enumerate(values):
+            if not value:
+                continue
+            is_detail_label = detail and column == 3
+            ctk.CTkLabel(
+                self.delivery_host,
+                text=value,
+                font=font,
+                text_color=text_color,
+                anchor="w",
+                justify="left",
+                wraplength=300 if is_detail_label else (220 if column == 3 else 0),
+            ).grid(
+                row=row,
+                column=1 if is_detail_label else column,
+                columnspan=3 if is_detail_label else 1,
+                sticky="w",
+                padx=5,
+                pady=pady,
+            )
+
+    def _adjustment_rows(self, result: SettlementResult):
+        rows = []
+        running_amount = self._gross_base_amount(result)
+        for deduction in result.quantity_deductions:
+            if deduction.deducted_quantity_kg == 0:
+                continue
+            remaining_amount = (
+                deduction.remaining_quantity_kg
+                / Decimal("1000")
+                * result.base_price_per_tonne
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            amount_delta = remaining_amount - running_amount
+            label = f"↳ Mengenabzug · {deduction.label}"
+            label += self._measurement_context(
+                deduction.measurement_code,
+                deduction.measurement_value,
+            )
+            rows.append(
+                (
+                    "",
+                    "",
+                    "",
+                    label,
+                    self._quantity(deduction.remaining_quantity_kg),
+                    f"−{self._quantity(deduction.deducted_quantity_kg)}",
+                    self._signed_money(amount_delta),
+                    format_de(remaining_amount),
+                )
+            )
+            running_amount = remaining_amount
+
+        for adjustment in result.monetary_adjustments:
+            if adjustment.amount_delta == 0:
+                continue
+            is_surcharge = adjustment.amount_delta > 0
+            if adjustment.phase.value == "price_adjustment":
+                effect = "Preiszuschlag" if is_surcharge else "Preisabzug"
+            else:
+                effect = "Kostenzuschlag" if is_surcharge else "Kostenabzug"
+            label = f"↳ {effect} · {adjustment.label}"
+            label += self._measurement_context(
+                adjustment.measurement_code,
+                adjustment.measurement_value,
+            )
+            if adjustment.price_delta_per_tonne is not None:
+                label += (
+                    " · "
+                    + self._signed_money(adjustment.price_delta_per_tonne)
+                    + " EUR/t"
+                )
+            rows.append(
+                (
+                    "",
+                    "",
+                    "",
+                    label,
+                    "",
+                    "",
+                    self._signed_money(adjustment.amount_delta),
+                    format_de(adjustment.resulting_amount),
+                )
+            )
+        return tuple(rows)
+
+    @staticmethod
+    def _gross_base_amount(result: SettlementResult) -> Decimal:
+        return (
+            result.gross_quantity_kg
+            / Decimal("1000")
+            * result.base_price_per_tonne
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _residual_row(result: SettlementResult):
+        return (
+            "",
+            "",
+            "",
+            "= Verbleibender Abrechnungsbetrag",
+            GrainSettlementView._quantity(result.settlement_quantity_kg),
+            "",
+            "",
+            format_de(result.net_amount),
+        )
+
+    def _measurement_context(self, feature_code, value) -> str:
+        if not feature_code or value is None:
+            return ""
+        features = {feature.code: feature for feature in self.features}
+        feature = features.get(feature_code)
+        label = feature.label if feature else feature_code
+        unit = f" {feature.unit}" if feature and feature.unit else ""
+        return f" · {label}: {format_de(value)}{unit}"
+
+    @staticmethod
+    def _signed_money(value: Decimal) -> str:
+        formatted = format_de(value)
+        return f"+{formatted}" if value > 0 else formatted
 
     def _analysis_summary(self, delivery: DeliveryFormValue) -> str:
         labels = {feature.code: feature.label for feature in self.features}
@@ -530,6 +678,12 @@ class GrainSettlementView(ctk.CTkFrame):
             label = labels.get(analysis.feature_code, analysis.feature_code)
             values.append(f"{label}: {effective}")
         return " · ".join(values) or "–"
+
+    @staticmethod
+    def _grain_table_label(grain_type_code: str) -> str:
+        if grain_type_code == "barley":
+            return "Futtergerste"
+        return GRAIN_TYPE_LABELS.get(grain_type_code, grain_type_code)
 
     def _default_grain_type_code(self) -> str:
         return self.deliveries[0].grain_type_code if self.deliveries else "wheat"
