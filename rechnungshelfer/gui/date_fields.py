@@ -78,6 +78,12 @@ def open_datepicker(entry: ctk.CTkEntry, field_name="Datum", anchor=None):
         entry.configure(border_color="green")
         dialog.destroy()
 
+    attach_calendar_double_click(
+        cal,
+        apply_date,
+        scheduler=dialog.after_idle,
+    )
+
     ctk.CTkButton(dialog, text="Übernehmen", command=apply_date).pack(pady=10)
 
     dialog.update_idletasks()
@@ -93,3 +99,27 @@ def open_datepicker(entry: ctk.CTkEntry, field_name="Datum", anchor=None):
     dialog.deiconify()
     dialog.grab_set()
     dialog.focus_force()
+
+
+def attach_calendar_double_click(calendar, callback, *, scheduler=None):
+    """Uebernimmt den markierten Tag per Doppelklick.
+
+    ``tkcalendar.Calendar`` zeichnet die Tage in einem internen Widget. Die
+    Bindung muss deshalb dort erfolgen; der Fallback haelt die Funktion auch
+    fuer kuenftige Calendar-Implementierungen verwendbar.
+    """
+
+    event_target = getattr(calendar, "_calendar", calendar)
+
+    def apply_after_selection(_event=None):
+        if scheduler is None:
+            callback()
+        else:
+            scheduler(callback)
+
+    event_target.bind(
+        "<Double-Button-1>",
+        apply_after_selection,
+        add="+",
+    )
+    return apply_after_selection
