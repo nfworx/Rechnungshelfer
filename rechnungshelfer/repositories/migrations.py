@@ -11,7 +11,7 @@ from pathlib import Path
 from .invoice_record import invoice_summary_from_data
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 Migration = Callable[[sqlite3.Connection], None]
 
 
@@ -345,11 +345,101 @@ def _normalize_migrated_partner_number(value) -> str:
     )
 
 
+def _migration_4_to_5(connection: sqlite3.Connection) -> None:
+    """Entkoppelt die interne Partneridentität von der sichtbaren Nummer."""
+
+    connection.execute(
+        """
+        CREATE TABLE business_partners_v5 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            partner_number TEXT NOT NULL UNIQUE
+                CHECK (
+                    partner_number <> ''
+                    AND partner_number NOT GLOB '*[^0-9]*'
+                ),
+            name TEXT NOT NULL,
+            common_data TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE business_partner_roles_v5 (
+            partner_id INTEGER NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('customer', 'supplier')),
+            role_data TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (partner_id, role),
+            FOREIGN KEY (partner_id)
+                REFERENCES business_partners_v5(id)
+                ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO business_partners_v5
+            (partner_number, name, common_data, updated_at)
+        SELECT partner_number, name, common_data, updated_at
+        FROM business_partners
+        ORDER BY partner_number
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO business_partner_roles_v5
+            (partner_id, role, role_data, updated_at)
+        SELECT p.id, r.role, r.role_data, r.updated_at
+        FROM business_partner_roles AS r
+        JOIN business_partners_v5 AS p
+          ON p.partner_number = r.partner_number
+        """
+    )
+    for partner_id, partner_number, role_data_json in connection.execute(
+        """
+        SELECT r.partner_id, p.partner_number, r.role_data
+        FROM business_partner_roles_v5 AS r
+        JOIN business_partners_v5 AS p ON p.id = r.partner_id
+        WHERE r.role = 'supplier'
+        """
+    ).fetchall():
+        role_data = json.loads(role_data_json)
+        if str(role_data.get("buyer_reference") or "").strip().upper() in (
+            "",
+            "BUCHHALTUNG",
+        ):
+            role_data["buyer_reference"] = partner_number
+            connection.execute(
+                """
+                UPDATE business_partner_roles_v5
+                SET role_data = ?
+                WHERE partner_id = ? AND role = 'supplier'
+                """,
+                (json.dumps(role_data, ensure_ascii=False), partner_id),
+            )
+    connection.execute("DROP TABLE business_partner_roles")
+    connection.execute("DROP TABLE business_partners")
+    connection.execute(
+        "ALTER TABLE business_partners_v5 RENAME TO business_partners"
+    )
+    connection.execute(
+        "ALTER TABLE business_partner_roles_v5 RENAME TO business_partner_roles"
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_business_partner_roles_role
+        ON business_partner_roles (role, partner_id)
+        """
+    )
+
+
 MIGRATIONS: dict[int, Migration] = {
     0: _migration_0_to_1,
     1: _migration_1_to_2,
     2: _migration_2_to_3,
     3: _migration_3_to_4,
+    4: _migration_4_to_5,
 }
 
 

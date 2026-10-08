@@ -39,6 +39,7 @@ class BusinessPartnerProfile:
     seller: Seller
     payment: Payment
     roles: frozenset[BusinessPartnerRole]
+    partner_id: int | None = None
 
     @property
     def partner_number(self) -> str:

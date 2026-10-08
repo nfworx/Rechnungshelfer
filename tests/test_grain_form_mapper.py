@@ -4,7 +4,8 @@ from decimal import Decimal
 from unittest.mock import Mock, patch
 
 from rechnungshelfer.domain.grain_models import GrainValidationError
-from rechnungshelfer.domain.models import DocumentType
+from rechnungshelfer.domain.invoice_factory import InvoiceFactory
+from rechnungshelfer.domain.models import DocumentType, Payment, Seller
 from rechnungshelfer.gui.grain_form_mapper import (
     AnalysisFormValue,
     DeliveryFormValue,
@@ -433,6 +434,38 @@ class GrainWorkspaceNavigationTests(unittest.TestCase):
         gui.file_menu.entryconfigure.assert_any_call(5, label="Speichern")
         gui.master_data_menu.entryconfigure.assert_not_called()
         gui.workspace_variable.set.assert_called_once_with("grain")
+
+    def test_supplier_reference_is_applied_to_self_billed_invoice(self):
+        gui = InvoiceGUI.__new__(InvoiceGUI)
+        gui.invoice = InvoiceFactory().create(DocumentType.SELF_BILLED_INVOICE)
+        gui.show_form = Mock()
+        seller = Seller(
+            supplier_number="3000",
+            name="Musterhof",
+            buyer_reference="3000",
+        )
+
+        gui._on_supplier_selected(seller, Payment())
+
+        self.assertEqual(gui.invoice.buyer.leitweg_id, "3000")
+        gui.show_form.assert_called_once_with()
+
+    def test_supplier_reference_is_applied_to_grain_document(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.document = InvoiceFactory().create(DocumentType.SELF_BILLED_INVOICE)
+        view._render_top_cards = Mock()
+        view.calculate = Mock()
+        seller = Seller(
+            supplier_number="3000",
+            name="Musterhof",
+            buyer_reference="3000",
+        )
+
+        view._select_supplier(seller, Payment())
+
+        self.assertEqual(view.document.buyer.leitweg_id, "3000")
+        view._render_top_cards.assert_called_once_with()
+        view.calculate.assert_called_once_with()
 
 
 class GrainRuleSetSelectionTests(unittest.TestCase):

@@ -70,6 +70,7 @@ class InvoiceFactory:
                 registry_number="",
                 contact_name="",
                 supplier_number=supplier_number,
+                buyer_reference="",
             )
             invoice.payment = Payment(
                 iban="",

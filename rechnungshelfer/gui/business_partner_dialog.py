@@ -143,10 +143,6 @@ class BusinessPartnerEditDialog:
         content.grid(row=1, column=0, sticky="nsew", padx=18, pady=8)
         content.grid_columnconfigure((0, 1), weight=1, uniform="partner_cards")
 
-        readonly = []
-        if not self.is_new:
-            readonly.append("customer_number")
-
         common_card = PartyCard(
             content,
             "Gemeinsame Stammdaten",
@@ -154,7 +150,6 @@ class BusinessPartnerEditDialog:
             field_entries=self.field_entries,
             exclude_fields=["leitweg_id", "use_invoice_address_as_delivery"],
             label_overrides={"customer_number": "Geschäftspartnernummer"},
-            readonly_fields=readonly,
         ).render()
         common_card.grid(row=0, column=0, sticky="new", padx=(0, 8), pady=(0, 12))
 
@@ -171,7 +166,7 @@ class BusinessPartnerEditDialog:
         customer_card.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(
             customer_card,
-            text="Leitweg-ID",
+            text="Käuferreferenz / Leitweg-ID (BT-10)",
             font=FONT_SMALL,
             text_color=TEXT,
         ).grid(row=1, column=0, sticky="w", padx=(14, 8), pady=(4, 12))
@@ -192,7 +187,7 @@ class BusinessPartnerEditDialog:
         supplier_card.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(
             supplier_card,
-            text="Käuferreferenz",
+            text="Käuferreferenz für Gutschriften (BT-10)",
             font=FONT_SMALL,
             text_color=TEXT,
         ).grid(row=1, column=0, sticky="w", padx=(14, 8), pady=(4, 12))
@@ -245,6 +240,11 @@ class BusinessPartnerEditDialog:
             )
         number = self.profile.buyer.customer_number
         self.profile.seller.supplier_number = number
+        if (
+            BusinessPartnerRole.SUPPLIER in roles
+            and not str(self.profile.seller.buyer_reference or "").strip()
+        ):
+            self.profile.seller.buyer_reference = number
         self.profile.roles = frozenset(roles)
 
         try:

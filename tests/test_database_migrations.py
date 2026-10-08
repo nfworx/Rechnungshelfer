@@ -188,7 +188,11 @@ class DatabaseMigrationTests(unittest.TestCase):
                     "SELECT partner_number, name FROM business_partners"
                 ).fetchone()
                 role = database.connection.execute(
-                    "SELECT partner_number, role FROM business_partner_roles"
+                    """
+                    SELECT p.partner_number, r.role
+                    FROM business_partner_roles AS r
+                    JOIN business_partners AS p ON p.id = r.partner_id
+                    """
                 ).fetchone()
             finally:
                 database.close()
@@ -229,6 +233,53 @@ class DatabaseMigrationTests(unittest.TestCase):
                 database.close()
 
             self.assertEqual(partner, ("2000",))
+
+    def test_version_five_adds_internal_id_and_replaces_old_default_reference(self):
+        connection = sqlite3.connect(":memory:")
+        try:
+            for version in range(4):
+                MIGRATIONS[version](connection)
+            connection.execute(
+                """
+                INSERT INTO business_partners
+                    (partner_number, name, common_data, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                ("3000", "Musterhof", json.dumps({"name": "Musterhof"}), "now"),
+            )
+            connection.execute(
+                """
+                INSERT INTO business_partner_roles
+                    (partner_number, role, role_data, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    "3000",
+                    "supplier",
+                    json.dumps(
+                        {
+                            "buyer_reference": "BUCHHALTUNG",
+                            "payment": {},
+                        }
+                    ),
+                    "now",
+                ),
+            )
+
+            MIGRATIONS[4](connection)
+
+            row = connection.execute(
+                """
+                SELECT p.id, p.partner_number, r.partner_id, r.role_data
+                FROM business_partners AS p
+                JOIN business_partner_roles AS r ON r.partner_id = p.id
+                """
+            ).fetchone()
+        finally:
+            connection.close()
+
+        self.assertEqual(row[:3], (1, "3000", 1))
+        self.assertEqual(json.loads(row[3])["buyer_reference"], "3000")
 
     def test_unknown_prefix_aborts_migration_without_data_loss(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -343,6 +394,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                             1: failing_migration,
                             2: MIGRATIONS[2],
                             3: MIGRATIONS[3],
+                            4: MIGRATIONS[4],
                         },
                     )
 

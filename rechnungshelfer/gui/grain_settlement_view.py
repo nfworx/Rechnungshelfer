@@ -305,6 +305,9 @@ class GrainSettlementView(ctk.CTkFrame):
     def _select_supplier(self, seller, payment):
         self.document.seller = deepcopy(seller)
         self.document.payment = deepcopy(payment)
+        self.document.buyer.leitweg_id = (
+            seller.buyer_reference or seller.supplier_number
+        )
         self._render_top_cards()
         self.calculate()
 

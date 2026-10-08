@@ -33,9 +33,9 @@ class BusinessPartnerRepository:
             with self.conn:
                 return self.save_customer(buyer, commit=False)
         number = normalize_partner_number(buyer.customer_number)
-        self._save_partner(number, buyer)
+        partner_id = self._save_partner(number, buyer)
         self._save_role(
-            number,
+            partner_id,
             BusinessPartnerRole.CUSTOMER,
             {field: getattr(buyer, field) for field in CUSTOMER_ROLE_FIELDS},
         )
@@ -53,16 +53,18 @@ class BusinessPartnerRepository:
             with self.conn:
                 return self.save_supplier(seller, payment, commit=False)
         number = normalize_partner_number(seller.supplier_number)
-        self._save_partner(number, seller)
+        partner_id = self._save_partner(number, seller)
+        if not str(seller.buyer_reference or "").strip():
+            seller.buyer_reference = number
         role_data = {
             field: getattr(seller, field) for field in SUPPLIER_ROLE_FIELDS
         }
         role_data["payment"] = dict(payment.__dict__)
-        self._save_role(number, BusinessPartnerRole.SUPPLIER, role_data)
+        self._save_role(partner_id, BusinessPartnerRole.SUPPLIER, role_data)
         seller.supplier_number = number
         return number
 
-    def _save_partner(self, number: str, party) -> None:
+    def _save_partner(self, number: str, party) -> int:
         if not str(getattr(party, "name", "") or "").strip():
             raise ValueError("Name des Geschaeftspartners fehlt.")
 
@@ -85,6 +87,16 @@ class BusinessPartnerRepository:
                 now,
             ),
         )
+        return self._partner_id(number)
+
+    def _partner_id(self, number: str) -> int:
+        row = self.conn.execute(
+            "SELECT id FROM business_partners WHERE partner_number = ?",
+            (number,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Geschäftspartner nicht gefunden: {number}")
+        return int(row[0])
 
     def _merged_common_data(self, number: str, party) -> dict:
         row = self.conn.execute(
@@ -103,21 +115,21 @@ class BusinessPartnerRepository:
 
     def _save_role(
         self,
-        number: str,
+        partner_id: int,
         role: BusinessPartnerRole,
         role_data: dict,
     ) -> None:
         self.conn.execute(
             """
             INSERT INTO business_partner_roles
-                (partner_number, role, role_data, updated_at)
+                (partner_id, role, role_data, updated_at)
             VALUES (?, ?, ?, ?)
-            ON CONFLICT(partner_number, role) DO UPDATE SET
+            ON CONFLICT(partner_id, role) DO UPDATE SET
                 role_data = excluded.role_data,
                 updated_at = excluded.updated_at
             """,
             (
-                number,
+                partner_id,
                 role.value,
                 json.dumps(role_data, ensure_ascii=False),
                 datetime.now(timezone.utc).isoformat(),
@@ -139,18 +151,18 @@ class BusinessPartnerRepository:
     def list_partners(self) -> list[BusinessPartnerProfile]:
         rows = self.conn.execute(
             """
-            SELECT partner_number, common_data
+            SELECT id, partner_number, common_data
             FROM business_partners
             ORDER BY name COLLATE NOCASE, partner_number
             """
         ).fetchall()
-        return [self._profile_from_row(number, common_json) for number, common_json in rows]
+        return [self._profile_from_row(*row) for row in rows]
 
     def load_partner(self, partner_number: str) -> BusinessPartnerProfile | None:
         number = normalize_partner_number(partner_number)
         row = self.conn.execute(
             """
-            SELECT partner_number, common_data
+            SELECT id, partner_number, common_data
             FROM business_partners
             WHERE partner_number = ?
             """,
@@ -158,10 +170,11 @@ class BusinessPartnerRepository:
         ).fetchone()
         if row is None:
             return None
-        return self._profile_from_row(row[0], row[1])
+        return self._profile_from_row(*row)
 
     def _profile_from_row(
         self,
+        partner_id: int,
         number: str,
         common_json: str,
     ) -> BusinessPartnerProfile:
@@ -170,9 +183,9 @@ class BusinessPartnerRepository:
             """
             SELECT role, role_data
             FROM business_partner_roles
-            WHERE partner_number = ?
+            WHERE partner_id = ?
             """,
-            (number,),
+            (partner_id,),
         ).fetchall()
         role_payloads = {role: json.loads(payload) for role, payload in role_rows}
         roles = frozenset(BusinessPartnerRole(role) for role in role_payloads)
@@ -203,6 +216,7 @@ class BusinessPartnerRepository:
             seller=Seller(**_constructor_values(Seller, supplier_values)),
             payment=Payment(**_constructor_values(Payment, payment_values)),
             roles=roles,
+            partner_id=partner_id,
         )
 
     def save_partner(
@@ -230,31 +244,73 @@ class BusinessPartnerRepository:
         }
         common_data["name"] = name
         now = datetime.now(timezone.utc).isoformat()
-        self.conn.execute(
-            """
-            INSERT INTO business_partners
-                (partner_number, name, common_data, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(partner_number) DO UPDATE SET
-                name = excluded.name,
-                common_data = excluded.common_data,
-                updated_at = excluded.updated_at
-            """,
-            (number, name, json.dumps(common_data, ensure_ascii=False), now),
-        )
+        previous_number = None
+        if profile.partner_id is not None:
+            previous_row = self.conn.execute(
+                "SELECT partner_number FROM business_partners WHERE id = ?",
+                (profile.partner_id,),
+            ).fetchone()
+            if previous_row is None:
+                raise KeyError(
+                    f"Geschäftspartner nicht gefunden: {profile.partner_id}"
+                )
+            previous_number = previous_row[0]
+        try:
+            if profile.partner_id is None:
+                cursor = self.conn.execute(
+                    """
+                    INSERT INTO business_partners
+                        (partner_number, name, common_data, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        number,
+                        name,
+                        json.dumps(common_data, ensure_ascii=False),
+                        now,
+                    ),
+                )
+                profile.partner_id = int(cursor.lastrowid)
+            else:
+                updated = self.conn.execute(
+                    """
+                    UPDATE business_partners SET
+                        partner_number = ?, name = ?, common_data = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        number,
+                        name,
+                        json.dumps(common_data, ensure_ascii=False),
+                        now,
+                        profile.partner_id,
+                    ),
+                ).rowcount
+                if not updated:
+                    raise KeyError(
+                        f"Geschäftspartner nicht gefunden: {profile.partner_id}"
+                    )
+        except sqlite3.IntegrityError as exc:
+            if "partner_number" in str(exc):
+                raise ValueError(
+                    f"Geschäftspartnernummer {number} ist bereits vergeben."
+                ) from exc
+            raise
+
+        partner_id = profile.partner_id
 
         selected_roles = {role.value for role in profile.roles}
         placeholders = ", ".join("?" for _ in selected_roles)
         self.conn.execute(
             f"""
             DELETE FROM business_partner_roles
-            WHERE partner_number = ? AND role NOT IN ({placeholders})
+            WHERE partner_id = ? AND role NOT IN ({placeholders})
             """,
-            (number, *sorted(selected_roles)),
+            (partner_id, *sorted(selected_roles)),
         )
         if BusinessPartnerRole.CUSTOMER in profile.roles:
             self._save_role(
-                number,
+                partner_id,
                 BusinessPartnerRole.CUSTOMER,
                 {
                     field: getattr(profile.buyer, field)
@@ -262,13 +318,16 @@ class BusinessPartnerRepository:
                 },
             )
         if BusinessPartnerRole.SUPPLIER in profile.roles:
+            buyer_reference = str(profile.seller.buyer_reference or "").strip()
+            if not buyer_reference or buyer_reference == previous_number:
+                profile.seller.buyer_reference = number
             supplier_role_data = {
                 field: getattr(profile.seller, field)
                 for field in SUPPLIER_ROLE_FIELDS
             }
             supplier_role_data["payment"] = dict(profile.payment.__dict__)
             self._save_role(
-                number,
+                partner_id,
                 BusinessPartnerRole.SUPPLIER,
                 supplier_role_data,
             )
@@ -277,10 +336,6 @@ class BusinessPartnerRepository:
     def delete_partner(self, partner_number: str) -> None:
         number = normalize_partner_number(partner_number)
         with self.conn:
-            self.conn.execute(
-                "DELETE FROM business_partner_roles WHERE partner_number = ?",
-                (number,),
-            )
             deleted = self.conn.execute(
                 "DELETE FROM business_partners WHERE partner_number = ?",
                 (number,),
@@ -294,7 +349,7 @@ class BusinessPartnerRepository:
             SELECT p.partner_number, p.common_data, r.role_data
             FROM business_partners AS p
             JOIN business_partner_roles AS r
-              ON r.partner_number = p.partner_number
+              ON r.partner_id = p.id
             WHERE r.role = ?
             ORDER BY p.name COLLATE NOCASE, p.partner_number
             """,
@@ -378,9 +433,10 @@ class BusinessPartnerRepository:
     def _delete_role(self, partner_number: str, role: BusinessPartnerRole) -> None:
         number = normalize_partner_number(partner_number)
         with self.conn:
+            partner_id = self._partner_id(number)
             self.conn.execute(
-                "DELETE FROM business_partner_roles WHERE partner_number = ? AND role = ?",
-                (number, role.value),
+                "DELETE FROM business_partner_roles WHERE partner_id = ? AND role = ?",
+                (partner_id, role.value),
             )
             self.conn.execute(
                 """
@@ -388,10 +444,10 @@ class BusinessPartnerRepository:
                 WHERE partner_number = ?
                   AND NOT EXISTS (
                       SELECT 1 FROM business_partner_roles
-                      WHERE partner_number = ?
+                      WHERE partner_id = ?
                   )
                 """,
-                (number, number),
+                (number, partner_id),
             )
 
     def close(self) -> None:

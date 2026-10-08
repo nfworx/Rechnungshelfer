@@ -27,7 +27,7 @@ FIELD_LABELS = {
     "buyer.street": "Straße des Kunden",
     "buyer.postcode": "PLZ des Kunden",
     "buyer.city": "Ort des Kunden",
-    "buyer.leitweg_id": "Leitweg-ID",
+    "buyer.leitweg_id": "Käuferreferenz / Leitweg-ID (BT-10)",
     "delivery.name": "Leistungsempfänger",
     "delivery.street": "Straße des Leistungsempfängers",
     "delivery.postcode": "PLZ des Leistungsempfängers",

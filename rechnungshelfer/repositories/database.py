@@ -38,6 +38,7 @@ def open_database(db_path: Path | str | None = None) -> sqlite3.Connection:
     try:
         connection.execute("PRAGMA busy_timeout=10000")
         migrate_database(connection)
+        connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA journal_mode=WAL")
     except Exception:
         connection.close()

@@ -103,7 +103,7 @@ def _pdf_invoice_details(invoice: 'Invoice'):
     if not invoice.is_self_billed and buyer.customer_number:
         details.append(("Kundennummer:", buyer.customer_number))
     if not invoice.is_self_billed and buyer.leitweg_id:
-        details.append(("Leitweg-ID:", buyer.leitweg_id))
+        details.append(("Käuferreferenz / Leitweg-ID:", buyer.leitweg_id))
     if invoice.is_self_billed:
         if seller.vat:
             details.append(("USt-ID Lieferant:", seller.vat))

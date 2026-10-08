@@ -267,7 +267,7 @@ class InvoiceGUI:
                 field_entries=self.field_entries,
                 exclude_fields=["country", "phone", "vat", "tax_number", "registry_number"],
                 label_overrides={
-                    "leitweg_id": "Leitweg-ID",
+                    "leitweg_id": "Käuferreferenz / Leitweg-ID (BT-10)",
                     "customer_number": "Geschäftspartnernummer (Kunde)",
                 },
                 controller=self.controller,
@@ -572,6 +572,9 @@ class InvoiceGUI:
     def _on_supplier_selected(self, seller, payment):
         self.invoice.seller = deepcopy(seller)
         self.invoice.payment = deepcopy(payment)
+        self.invoice.buyer.leitweg_id = (
+            seller.buyer_reference or seller.supplier_number
+        )
         self.invoice.seller.required_fields = [
             "name", "street", "postcode", "city", "country", "email"
         ]

@@ -36,6 +36,7 @@ class BusinessPartnerDialogTests(unittest.TestCase):
         saved_profile = dialog.on_saved.call_args.args[0]
         self.assertIsNot(saved_profile, profile)
         self.assertEqual(saved_profile.partner_number, "0042")
+        self.assertEqual(saved_profile.seller.buyer_reference, "0042")
         self.assertEqual(
             saved_profile.roles,
             frozenset(
