@@ -18,6 +18,7 @@ from .invoice_load_dialog import InvoiceLoadDialog
 from .customer_load_dialog import CustomerLoadDialog
 from .supplier_load_dialog import SupplierLoadDialog
 from .test_document_dialog import TestDocumentDialog
+from .pdf_import_dialog import PdfImportDialog
 from .update_dialog import UpdateDialog
 from .buffered_form import BufferedFormHost
 from .export_workflow import ExportWorkflow
@@ -47,6 +48,11 @@ class InvoiceGUI:
         self.save_button = None
         self.load_button = None
         self.update_dialog = UpdateDialog(self.root, on_update_started=self._shutdown_for_update)
+        self.pdf_import_dialog = PdfImportDialog(
+            self.root,
+            self.controller,
+            on_invoice_loaded=self._on_invoice_loaded,
+        )
         self.export_workflow = ExportWorkflow(
             self.root,
             self.controller,
@@ -125,23 +131,29 @@ class InvoiceGUI:
             padx=(0, 10),
         )
 
+        button(toolbar, "PDF einlesen", self.load_pdf).grid(
+            row=0,
+            column=1,
+            padx=(0, 10),
+        )
+
         self.party_list_button = button(toolbar, "Kundenliste", self.show_party_list)
         self.party_list_button.grid(
             row=0,
-            column=1,
+            column=2,
             padx=(0, 10),
         )
 
         self.master_data_button = button(toolbar, "Verkäufer", self.show_seller)
         self.master_data_button.grid(
             row=0,
-            column=2,
+            column=3,
             padx=(0, 10),
         )
 
         button(toolbar, "Testbeleg laden", self.load_test_document).grid(
             row=0,
-            column=3,
+            column=4,
             padx=(0, 10),
         )
 
@@ -151,7 +163,7 @@ class InvoiceGUI:
             command=self._on_document_type_selected,
             width=285,
         )
-        self.document_type_menu.grid(row=0, column=4)
+        self.document_type_menu.grid(row=0, column=5)
 
     def _build_action_bar(self):
         action_bar = ctk.CTkFrame(self.body, fg_color=APP_BG, corner_radius=0)
@@ -482,6 +494,15 @@ class InvoiceGUI:
             self.show_form()
         except (ValueError, RuntimeError) as e:
             messagebox.showerror("Fehler", str(e))
+
+    def load_pdf(self):
+        filepath = filedialog.askopenfilename(
+            parent=self.root,
+            title="PDF einlesen",
+            filetypes=[("PDF-Dateien", "*.pdf")],
+        )
+        if filepath:
+            self.pdf_import_dialog.open(filepath)
 
     def load_test_document(self):
         dialog = TestDocumentDialog(

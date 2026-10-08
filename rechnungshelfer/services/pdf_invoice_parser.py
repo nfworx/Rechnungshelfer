@@ -30,9 +30,13 @@ class PdfInvoiceDraft:
 
 
 @dataclass(frozen=True)
-class PdfInvoiceImport:
+class PdfInvoiceAnalysis:
     extraction: PdfImportResult
     draft: PdfInvoiceDraft
+
+
+@dataclass(frozen=True)
+class PdfInvoiceImport(PdfInvoiceAnalysis):
     invoice: Invoice
 
 
@@ -273,6 +277,7 @@ class PdfInvoiceParser:
 
 __all__ = [
     "DetectedInvoiceField",
+    "PdfInvoiceAnalysis",
     "PdfInvoiceDraft",
     "PdfInvoiceImport",
     "PdfInvoiceParser",

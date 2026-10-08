@@ -14,6 +14,7 @@ from rechnungshelfer.services.input_validation_service import (
 )
 from rechnungshelfer.services.pdf_import_service import PdfImportService
 from rechnungshelfer.services.pdf_invoice_parser import (
+    PdfInvoiceAnalysis,
     PdfInvoiceImport,
     PdfInvoiceParser,
 )
@@ -142,13 +143,30 @@ class InvoiceApplicationService:
     def load_from_pdf(self, filepath, *, password=None) -> PdfInvoiceImport:
         """Extrahiert einen Beleg in den Arbeitsspeicher, ohne ihn zu speichern."""
 
+        analysis = self.analyze_pdf(filepath, password=password)
+        return self.create_invoice_from_pdf_analysis(analysis)
+
+    def analyze_pdf(self, filepath, *, password=None) -> PdfInvoiceAnalysis:
+        """Fuehrt die dateibasierte Analyse ohne Datenbankzugriff aus."""
+
         extraction = self._pdf_import.extract(filepath, password=password)
         draft = self._pdf_parser.parse(extraction)
-        invoice = self.create_empty_invoice(draft.document_type)
-        self._pdf_parser.apply(draft, invoice)
-        return PdfInvoiceImport(
+        return PdfInvoiceAnalysis(
             extraction=extraction,
             draft=draft,
+        )
+
+    def create_invoice_from_pdf_analysis(
+        self,
+        analysis: PdfInvoiceAnalysis,
+    ) -> PdfInvoiceImport:
+        """Erzeugt den Formularbeleg im aufrufenden (GUI-)Thread."""
+
+        invoice = self.create_empty_invoice(analysis.draft.document_type)
+        self._pdf_parser.apply(analysis.draft, invoice)
+        return PdfInvoiceImport(
+            extraction=analysis.extraction,
+            draft=analysis.draft,
             invoice=invoice,
         )
 

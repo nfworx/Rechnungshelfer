@@ -110,6 +110,15 @@ class InvoiceController:
             password=password,
         )
 
+    def analyze_pdf(self, filepath, *, password=None):
+        return self._get_invoice_service().analyze_pdf(
+            filepath,
+            password=password,
+        )
+
+    def create_invoice_from_pdf_analysis(self, analysis):
+        return self._get_invoice_service().create_invoice_from_pdf_analysis(analysis)
+
     def copy_invoice(self, invoice: Invoice) -> Invoice:
         return self._get_invoice_service().copy_invoice(invoice)
 

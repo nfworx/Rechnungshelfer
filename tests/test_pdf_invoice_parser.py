@@ -99,11 +99,7 @@ Lieferschein: LS-88
 
 
 class PdfInvoiceApplicationServiceTests(unittest.TestCase):
-    def test_pdf_import_creates_in_memory_invoice_without_repository_writes(self):
-        extraction = extraction_with(
-            "Rechnungsnummer: PDF-101\nRechnungsdatum: 08.10.2026\n"
-            "Kundenname: Importkunde GmbH"
-        )
+    def _service(self, extraction):
         pdf_import = Mock()
         pdf_import.extract.return_value = extraction
         database = Mock()
@@ -124,6 +120,34 @@ class PdfInvoiceApplicationServiceTests(unittest.TestCase):
             invoice_factory=InvoiceFactory(),
             pdf_import_service=pdf_import,
             pdf_invoice_parser=PdfInvoiceParser(),
+        )
+        return service, database, invoices, customers, suppliers, master_data
+
+    def test_background_analysis_does_not_access_repositories_or_master_data(self):
+        extraction = extraction_with(
+            "Gutschrift\nGutschriftsnummer: GS-2026-1\nLieferant: Beispielhof"
+        )
+        service, database, invoices, customers, suppliers, master_data = self._service(
+            extraction
+        )
+
+        analysis = service.analyze_pdf("gutschrift.pdf")
+
+        self.assertEqual(analysis.draft.document_type, DocumentType.SELF_BILLED_INVOICE)
+        master_data.load_into.assert_not_called()
+        suppliers.next_supplier_number.assert_not_called()
+        invoices.save.assert_not_called()
+        customers.save.assert_not_called()
+        suppliers.save.assert_not_called()
+        database.transaction.assert_not_called()
+
+    def test_pdf_import_creates_in_memory_invoice_without_repository_writes(self):
+        extraction = extraction_with(
+            "Rechnungsnummer: PDF-101\nRechnungsdatum: 08.10.2026\n"
+            "Kundenname: Importkunde GmbH"
+        )
+        service, database, invoices, customers, suppliers, _master_data = self._service(
+            extraction
         )
 
         imported = service.load_from_pdf("rechnung.pdf")
