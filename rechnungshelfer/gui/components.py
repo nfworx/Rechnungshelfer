@@ -131,6 +131,20 @@ def small_button(parent, text, command):
     )
 
 
+def form_entry(parent, value="", width=140):
+    """Einheitliches kompaktes Eingabefeld fuer Formulare und Dialoge."""
+
+    widget = ctk.CTkEntry(
+        parent,
+        width=width,
+        height=28,
+        font=FONT_SMALL,
+        fg_color=ENTRY_BG,
+    )
+    widget.insert(0, str(value))
+    return widget
+
+
 def clear_frame(frame):
     for widget in frame.winfo_children():
         widget.destroy()
@@ -162,7 +176,11 @@ def style_entry(entry, state="normal", required=False, filled=True, focused=Fals
         entry.configure(
             fg_color=ENTRY_REQUIRED_BG if required and not filled else ENTRY_DISABLED_BG,
             text_color=ENTRY_DISABLED_TEXT,
-            border_color=ENTRY_REQUIRED_BORDER if required and not filled else ENTRY_DISABLED_BORDER,
+            border_color=(
+                ENTRY_REQUIRED_BORDER
+                if required and not filled
+                else ENTRY_DISABLED_BORDER
+            ),
             border_width=1,
         )
         return

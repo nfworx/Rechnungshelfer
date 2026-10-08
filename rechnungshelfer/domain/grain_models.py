@@ -368,6 +368,34 @@ class QuantityDeduction:
 
 
 @dataclass(frozen=True)
+class MonetaryAdjustment:
+    """Nachvollziehbare Geldwirkung einer Preis- oder Kostenregel."""
+
+    rule_code: str
+    label: str
+    phase: RulePhase
+    direction: RuleDirection
+    amount_delta: Decimal
+    resulting_amount: Decimal
+    price_delta_per_tonne: Decimal | None = None
+    resulting_price_per_tonne: Decimal | None = None
+    measurement_code: str | None = None
+    measurement_value: Decimal | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "amount_delta",
+            "resulting_amount",
+            "price_delta_per_tonne",
+            "resulting_price_per_tonne",
+            "measurement_value",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, decimal_value(value))
+
+
+@dataclass(frozen=True)
 class SettlementResult:
     delivery_id: str
     scheme_version_id: str
@@ -379,4 +407,34 @@ class SettlementResult:
     status: SettlementStatus
     steps: tuple[CalculationStep, ...]
     quantity_deductions: tuple[QuantityDeduction, ...] = ()
+    settlement_price_per_tonne: Decimal = ZERO
+    monetary_adjustments: tuple[MonetaryAdjustment, ...] = ()
     warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class SettlementBatchResult:
+    """Zusammengefasstes Ergebnis mehrerer Lieferungen einer Abrechnung."""
+
+    supplier_number: str
+    scheme_version_id: str
+    delivery_results: tuple[SettlementResult, ...]
+    gross_quantity_kg: Decimal
+    deducted_quantity_kg: Decimal
+    settlement_quantity_kg: Decimal
+    base_amount: Decimal
+    net_amount: Decimal
+    deducted_amount: Decimal
+    status: SettlementStatus
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "delivery_results", tuple(self.delivery_results))
+        for name in (
+            "gross_quantity_kg",
+            "deducted_quantity_kg",
+            "settlement_quantity_kg",
+            "base_amount",
+            "net_amount",
+            "deducted_amount",
+        ):
+            object.__setattr__(self, name, decimal_value(getattr(self, name)))

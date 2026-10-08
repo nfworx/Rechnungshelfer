@@ -5,6 +5,7 @@ from decimal import Decimal
 from rechnungshelfer.domain.grain_calculation import (
     calculate_delivery_baseline,
     calculate_delivery_quantities,
+    calculate_settlement_quantities,
 )
 from rechnungshelfer.domain.grain_models import (
     GrainDelivery,
@@ -90,6 +91,51 @@ class GrainCalculationContractTests(unittest.TestCase):
         self.assertEqual(result.base_price_per_tonne, Decimal("212.35"))
         self.assertEqual(result.net_amount, Decimal("2123.50"))
 
+    def test_multiple_deliveries_are_aggregated(self):
+        result = calculate_settlement_quantities(
+            (
+                self._delivery(),
+                self._delivery(
+                    id="delivery-2",
+                    ticket_number="WS-4712",
+                    gross_quantity_kg="5000",
+                ),
+            ),
+            self._scheme(),
+        )
+
+        self.assertEqual(len(result.delivery_results), 2)
+        self.assertEqual(result.gross_quantity_kg, Decimal("15000.000"))
+        self.assertEqual(result.settlement_quantity_kg, Decimal("15000.000"))
+        self.assertEqual(result.deducted_quantity_kg, Decimal("0.000"))
+        self.assertEqual(result.base_amount, Decimal("3000.00"))
+
+    def test_batch_requires_deliveries_from_one_supplier(self):
+        with self.assertRaisesRegex(GrainValidationError, "Lieferanten"):
+            calculate_settlement_quantities(
+                (
+                    self._delivery(),
+                    self._delivery(
+                        id="delivery-2",
+                        ticket_number="WS-4712",
+                        supplier_number="L0002",
+                    ),
+                ),
+                self._scheme(),
+            )
+
+    def test_batch_rejects_empty_or_duplicate_tickets(self):
+        with self.assertRaisesRegex(GrainValidationError, "mindestens"):
+            calculate_settlement_quantities((), self._scheme())
+        with self.assertRaisesRegex(GrainValidationError, "Wiegescheinnummern"):
+            calculate_settlement_quantities(
+                (
+                    self._delivery(),
+                    self._delivery(id="delivery-2"),
+                ),
+                self._scheme(),
+            )
+
     def test_missing_required_measurement_is_rejected(self):
         with self.assertRaisesRegex(GrainValidationError, "Feuchtigkeit"):
             calculate_delivery_baseline(
@@ -141,6 +187,96 @@ class GrainCalculationContractTests(unittest.TestCase):
         )
         with self.assertRaises(TypeError):
             scheme.rules[0].parameters["amount_per_tonne"] = "3.00"
+
+    def test_absolute_price_deduction_changes_money_not_quantity(self):
+        rule = SettlementRule(
+            code="drying",
+            label="Trocknung",
+            phase=RulePhase.PRICE_ADJUSTMENT,
+            kind=RuleKind.ABSOLUTE_PER_TONNE,
+            parameters={"amount_per_tonne": "10"},
+        )
+
+        result = calculate_delivery_quantities(
+            self._delivery(),
+            self._scheme(rules=(rule,)),
+        )
+
+        self.assertEqual(result.settlement_quantity_kg, Decimal("10000.000"))
+        self.assertEqual(result.base_amount, Decimal("2000.00"))
+        self.assertEqual(result.settlement_price_per_tonne, Decimal("190.00"))
+        self.assertEqual(result.net_amount, Decimal("1900.00"))
+        self.assertEqual(
+            result.monetary_adjustments[0].amount_delta,
+            Decimal("-100.00"),
+        )
+
+    def test_tiered_drying_cost_uses_measurement_for_price_deduction(self):
+        rule = SettlementRule(
+            code="drying-tier",
+            label="Trocknung nach Feuchte",
+            phase=RulePhase.PRICE_ADJUSTMENT,
+            kind=RuleKind.TIERED,
+            feature_code="moisture",
+            parameters={"result_kind": "absolute_per_tonne"},
+            tiers=(
+                RuleTier(value="0", upper_bound="14.5"),
+                RuleTier(value="5", lower_bound="14.5"),
+            ),
+        )
+
+        result = calculate_delivery_quantities(
+            self._delivery(),
+            self._scheme(rules=(rule,)),
+        )
+
+        self.assertEqual(result.settlement_price_per_tonne, Decimal("195.00"))
+        self.assertEqual(result.net_amount, Decimal("1950.00"))
+
+    def test_drying_cost_can_charge_each_unit_above_basis(self):
+        rule = SettlementRule(
+            code="drying-excess",
+            label="Trocknung über Basisfeuchte",
+            phase=RulePhase.PRICE_ADJUSTMENT,
+            kind=RuleKind.EXCESS_OVER_BASIS,
+            feature_code="moisture",
+            parameters={"basis_value": "14", "amount_per_unit": "2"},
+        )
+
+        result = calculate_delivery_quantities(
+            self._delivery(),
+            self._scheme(rules=(rule,)),
+        )
+
+        self.assertEqual(result.settlement_price_per_tonne, Decimal("199.00"))
+        self.assertEqual(result.net_amount, Decimal("1990.00"))
+
+    def test_percentage_surcharge_and_fixed_cost_follow_price_rules(self):
+        surcharge = SettlementRule(
+            code="premium",
+            label="Qualitätszuschlag",
+            phase=RulePhase.PRICE_ADJUSTMENT,
+            kind=RuleKind.PERCENTAGE_OF_PRICE,
+            direction=RuleDirection.SURCHARGE,
+            price_reference=PriceReference.BASE_PRICE,
+            parameters={"percentage": "10"},
+        )
+        cost = SettlementRule(
+            code="handling",
+            label="Bearbeitungskosten",
+            phase=RulePhase.COST,
+            kind=RuleKind.FIXED_AMOUNT,
+            parameters={"amount": "25"},
+        )
+
+        result = calculate_delivery_quantities(
+            self._delivery(),
+            self._scheme(rules=(surcharge, cost)),
+        )
+
+        self.assertEqual(result.settlement_price_per_tonne, Decimal("220.00"))
+        self.assertEqual(result.net_amount, Decimal("2175.00"))
+        self.assertEqual(len(result.monetary_adjustments), 2)
 
     def test_scheme_rejects_duplicate_feature_and_rule_codes(self):
         duplicate_features = (

@@ -2,14 +2,30 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from .components import button
-from .styles import APP_BG, BORDER, FONT_NORMAL, FONT_SECTION, FONT_SMALL, PRIMARY, TEXT, TEXT_MUTED
+from .styles import (
+    APP_BG,
+    BORDER,
+    FONT_NORMAL,
+    FONT_SECTION,
+    FONT_SMALL,
+    PRIMARY,
+    TEXT,
+    TEXT_MUTED,
+)
 
 
 class SupplierLoadDialog:
-    def __init__(self, parent, controller, on_supplier_selected):
+    def __init__(
+        self,
+        parent,
+        controller,
+        on_supplier_selected,
+        on_create_supplier=None,
+    ):
         self.parent = parent
         self.controller = controller
         self.on_supplier_selected = on_supplier_selected
+        self.on_create_supplier = on_create_supplier
         self.window = None
         self.search_entry = None
         self.list_frame = None
@@ -47,9 +63,28 @@ class SupplierLoadDialog:
 
         footer = ctk.CTkFrame(self.window, fg_color="transparent")
         footer.grid(row=3, column=0, sticky="e", padx=18, pady=(0, 18))
-        button(footer, "Lieferant übernehmen", self.load_selected).grid(row=0, column=0, padx=(0, 10))
-        button(footer, "Löschen", self.delete_selected).grid(row=0, column=1, padx=(0, 10))
-        button(footer, "Abbrechen", self.close).grid(row=0, column=2)
+        column = 0
+        if self.on_create_supplier:
+            button(footer, "Neuer Lieferant", self.create_supplier).grid(
+                row=0,
+                column=column,
+                padx=(0, 10),
+            )
+            column += 1
+        button(footer, "Lieferant übernehmen", self.load_selected).grid(
+            row=0,
+            column=column,
+            padx=(0, 10),
+        )
+        button(footer, "Löschen", self.delete_selected).grid(
+            row=0,
+            column=column + 1,
+            padx=(0, 10),
+        )
+        button(footer, "Abbrechen", self.close).grid(
+            row=0,
+            column=column + 2,
+        )
         self.render_list()
 
     def _schedule_render(self, event=None):
@@ -101,7 +136,9 @@ class SupplierLoadDialog:
         texts = [
             f"{seller.supplier_number or '-'} | {seller.name}",
             f"{seller.street}, {seller.postcode} {seller.city}",
-            f"Steuernummer: {seller.tax_number or '-'}    USt-ID: {seller.vat or '-'}    IBAN: {payment.iban or '-'}",
+            f"Steuernummer: {seller.tax_number or '-'}    "
+            f"USt-ID: {seller.vat or '-'}    "
+            f"IBAN: {payment.iban or '-'}",
         ]
         for row, text in enumerate(texts):
             label = ctk.CTkLabel(
@@ -112,9 +149,18 @@ class SupplierLoadDialog:
                 anchor="w",
             )
             label.grid(row=row, column=0, sticky="ew", padx=14, pady=3)
-            label.bind("<Button-1>", lambda event, value=supplier, widget=frame: self.select(value, widget))
+            label.bind(
+                "<Button-1>",
+                lambda event, value=supplier, widget=frame: self.select(
+                    value,
+                    widget,
+                ),
+            )
             label.bind("<Double-Button-1>", lambda event, value=supplier: self.load(value))
-        frame.bind("<Button-1>", lambda event, value=supplier, widget=frame: self.select(value, widget))
+        frame.bind(
+            "<Button-1>",
+            lambda event, value=supplier, widget=frame: self.select(value, widget),
+        )
 
     def select(self, supplier, row):
         if self.selected_row and self.selected_row.winfo_exists():
@@ -132,6 +178,12 @@ class SupplierLoadDialog:
     def load(self, supplier):
         self.on_supplier_selected(*supplier)
         self.close()
+
+    def create_supplier(self):
+        callback = self.on_create_supplier
+        self.close()
+        if callback:
+            callback()
 
     def delete_selected(self):
         if not self.selected:

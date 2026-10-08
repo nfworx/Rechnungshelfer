@@ -1,7 +1,7 @@
 # rechnungshelfer/gui/main_window.py
 
 import customtkinter as ctk
-from tkinter import filedialog, messagebox
+from tkinter import Menu, StringVar, filedialog, messagebox
 from copy import deepcopy
 import queue
 import sys
@@ -9,7 +9,7 @@ import threading
 
 from app_info import APP_NAME, APP_VERSION
 from .styles import *
-from .components import button, clear_frame
+from .components import clear_frame
 from .party_card import PartyCard
 from .item_table import ItemTable
 from .totals_card import TotalsCard
@@ -17,11 +17,13 @@ from .show_seller_dialog import SellerDialog
 from .invoice_load_dialog import InvoiceLoadDialog
 from .customer_load_dialog import CustomerLoadDialog
 from .supplier_load_dialog import SupplierLoadDialog
+from .supplier_edit_dialog import SupplierEditDialog
 from .test_document_dialog import TestDocumentDialog
 from .pdf_import_dialog import PdfImportDialog
 from .update_dialog import UpdateDialog
 from .buffered_form import BufferedFormHost
 from .export_workflow import ExportWorkflow
+from .grain_settlement_view import GrainSettlementView
 from rechnungshelfer.services.update_service import check_for_application_update
 from rechnungshelfer.application.errors import CustomerDuplicateError
 from rechnungshelfer.domain.models import DocumentType
@@ -42,11 +44,7 @@ class InvoiceGUI:
 
         self.item_table = None
         self.totals_card = None
-        self.document_type_menu = None
-        self.party_list_button = None
-        self.master_data_button = None
-        self.save_button = None
-        self.load_button = None
+        self.active_workspace = "invoice"
         self.update_dialog = UpdateDialog(self.root, on_update_started=self._shutdown_for_update)
         self.pdf_import_dialog = PdfImportDialog(
             self.root,
@@ -105,100 +103,102 @@ class InvoiceGUI:
     # ============================
     def _build_layout(self):
         self.root.grid_columnconfigure(0, weight=1)
-        self.root.grid_rowconfigure(1, weight=1)
+        self.root.grid_rowconfigure(0, weight=1)
 
+        self._build_menu_bar()
         self._build_body()
 
     def _build_body(self):
         self.body = ctk.CTkFrame(self.root, fg_color=APP_BG, corner_radius=0)
-        self.body.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 10))
+        self.body.grid(row=0, column=0, sticky="nsew", padx=14, pady=10)
 
         self.body.grid_columnconfigure(0, weight=1)
-        self.body.grid_columnconfigure(1, weight=0)
-        self.body.grid_rowconfigure(1, weight=1)
+        self.body.grid_rowconfigure(0, weight=1)
 
-        self._build_top_toolbar()
-        self._build_action_bar()
         self._build_content_area()
 
-    def _build_top_toolbar(self):
-        toolbar = ctk.CTkFrame(self.body, fg_color=APP_BG, corner_radius=0)
-        toolbar.grid(row=0, column=0, sticky="w", pady=(14, 14))
+    def _build_menu_bar(self):
+        self.menu_bar = Menu(self.root)
 
-        button(toolbar, "XML einlesen", self.load_xml).grid(
-            row=0,
-            column=0,
-            padx=(0, 10),
+        self.file_menu = Menu(self.menu_bar, tearoff=False)
+        self.file_menu.add_command(label="Beleg laden", command=self.load_invoice_from_list)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="XML einlesen", command=self.load_xml)
+        self.file_menu.add_command(label="PDF einlesen", command=self.load_pdf)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Speichern", command=self.save_invoice)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Beenden", command=self.root.destroy)
+        self.menu_bar.add_cascade(label="Datei", menu=self.file_menu)
+
+        self.document_menu = Menu(self.menu_bar, tearoff=False)
+        self.workspace_variable = StringVar(
+            master=self.root,
+            value=self.active_workspace,
         )
-
-        button(toolbar, "PDF einlesen", self.load_pdf).grid(
-            row=0,
-            column=1,
-            padx=(0, 10),
+        self.document_menu.add_radiobutton(
+            label="Rechnung",
+            value="invoice",
+            variable=self.workspace_variable,
+            command=self._open_invoice_workspace,
         )
-
-        self.party_list_button = button(toolbar, "Kundenliste", self.show_party_list)
-        self.party_list_button.grid(
-            row=0,
-            column=2,
-            padx=(0, 10),
+        self.document_menu.add_radiobutton(
+            label="Gutschrift",
+            value="self_billed",
+            variable=self.workspace_variable,
+            command=self._open_self_billed_workspace,
         )
-
-        self.master_data_button = button(toolbar, "Verkäufer", self.show_seller)
-        self.master_data_button.grid(
-            row=0,
-            column=3,
-            padx=(0, 10),
+        self.document_menu.add_radiobutton(
+            label="Getreideabrechnung",
+            value="grain",
+            variable=self.workspace_variable,
+            command=self._open_grain_workspace,
         )
-
-        button(toolbar, "Testbeleg laden", self.load_test_document).grid(
-            row=0,
-            column=4,
-            padx=(0, 10),
+        self.document_menu.add_separator()
+        self.document_menu.add_command(
+            label="Formular leeren",
+            command=self._clear_current_form,
         )
+        self.menu_bar.add_cascade(label="Beleg", menu=self.document_menu)
 
-        self.document_type_menu = ctk.CTkOptionMenu(
-            toolbar,
-            values=[item.label for item in DocumentType],
-            command=self._on_document_type_selected,
-            width=285,
+        self.master_data_menu = Menu(self.menu_bar, tearoff=False)
+        self.master_data_menu.add_command(
+            label="Kundenliste",
+            command=self._show_current_party_list,
         )
-        self.document_type_menu.grid(row=0, column=5)
-
-    def _build_action_bar(self):
-        action_bar = ctk.CTkFrame(self.body, fg_color=APP_BG, corner_radius=0)
-        action_bar.grid(row=0, column=1, sticky="e", pady=(14, 14))
-
-        self.save_button = button(action_bar, "Rechnung speichern", self.save_invoice)
-        self.save_button.grid(
-            row=0,
-            column=0,
-            padx=(0, 10),
+        self.master_data_menu.add_command(
+            label="Neuer Lieferant",
+            command=self._create_supplier_from_menu,
         )
-
-        self.load_button = button(action_bar, "Rechnung laden", self.load_invoice_from_list)
-        self.load_button.grid(
-            row=0,
-            column=1,
-            padx=(0, 10),
+        self.master_data_menu.add_separator()
+        self.master_data_menu.add_command(
+            label="Eigener Betrieb",
+            command=self.show_seller,
         )
+        self.menu_bar.add_cascade(label="Stammdaten", menu=self.master_data_menu)
 
-        button(action_bar, "Formular löschen", self.clear_form).grid(
-            row=0,
-            column=2,
-            padx=(0, 10),
-        )
+        tools_menu = Menu(self.menu_bar, tearoff=False)
+        tools_menu.add_command(label="Testbeleg laden", command=self.load_test_document)
+        tools_menu.add_command(label="Updates", command=self.show_updates)
+        self.menu_bar.add_cascade(label="Werkzeuge", menu=tools_menu)
 
-        button(action_bar, "Updates", self.show_updates).grid(row=0, column=3)
+        self.root.configure(menu=self.menu_bar)
+        self._refresh_application_menu()
 
     def _build_content_area(self):
         self.form_host = BufferedFormHost(self.body)
         self.form_host.grid(
-            row=1,
+            row=0,
             column=0,
-            columnspan=2,
             sticky="nsew",
         )
+        self.grain_view = GrainSettlementView(self.body, self.controller)
+        self.grain_view.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+        )
+        self.grain_view.grid_remove()
 
     def _use_form_surface(self, surface):
         self.top_grid = surface.top_grid
@@ -215,6 +215,7 @@ class InvoiceGUI:
     # Render
     # ============================
     def show_form(self):
+        self._activate_invoice_workspace()
         old_surface = self.form_host.active_surface
         old_field_entries = self.field_entries
         old_item_table = self.item_table
@@ -363,40 +364,80 @@ class InvoiceGUI:
     def _on_field_change(self, obj, attr, value):
         self.refresh_totals()
 
-    def _on_document_type_selected(self, label):
-        selected = next(
-            document_type for document_type in DocumentType
-            if document_type.label == label
-        )
-        if selected is self.invoice.document_type:
+    def _open_invoice_workspace(self):
+        self._open_document_workspace(DocumentType.INVOICE)
+
+    def _open_self_billed_workspace(self):
+        self._open_document_workspace(DocumentType.SELF_BILLED_INVOICE)
+
+    def _open_document_workspace(self, document_type):
+        if document_type is self.invoice.document_type:
+            self._activate_invoice_workspace()
             return
 
         if not messagebox.askyesno(
-            "Belegtyp wechseln",
-            "Beim Wechsel des Belegtyps wird ein neues leeres Formular angelegt.\n\n"
-            "Nicht gespeicherte Eingaben gehen verloren. Fortfahren?",
+            "Belegmaske wechseln",
+            "Für diese Belegart wird ein neues leeres Formular angelegt.\n\n"
+            "Nicht gespeicherte Eingaben im aktuellen Beleg gehen verloren. Fortfahren?",
         ):
-            self.document_type_menu.set(self.invoice.document_type.label)
+            self._refresh_application_menu()
             return
 
-        self.invoice = self.controller.create_empty_invoice(selected)
+        self.invoice = self.controller.create_empty_invoice(document_type)
         self.show_form()
+
+    def _open_grain_workspace(self):
+        self.active_workspace = "grain"
+        self.form_host.grid_remove()
+        self.grain_view.grid()
+        self.root.title(f"{APP_NAME} {APP_VERSION} - Getreideabrechnung")
+        self._refresh_application_menu()
+
+    def _activate_invoice_workspace(self):
+        self.active_workspace = (
+            "self_billed" if self.invoice.is_self_billed else "invoice"
+        )
+        if hasattr(self, "grain_view"):
+            self.grain_view.grid_remove()
+        if hasattr(self, "form_host"):
+            self.form_host.grid()
+        self._refresh_application_menu()
+
+    def _refresh_application_menu(self):
+        if not hasattr(self, "file_menu"):
+            return
+        is_grain = self.active_workspace == "grain"
+        is_self_billed = self.active_workspace == "self_billed"
+        document_state = "disabled" if is_grain else "normal"
+        for index in (0, 2, 3, 5):
+            self.file_menu.entryconfigure(index, state=document_state)
+        self.file_menu.entryconfigure(
+            5,
+            label=(
+                "Speichern"
+                if is_grain
+                else f"{'Gutschrift' if is_self_billed else 'Rechnung'} speichern"
+            ),
+        )
+        self.document_menu.entryconfigure(4, state=document_state)
+        self.master_data_menu.entryconfigure(
+            0,
+            label=(
+                "Lieferantenliste"
+                if is_grain or is_self_billed
+                else "Kundenliste"
+            ),
+        )
+        self.master_data_menu.entryconfigure(
+            1,
+            state="normal" if is_grain or is_self_billed else "disabled",
+        )
+        self.workspace_variable.set(self.active_workspace)
 
     def _refresh_document_labels(self):
         document_name = "Gutschrift" if self.invoice.is_self_billed else "Rechnung"
         self.root.title(f"{APP_NAME} {APP_VERSION} - {document_name}")
-        if self.document_type_menu:
-            self.document_type_menu.set(self.invoice.document_type.label)
-        if self.party_list_button:
-            self.party_list_button.configure(
-                text="Lieferantenliste" if self.invoice.is_self_billed else "Kundenliste"
-            )
-        if self.master_data_button:
-            self.master_data_button.configure(text="Eigener Betrieb")
-        if self.save_button:
-            self.save_button.configure(text=f"{document_name} speichern")
-        if self.load_button:
-            self.load_button.configure(text="Beleg laden")
+        self._refresh_application_menu()
 
     def _on_delivery_toggle(self, checked):
         self.invoice.set_use_invoice_address_as_delivery(checked)
@@ -482,6 +523,10 @@ class InvoiceGUI:
         self.invoice = self.controller.create_empty_invoice(self.invoice.document_type)
         self.show_form()
 
+    def _clear_current_form(self):
+        if self.active_workspace != "grain":
+            self.clear_form()
+
     def show_updates(self):
         self.update_dialog.open()
 
@@ -563,6 +608,22 @@ class InvoiceGUI:
         else:
             self.show_customer_list()
 
+    def _show_current_party_list(self):
+        if self.active_workspace == "grain":
+            self.grain_view.open_supplier_list()
+            return
+        self.show_party_list()
+
+    def _create_supplier_from_menu(self):
+        if self.active_workspace == "grain":
+            self.grain_view.open_supplier_editor()
+            return
+        SupplierEditDialog(
+            self.root,
+            self.controller,
+            on_saved=self._on_supplier_selected,
+        ).open()
+
     def show_customer_list(self):
         dialog = CustomerLoadDialog(
             self.root,
@@ -574,7 +635,12 @@ class InvoiceGUI:
     def show_seller(self):
         dialog_invoice = self.invoice
         on_saved = None
-        if self.invoice.is_self_billed:
+        if self.active_workspace == "grain":
+            dialog_invoice = self.controller.create_empty_invoice(
+                DocumentType.INVOICE
+            )
+            on_saved = self._reload_grain_own_company
+        elif self.invoice.is_self_billed:
             dialog_invoice = self.controller.create_empty_invoice(DocumentType.INVOICE)
             on_saved = self._reload_own_company
         dialog = SellerDialog(
@@ -589,4 +655,7 @@ class InvoiceGUI:
         self.invoice.buyer = self.controller.load_own_company_buyer()
         self.invoice.buyer.use_invoice_address_as_delivery = True
         self.show_form()
+
+    def _reload_grain_own_company(self):
+        self.grain_view.reload_own_company()
 

@@ -52,6 +52,9 @@ class PartyCard:
 
         if self.title == "Kunde":
             self._render_delivery_checkbox(row)
+            row += 1
+
+        self.frame.grid_rowconfigure(row, minsize=12)
 
         return self.frame
 
@@ -124,8 +127,10 @@ class PartyCard:
                     height=24,
                 )
                 calendar_button.configure(
-                    command=lambda ent=entry, name=label_text, anchor=calendar_button: open_datepicker(
-                        ent, name, anchor
+                    command=(
+                        lambda ent=entry,
+                        name=label_text,
+                        anchor=calendar_button: open_datepicker(ent, name, anchor)
                     )
                 )
                 calendar_button.grid(row=row, column=2, sticky="e", padx=(0, 14), pady=2)
