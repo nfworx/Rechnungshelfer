@@ -2,16 +2,21 @@ import unittest
 from datetime import date
 from decimal import Decimal
 
-from rechnungshelfer.domain.grain_calculation import calculate_delivery_baseline
+from rechnungshelfer.domain.grain_calculation import (
+    calculate_delivery_baseline,
+    calculate_delivery_quantities,
+)
 from rechnungshelfer.domain.grain_models import (
     GrainDelivery,
     GrainValidationError,
     PriceReference,
     QualityFeature,
     QualityMeasurement,
+    QuantityReference,
     RuleDirection,
     RuleKind,
     RulePhase,
+    RuleTier,
     SettlementRule,
     SettlementSchemeVersion,
 )
@@ -50,6 +55,19 @@ class GrainCalculationContractTests(unittest.TestCase):
         }
         values.update(changes)
         return GrainDelivery(**values)
+
+    @staticmethod
+    def _quantity_rule(**changes):
+        values = {
+            "code": "quantity-deduction",
+            "label": "Mengenabzug",
+            "phase": RulePhase.QUANTITY_DEDUCTION,
+            "kind": RuleKind.PERCENTAGE_OF_MEASUREMENT,
+            "feature_code": "moisture",
+            "quantity_reference": QuantityReference.GROSS_QUANTITY,
+        }
+        values.update(changes)
+        return SettlementRule(**values)
 
     def test_neutral_baseline_uses_decimal_units_and_structured_steps(self):
         result = calculate_delivery_baseline(self._delivery(), self._scheme())
@@ -152,6 +170,244 @@ class GrainCalculationContractTests(unittest.TestCase):
 
         with self.assertRaisesRegex(GrainValidationError, "nicht aktive Merkmale"):
             self._scheme(rules=(rule,))
+
+    def test_percentage_measurement_rule_supports_configurable_factor(self):
+        rule = self._quantity_rule(
+            code="dockage",
+            label="Besatzabzug",
+            feature_code="dockage",
+            parameters={"factor": "1.1"},
+        )
+        scheme = self._scheme(
+            quality_features=(QualityFeature("dockage", "Besatz"),),
+            rules=(rule,),
+        )
+        delivery = self._delivery(
+            measurements=(QualityMeasurement("dockage", "3"),),
+        )
+
+        result = calculate_delivery_quantities(delivery, scheme)
+
+        self.assertEqual(
+            result.quantity_deductions[0].deducted_quantity_kg,
+            Decimal("330.000"),
+        )
+        self.assertEqual(result.settlement_quantity_kg, Decimal("9670.000"))
+        self.assertEqual(result.base_amount, Decimal("1934.00"))
+        deduction_step = result.steps[1]
+        self.assertEqual(deduction_step.basis, Decimal("10000.000"))
+        self.assertEqual(deduction_step.unrounded_result, Decimal("330.0000"))
+
+    def test_rules_use_explicit_order_and_remaining_quantity(self):
+        fixed = self._quantity_rule(
+            code="fixed",
+            label="Fester Abzug",
+            kind=RuleKind.FIXED_QUANTITY,
+            feature_code=None,
+            order=0,
+            parameters={"amount_kg": "100"},
+        )
+        percentage = self._quantity_rule(
+            code="percentage",
+            label="Prozentualer Abzug",
+            order=1,
+            quantity_reference=QuantityReference.REMAINING_QUANTITY,
+        )
+        result = calculate_delivery_quantities(
+            self._delivery(
+                measurements=(QualityMeasurement("moisture", "10"),),
+            ),
+            self._scheme(rules=(percentage, fixed)),
+        )
+
+        self.assertEqual(
+            [item.rule_code for item in result.quantity_deductions],
+            ["fixed", "percentage"],
+        )
+        self.assertEqual(
+            result.quantity_deductions[1].reference_quantity_kg,
+            Decimal("9900.000"),
+        )
+        self.assertEqual(result.settlement_quantity_kg, Decimal("8910.000"))
+
+    def test_excess_rule_only_deducts_value_above_basis(self):
+        rule = self._quantity_rule(
+            kind=RuleKind.EXCESS_OVER_BASIS,
+            parameters={"basis_value": "14", "factor": "1"},
+        )
+        result = calculate_delivery_quantities(
+            self._delivery(
+                measurements=(QualityMeasurement("moisture", "15.5"),),
+            ),
+            self._scheme(rules=(rule,)),
+        )
+
+        self.assertEqual(
+            result.quantity_deductions[0].deducted_quantity_kg,
+            Decimal("150.000"),
+        )
+
+    def test_corrected_measurement_is_used_by_quantity_rule(self):
+        rule = self._quantity_rule()
+        result = calculate_delivery_quantities(
+            self._delivery(
+                measurements=(
+                    QualityMeasurement(
+                        "moisture",
+                        "10",
+                        corrected_value="2.5",
+                        correction_reason="Kontrollanalyse",
+                    ),
+                ),
+            ),
+            self._scheme(rules=(rule,)),
+        )
+
+        self.assertEqual(
+            result.quantity_deductions[0].deducted_quantity_kg,
+            Decimal("250.000"),
+        )
+        self.assertEqual(
+            result.quantity_deductions[0].measurement_value,
+            Decimal("2.5"),
+        )
+
+    def test_tiered_rule_selects_matching_percentage(self):
+        rule = self._quantity_rule(
+            kind=RuleKind.TIERED,
+            tiers=(
+                RuleTier(value="0", upper_bound="14.5"),
+                RuleTier(value="2", lower_bound="14.5", upper_bound="16"),
+                RuleTier(value="3.5", lower_bound="16"),
+            ),
+        )
+        result = calculate_delivery_quantities(
+            self._delivery(
+                measurements=(QualityMeasurement("moisture", "15"),),
+            ),
+            self._scheme(rules=(rule,)),
+        )
+
+        self.assertEqual(
+            result.quantity_deductions[0].deducted_quantity_kg,
+            Decimal("200.000"),
+        )
+
+    def test_tier_can_define_a_fixed_quantity(self):
+        rule = self._quantity_rule(
+            kind=RuleKind.TIERED,
+            parameters={"result_kind": "fixed_quantity_kg"},
+            tiers=(RuleTier(value="75", lower_bound="14"),),
+        )
+        result = calculate_delivery_quantities(
+            self._delivery(),
+            self._scheme(rules=(rule,)),
+        )
+
+        self.assertEqual(
+            result.quantity_deductions[0].deducted_quantity_kg,
+            Decimal("75.000"),
+        )
+
+    def test_noncovered_tier_value_is_reported(self):
+        rule = self._quantity_rule(
+            kind=RuleKind.TIERED,
+            tiers=(
+                RuleTier(value="1", upper_bound="10"),
+                RuleTier(value="2", lower_bound="20"),
+            ),
+        )
+        with self.assertRaisesRegex(GrainValidationError, "nicht abgedeckt"):
+            calculate_delivery_quantities(
+                self._delivery(
+                    measurements=(QualityMeasurement("moisture", "15"),),
+                ),
+                self._scheme(rules=(rule,)),
+            )
+
+    def test_overlapping_tiers_are_rejected(self):
+        rule = self._quantity_rule(
+            kind=RuleKind.TIERED,
+            tiers=(
+                RuleTier(value="1", upper_bound="15", upper_inclusive=True),
+                RuleTier(value="2", lower_bound="15"),
+            ),
+        )
+        with self.assertRaisesRegex(GrainValidationError, "ueberlappen"):
+            calculate_delivery_quantities(
+                self._delivery(),
+                self._scheme(rules=(rule,)),
+            )
+
+    def test_rule_requires_reference_and_required_parameters(self):
+        without_reference = self._quantity_rule(quantity_reference=None)
+        with self.assertRaisesRegex(GrainValidationError, "Bezugsmenge"):
+            calculate_delivery_quantities(
+                self._delivery(),
+                self._scheme(rules=(without_reference,)),
+            )
+
+        without_amount = self._quantity_rule(
+            kind=RuleKind.FIXED_QUANTITY,
+            feature_code=None,
+        )
+        with self.assertRaisesRegex(GrainValidationError, "amount_kg"):
+            calculate_delivery_quantities(
+                self._delivery(),
+                self._scheme(rules=(without_amount,)),
+            )
+
+    def test_deduction_cannot_exceed_remaining_quantity(self):
+        rule = self._quantity_rule(
+            kind=RuleKind.FIXED_QUANTITY,
+            feature_code=None,
+            parameters={"amount_kg": "10001"},
+        )
+        with self.assertRaisesRegex(GrainValidationError, "Restmenge"):
+            calculate_delivery_quantities(
+                self._delivery(),
+                self._scheme(rules=(rule,)),
+            )
+
+    def test_each_deduction_is_rounded_before_the_next_rule(self):
+        first = self._quantity_rule(order=0)
+        second = self._quantity_rule(
+            code="second",
+            order=1,
+            quantity_reference=QuantityReference.REMAINING_QUANTITY,
+        )
+        result = calculate_delivery_quantities(
+            self._delivery(
+                gross_quantity_kg="1000",
+                measurements=(QualityMeasurement("moisture", "0.00055"),),
+            ),
+            self._scheme(rules=(first, second)),
+        )
+
+        self.assertEqual(
+            result.quantity_deductions[0].deducted_quantity_kg,
+            Decimal("0.006"),
+        )
+        self.assertEqual(
+            result.quantity_deductions[1].reference_quantity_kg,
+            Decimal("999.994"),
+        )
+
+    def test_price_rule_cannot_be_misconfigured_as_quantity_rule(self):
+        rule = self._quantity_rule(kind=RuleKind.ABSOLUTE_PER_TONNE)
+
+        with self.assertRaisesRegex(GrainValidationError, "kein Mengenabzug"):
+            calculate_delivery_quantities(
+                self._delivery(),
+                self._scheme(rules=(rule,)),
+            )
+
+    def test_rule_order_must_be_unique_within_phase(self):
+        first = self._quantity_rule(code="first")
+        second = self._quantity_rule(code="second")
+
+        with self.assertRaisesRegex(GrainValidationError, "reihenfolge"):
+            self._scheme(rules=(first, second))
 
 
 if __name__ == "__main__":

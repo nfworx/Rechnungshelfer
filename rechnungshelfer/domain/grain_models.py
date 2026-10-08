@@ -243,6 +243,11 @@ class SettlementSchemeVersion:
         rule_codes = [rule.code for rule in self.rules]
         if len(rule_codes) != len(set(rule_codes)):
             raise GrainValidationError("Regelcodes im Schema muessen eindeutig sein.")
+        rule_positions = [(rule.phase, rule.order) for rule in self.rules]
+        if len(rule_positions) != len(set(rule_positions)):
+            raise GrainValidationError(
+                "Regelreihenfolge muss innerhalb einer Phase eindeutig sein."
+            )
         unknown_rule_features = sorted(
             {
                 rule.feature_code
@@ -320,6 +325,7 @@ class CalculationStep:
     result: Decimal
     unit: str
     basis: Decimal | None = None
+    unrounded_result: Decimal | None = None
     rule_code: str | None = None
     details: Mapping[str, object] = field(default_factory=dict)
 
@@ -327,7 +333,38 @@ class CalculationStep:
         object.__setattr__(self, "result", decimal_value(self.result))
         if self.basis is not None:
             object.__setattr__(self, "basis", decimal_value(self.basis))
+        if self.unrounded_result is not None:
+            object.__setattr__(
+                self,
+                "unrounded_result",
+                decimal_value(self.unrounded_result),
+            )
         object.__setattr__(self, "details", _frozen_parameters(self.details))
+
+
+@dataclass(frozen=True)
+class QuantityDeduction:
+    rule_code: str
+    label: str
+    reference_quantity_kg: Decimal
+    deducted_quantity_kg: Decimal
+    remaining_quantity_kg: Decimal
+    measurement_code: str | None = None
+    measurement_value: Decimal | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "reference_quantity_kg",
+            "deducted_quantity_kg",
+            "remaining_quantity_kg",
+        ):
+            object.__setattr__(self, name, decimal_value(getattr(self, name)))
+        if self.measurement_value is not None:
+            object.__setattr__(
+                self,
+                "measurement_value",
+                decimal_value(self.measurement_value),
+            )
 
 
 @dataclass(frozen=True)
@@ -341,4 +378,5 @@ class SettlementResult:
     net_amount: Decimal
     status: SettlementStatus
     steps: tuple[CalculationStep, ...]
+    quantity_deductions: tuple[QuantityDeduction, ...] = ()
     warnings: tuple[str, ...] = ()
