@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 import re
 
-from rechnungshelfer.domain.models import DocumentType, Invoice
+from rechnungshelfer.domain.models import DocumentType, Invoice, InvoiceItem
 from .pdf_import_service import PdfImportResult, normalize_ocr_text
+from .pdf_invoice_metadata import decode_invoice_metadata
 
 
 BUSINESS_PARTNER_NUMBER_PATH = "business_partner.number"
@@ -23,9 +25,40 @@ class DetectedInvoiceField:
 
 
 @dataclass(frozen=True)
+class DetectedInvoiceItem:
+    pos: int
+    name: str
+    description: str
+    qty: str
+    unit: str
+    price_without_discount: str
+    discount: str
+    vat: str
+    tax_category: str
+    confidence: float
+    page_number: int
+    source: str
+
+    def to_invoice_item(self) -> InvoiceItem:
+        return InvoiceItem(
+            pos=self.pos,
+            name=self.name,
+            description=self.description,
+            qty=self.qty,
+            unit=self.unit,
+            price_without_discount=self.price_without_discount,
+            discount=self.discount,
+            vat=self.vat,
+            tax_category=self.tax_category,
+        )
+
+
+@dataclass(frozen=True)
 class PdfInvoiceDraft:
     document_type: DocumentType
     fields: tuple[DetectedInvoiceField, ...]
+    items: tuple[DetectedInvoiceItem, ...] = ()
+    embedded_invoice_data: dict | None = None
     warnings: tuple[str, ...] = ()
 
     def get(self, path: str) -> DetectedInvoiceField | None:
@@ -83,7 +116,7 @@ class PdfInvoiceParser:
         (
             "info.delivery_date",
             re.compile(
-                r"^\s*(?:Lieferdatum|Leistungsdatum)\s*:?\s*"
+                r"^\s*(?:Lieferdatum|Leistungsdatum|Liefer-/Leistungsdatum)\s*:?\s*"
                 r"(?P<value>\d{1,2}[.]\d{1,2}[.]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})\s*$",
                 re.IGNORECASE | re.MULTILINE,
             ),
@@ -151,45 +184,63 @@ class PdfInvoiceParser:
             0.92,
             None,
         ),
+        (
+            "buyer.leitweg_id",
+            re.compile(
+                r"^\s*Leitweg-ID\s*:\s*(?P<value>[^\r\n]{2,100})$",
+                re.IGNORECASE | re.MULTILINE,
+            ),
+            0.98,
+            "text",
+        ),
+        (
+            "info.delivery_instruction",
+            re.compile(
+                r"^\s*Lieferhinweis\s*:\s*(?P<value>[^\r\n]{2,200})$",
+                re.IGNORECASE | re.MULTILINE,
+            ),
+            0.95,
+            "text",
+        ),
+        (
+            "payment.account_holder",
+            re.compile(
+                r"^\s*Kontoinhaber\s*:\s*(?P<value>[^\r\n]{2,100})$",
+                re.IGNORECASE | re.MULTILINE,
+            ),
+            0.95,
+            "text",
+        ),
     )
     _IBAN_PATTERN = re.compile(
         r"(?:IBAN\s*:?\s*)?(?P<value>[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]){11,30})\b",
         re.IGNORECASE,
     )
-    _GUTSCHRIFT_HEADER_PATTERN = re.compile(
-        r"^\s*[^\n]*Gutschrift[^\n]*\n\s*(?:Gutschrifts?)?Nr\.?\s*:\s*"
+    _APP_HEADER_PATTERN = re.compile(
+        r"^\s*(?:Rechnung|Gutschrift)\s+Nr\.\s*"
         r"(?P<number>[A-Z0-9][A-Z0-9./_-]{1,49})\s+vom\s+"
         r"(?P<date>\d{1,2}[.]\d{1,2}[.]\d{2,4})\s*$",
         re.IGNORECASE | re.MULTILINE,
     )
-    _CREDITOR_PATTERN = re.compile(
-        r"(?:Kreditor(?:en)?|Lieferant(?:en)?)[\s-]*(?:Nr\.?|Nummer)\s*:\s*"
-        r"(?P<value>[A-Z0-9][A-Z0-9./_-]{1,39})",
-        re.IGNORECASE,
-    )
-    _FUZZY_CREDITOR_PATTERN = re.compile(
-        r"^\s*(?:Herr|Frau)?\s*[^\n:]{2,60}[- ]N(?:j|i|r){1,3}\.?\s*:\s*"
-        r"(?P<value>\d[A-Z0-9./_-]{1,39})\s*$",
+    _APP_ITEM_PATTERN = re.compile(
+        r"^(?P<pos>\d+)\s+(?P<name>.+?)\s+"
+        r"(?P<qty>-?[\d.]+,\d{2})\s+"
+        r"(?P<unit>Std|Stk|kg|g|t|l|m³|m²|m|Min|Tag|Woche|Monat|Jahr|Leistung)\s+"
+        r"(?P<price>-?[\d.]+,\d{2})\s+"
+        r"(?P<vat>[\d.]+(?:,\d+)?)%\s+"
+        r"(?P<net>-?[\d.]+,\d{2})\s*$",
         re.IGNORECASE | re.MULTILINE,
     )
-    _TAX_NUMBER_PATTERN = re.compile(
-        r"(?:Steuer|St[.-]?)[\s-]*(?:Nr\.?|Nummer)\s*:\s*"
-        r"(?P<value>\d[\d /-]{4,30}\d)",
-        re.IGNORECASE,
-    )
-    _DELIVERY_NOTE_WITH_DATE_PATTERN = re.compile(
-        r"(?:Lieferschein(?:nummer)?|Lieferschein-Nr\.?)\s*:\s*"
-        r"(?P<value>[A-Z0-9][A-Z0-9./_-]{1,49})\s+vom\s+"
-        r"(?P<date>\d{1,2}[.]\d{1,2}[.]\d{2,4})",
-        re.IGNORECASE,
-    )
-
+    _UNIT_CODES = {
+        "std": "HUR", "stk": "C62", "kg": "KGM", "g": "GRM",
+        "t": "TNE", "l": "LTR", "m³": "MTQ", "m²": "MTK",
+        "m": "MTR", "min": "MIN", "tag": "DAY", "woche": "WEE",
+        "monat": "MON", "jahr": "ANN", "leistung": "LS",
+    }
     def parse(self, extraction: PdfImportResult) -> PdfInvoiceDraft:
         document_type = self._detect_document_type(extraction.full_text)
         detected = {}
-        uncertain_creditor = False
-        tax_number_without_separator = False
-        delivery_notes: set[str] = set()
+        detected_items: list[DetectedInvoiceItem] = []
 
         for page in extraction.pages:
             page_text = self._searchable_page_text(page)
@@ -215,73 +266,6 @@ class PdfInvoiceParser:
                         ),
                     )
 
-            header_match = self._GUTSCHRIFT_HEADER_PATTERN.search(page_text)
-            if header_match and document_type is DocumentType.SELF_BILLED_INVOICE:
-                detected.setdefault(
-                    "info.invoice_number",
-                    self._field(
-                        "info.invoice_number", header_match.group("number"), 0.94,
-                        page.page_number, header_match.group(0),
-                    ),
-                )
-                invoice_date = self._normalize(header_match.group("date"), "date")
-                if invoice_date:
-                    detected.setdefault(
-                        "info.invoice_date",
-                        self._field(
-                            "info.invoice_date", invoice_date, 0.94,
-                            page.page_number, header_match.group(0),
-                        ),
-                    )
-
-            creditor_match = self._CREDITOR_PATTERN.search(page_text)
-            if creditor_match and document_type is DocumentType.SELF_BILLED_INVOICE:
-                detected.setdefault(
-                    BUSINESS_PARTNER_NUMBER_PATH,
-                    self._field(
-                        BUSINESS_PARTNER_NUMBER_PATH, creditor_match.group("value"), 0.95,
-                        page.page_number, creditor_match.group(0),
-                    ),
-                )
-            elif document_type is DocumentType.SELF_BILLED_INVOICE:
-                fuzzy_creditor = self._FUZZY_CREDITOR_PATTERN.search(page_text)
-                if fuzzy_creditor:
-                    detected.setdefault(
-                        BUSINESS_PARTNER_NUMBER_PATH,
-                        self._field(
-                            BUSINESS_PARTNER_NUMBER_PATH, fuzzy_creditor.group("value"), 0.65,
-                            page.page_number, fuzzy_creditor.group(0),
-                        ),
-                    )
-                    uncertain_creditor = True
-
-            tax_search_text = page_text
-            if document_type is DocumentType.SELF_BILLED_INVOICE:
-                heading = re.search(r"\bGutschrift\b", page_text, re.IGNORECASE)
-                tax_search_text = page_text[:heading.start()] if heading else ""
-            tax_match = self._TAX_NUMBER_PATTERN.search(tax_search_text)
-            if tax_match:
-                tax_number = " ".join(tax_match.group("value").split())
-                detected.setdefault(
-                    "seller.tax_number",
-                    self._field(
-                        "seller.tax_number", tax_number,
-                        0.90 if "/" in tax_number else 0.72,
-                        page.page_number, tax_match.group(0),
-                    ),
-                )
-                tax_number_without_separator = "/" not in tax_number
-
-            for delivery_match in self._DELIVERY_NOTE_WITH_DATE_PATTERN.finditer(page_text):
-                delivery_notes.add(delivery_match.group("value"))
-                detected.setdefault(
-                    "info.delivery_note",
-                    self._field(
-                        "info.delivery_note", delivery_match.group("value"), 0.92,
-                        page.page_number, delivery_match.group(0),
-                    ),
-                )
-
             iban_match = (
                 None
                 if document_type is DocumentType.SELF_BILLED_INVOICE
@@ -301,30 +285,195 @@ class PdfInvoiceParser:
                         ),
                     )
 
+            self._parse_app_header(page_text, page.page_number, detected)
+            self._parse_app_parties(page_text, page.page_number, detected)
+            for item in self._parse_app_items(page_text, page.page_number):
+                if not any(existing.pos == item.pos for existing in detected_items):
+                    detected_items.append(item)
+
         warnings = []
-        if "info.invoice_number" not in detected:
+        embedded_invoice_data = None
+        subject = next(
+            (
+                value
+                for key, value in extraction.metadata.items()
+                if key.casefold() == "subject"
+            ),
+            None,
+        )
+        try:
+            embedded_invoice_data = decode_invoice_metadata(subject)
+        except ValueError as exc:
+            warnings.append(str(exc))
+
+        if (
+            "info.invoice_number" not in detected
+            and embedded_invoice_data is None
+        ):
             warnings.append("Keine eindeutig beschriftete Belegnummer erkannt.")
-        if document_type is DocumentType.SELF_BILLED_INVOICE:
+        if (
+            document_type is DocumentType.SELF_BILLED_INVOICE
+            and embedded_invoice_data is None
+        ):
             warnings.append("Belegtyp Gutschrift wurde aus dem Dokumenttext abgeleitet und muss geprueft werden.")
-        if uncertain_creditor:
+        if embedded_invoice_data is not None:
             warnings.append(
-                "Die Kreditor-/Lieferantennummer wurde aus einem stark fehlerhaften OCR-Label abgeleitet."
+                "Vollstaendige Rechnungsdaten wurden aus einem Rechnungshelfer-PDF erkannt."
             )
-        if tax_number_without_separator:
+        elif not detected_items:
             warnings.append(
-                "Die erkannte Steuernummer enthaelt keine Trennzeichen und muss am Original geprueft werden."
+                "Positionen werden nur aus Rechnungshelfer-PDFs vollstaendig uebernommen."
             )
-        if len(delivery_notes) > 1:
-            warnings.append(
-                "Mehrere Lieferscheine erkannt; nur der erste wird in das einzelne Formularfeld uebernommen."
-            )
-        warnings.append("Positionen werden ohne dokumentierte Layoutvorlage nicht automatisch uebernommen.")
 
         return PdfInvoiceDraft(
             document_type=document_type,
             fields=tuple(detected.values()),
+            items=tuple(detected_items),
+            embedded_invoice_data=embedded_invoice_data,
             warnings=tuple(warnings),
         )
+
+    @classmethod
+    def _parse_app_header(cls, text, page_number, detected):
+        match = cls._APP_HEADER_PATTERN.search(text)
+        if not match:
+            return
+        detected.setdefault(
+            "info.invoice_number",
+            cls._field(
+                "info.invoice_number", match.group("number"), 0.99,
+                page_number, match.group(0),
+            ),
+        )
+        invoice_date = cls._normalize(match.group("date"), "date")
+        if invoice_date:
+            detected.setdefault(
+                "info.invoice_date",
+                cls._field(
+                    "info.invoice_date", invoice_date, 0.99,
+                    page_number, match.group(0),
+                ),
+            )
+
+    @classmethod
+    def _parse_app_parties(cls, text, page_number, detected):
+        header = cls._APP_HEADER_PATTERN.search(text)
+        if not header:
+            return
+
+        lines = [line.strip() for line in text[:header.start()].splitlines() if line.strip()]
+        city_index = next(
+            (
+                index for index in range(len(lines) - 1, -1, -1)
+                if re.match(r"^\d{5}\s+\S", lines[index])
+            ),
+            None,
+        )
+        if city_index is not None and city_index >= 2:
+            start = next(
+                (
+                    index + 1 for index in range(city_index - 2, -1, -1)
+                    if re.search(r",\s*\d{5}\s+", lines[index])
+                ),
+                max(0, city_index - 3),
+            )
+            recipient = lines[start:city_index + 1]
+            if len(recipient) >= 3:
+                postcode, city = recipient[-1].split(maxsplit=1)
+                values = {
+                    "buyer.name": recipient[0],
+                    "buyer.street": recipient[-2],
+                    "buyer.postcode": postcode,
+                    "buyer.city": city,
+                }
+                if len(recipient) > 3:
+                    values["buyer.contact_name"] = " ".join(recipient[1:-2])
+                for path, value in values.items():
+                    detected.setdefault(
+                        path,
+                        cls._field(path, value, 0.94, page_number, "\n".join(recipient)),
+                    )
+
+        delivery_match = re.search(
+            r"^Leistungsempf[^:\n]*:\s*(?P<first>[^\n]*)\n"
+            r"(?P<rest>.*?)(?=^Lieferhinweis:|^Pos\s+Bezeichnung)",
+            text,
+            re.IGNORECASE | re.MULTILINE | re.DOTALL,
+        )
+        if delivery_match:
+            delivery_lines = [delivery_match.group("first").strip()]
+            delivery_lines.extend(
+                line.strip()
+                for line in delivery_match.group("rest").splitlines()
+                if line.strip()
+            )
+            if len(delivery_lines) >= 3 and re.match(r"^\d{5}\s+\S", delivery_lines[-1]):
+                postcode, city = delivery_lines[-1].split(maxsplit=1)
+                values = {
+                    "delivery.name": " ".join(delivery_lines[:-2]),
+                    "delivery.street": delivery_lines[-2],
+                    "delivery.postcode": postcode,
+                    "delivery.city": city,
+                    "delivery.country": "DE",
+                }
+                for path, value in values.items():
+                    detected.setdefault(
+                        path,
+                        cls._field(path, value, 0.94, page_number, delivery_match.group(0)),
+                    )
+
+    @classmethod
+    def _parse_app_items(cls, text, page_number):
+        matches = list(cls._APP_ITEM_PATTERN.finditer(text))
+        items = []
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            details = text[match.end():end]
+            totals = re.search(r"^Nettosumme:", details, re.IGNORECASE | re.MULTILINE)
+            if totals:
+                details = details[:totals.start()]
+            detail_lines = [line.strip() for line in details.splitlines() if line.strip()]
+            discount = "0.00"
+            original_price = match.group("price")
+            descriptions = []
+            for line in detail_lines:
+                discount_match = re.match(r"^Rabatt\s+-?(?P<value>[\d.]+,\d{2})$", line, re.IGNORECASE)
+                original_match = re.match(
+                    r"^Einzelpreis ohne Rabatt\s+(?P<value>[\d.]+,\d{2})$",
+                    line,
+                    re.IGNORECASE,
+                )
+                if discount_match:
+                    discount = cls._decimal_value(discount_match.group("value"))
+                elif original_match:
+                    original_price = original_match.group("value")
+                else:
+                    descriptions.append(line)
+            vat = cls._decimal_value(match.group("vat"))
+            items.append(
+                DetectedInvoiceItem(
+                    pos=int(match.group("pos")),
+                    name=match.group("name").strip(),
+                    description=" ".join(descriptions),
+                    qty=cls._decimal_value(match.group("qty")),
+                    unit=cls._UNIT_CODES[match.group("unit").casefold()],
+                    price_without_discount=cls._decimal_value(original_price),
+                    discount=discount,
+                    vat=vat,
+                    tax_category="Z" if Decimal(vat) == 0 else "S",
+                    confidence=0.98,
+                    page_number=page_number,
+                    source=match.group(0).strip(),
+                )
+            )
+        return items
+
+    @staticmethod
+    def _decimal_value(value):
+        try:
+            return format(Decimal(value.replace(".", "").replace(",", ".")), "f")
+        except (InvalidOperation, AttributeError):
+            return "0"
 
     @staticmethod
     def _field(path, value, confidence, page_number, source):
@@ -378,11 +527,22 @@ class PdfInvoiceParser:
             "info.payment_due_date",
             "info.delivery_date",
             "info.delivery_note",
+            "info.delivery_instruction",
             "buyer.name",
+            "buyer.contact_name",
+            "buyer.street",
+            "buyer.postcode",
+            "buyer.city",
+            "buyer.leitweg_id",
             "seller.name",
-            "seller.tax_number",
+            "delivery.name",
+            "delivery.street",
+            "delivery.postcode",
+            "delivery.city",
+            "delivery.country",
             "payment.iban",
             "payment.bic",
+            "payment.account_holder",
             "payment.payment_terms",
         }
         for field in draft.fields:
@@ -396,6 +556,9 @@ class PdfInvoiceParser:
                 continue
             section, attribute = field.path.split(".", 1)
             setattr(getattr(invoice, section), attribute, field.value)
+        if draft.items:
+            invoice.items = [item.to_invoice_item() for item in draft.items]
+        invoice.delivery.update_required_fields(invoice.buyer)
         invoice.calculate(force=True)
         return invoice
 
@@ -440,6 +603,7 @@ class PdfInvoiceParser:
 __all__ = [
     "BUSINESS_PARTNER_NUMBER_PATH",
     "DetectedInvoiceField",
+    "DetectedInvoiceItem",
     "PdfInvoiceAnalysis",
     "PdfInvoiceDraft",
     "PdfInvoiceImport",

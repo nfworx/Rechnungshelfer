@@ -162,8 +162,12 @@ class InvoiceApplicationService:
     ) -> PdfInvoiceImport:
         """Erzeugt den Formularbeleg im aufrufenden (GUI-)Thread."""
 
-        invoice = self.create_empty_invoice(analysis.draft.document_type)
-        self._pdf_parser.apply(analysis.draft, invoice)
+        if analysis.draft.embedded_invoice_data is not None:
+            invoice = Invoice.from_dict(analysis.draft.embedded_invoice_data)
+            invoice.calculate(force=True)
+        else:
+            invoice = self.create_empty_invoice(analysis.draft.document_type)
+            self._pdf_parser.apply(analysis.draft, invoice)
         return PdfInvoiceImport(
             extraction=analysis.extraction,
             draft=analysis.draft,

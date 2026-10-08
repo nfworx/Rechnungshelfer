@@ -20,11 +20,22 @@ FIELD_LABELS = {
     "info.payment_due_date": "Fälligkeitsdatum",
     "info.delivery_date": "Liefer-/Leistungsdatum",
     "info.delivery_note": "Lieferschein",
+    "info.delivery_instruction": "Lieferhinweis",
     "buyer.name": "Kunde/Käufer",
     "seller.name": "Lieferant/Verkäufer",
-    "seller.tax_number": "Steuernummer des Lieferanten",
+    "buyer.contact_name": "Ansprechpartner des Kunden",
+    "buyer.street": "Straße des Kunden",
+    "buyer.postcode": "PLZ des Kunden",
+    "buyer.city": "Ort des Kunden",
+    "buyer.leitweg_id": "Leitweg-ID",
+    "delivery.name": "Leistungsempfänger",
+    "delivery.street": "Straße des Leistungsempfängers",
+    "delivery.postcode": "PLZ des Leistungsempfängers",
+    "delivery.city": "Ort des Leistungsempfängers",
+    "delivery.country": "Land des Leistungsempfängers",
     "payment.iban": "IBAN",
     "payment.bic": "BIC",
+    "payment.account_holder": "Kontoinhaber",
     "payment.payment_terms": "Zahlungsbedingungen",
 }
 
@@ -174,6 +185,11 @@ class PdfImportDialog:
         ]
         detected = len(imported.draft.fields)
         status = [f"Erkannte Formularfelder: {detected}"]
+        if imported.draft.embedded_invoice_data is not None:
+            item_count = len(imported.draft.embedded_invoice_data.get("items", []))
+            status.append(f"Vollständig eingebettete Positionen: {item_count}")
+        elif imported.draft.items:
+            status.append(f"Erkannte Positionen: {len(imported.draft.items)}")
         status.extend(
             format_detected_fields(
                 imported.draft.fields,
@@ -214,7 +230,11 @@ class PdfImportDialog:
             primary=True,
         )
         apply_button.grid(row=0, column=1, padx=8, sticky="ew")
-        if not imported.draft.fields:
+        if (
+            not imported.draft.fields
+            and not imported.draft.items
+            and imported.draft.embedded_invoice_data is None
+        ):
             apply_button.configure(state="disabled")
         button(footer, "Schließen", self.close).grid(
             row=0, column=2, padx=(8, 0), sticky="ew"

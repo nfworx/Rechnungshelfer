@@ -32,8 +32,10 @@ class PdfImportServiceTests(unittest.TestCase):
         self.assertIn("Lieferschein-Nr.: 3076/RW vom 14.08.2025", normalized)
         self.assertNotIn("\t17\t", normalized)
 
-    def _create_pdf(self, path: Path, page_texts, *, encrypt=None):
+    def _create_pdf(self, path: Path, page_texts, *, encrypt=None, subject=None):
         document = canvas.Canvas(str(path), encrypt=encrypt)
+        if subject:
+            document.setSubject(subject)
         for text in page_texts:
             if text:
                 document.drawString(72, 760, text)
@@ -66,6 +68,15 @@ class PdfImportServiceTests(unittest.TestCase):
         self.assertTrue(any("4711" in block.text for block in blocks))
         self.assertTrue(all(block.left < block.right for block in blocks))
         self.assertTrue(all(block.bottom < block.top for block in blocks))
+
+    def test_extracts_document_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "metadaten.pdf"
+            self._create_pdf(path, ["Rechnung"], subject="Importdaten")
+
+            result = PdfImportService().extract(path)
+
+        self.assertEqual(result.metadata["Subject"], "Importdaten")
 
     def test_marks_page_without_text_for_ocr(self):
         with tempfile.TemporaryDirectory() as tmp:

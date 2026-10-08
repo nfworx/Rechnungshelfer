@@ -695,6 +695,7 @@ class Invoice:
             items,
             document_type=document_type,
         )
+        invoice.delivery.update_required_fields(invoice.buyer)
 
         # --------------------------
         # Taxtotal & MonetaryTotal

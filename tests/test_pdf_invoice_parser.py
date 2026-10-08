@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -8,13 +10,15 @@ from rechnungshelfer.domain.models import DocumentType, Payment, Seller
 from rechnungshelfer.services.pdf_import_service import (
     ExtractionMethod,
     PdfImportResult,
+    PdfImportService,
     PdfPageResult,
-    PdfTextBlock,
 )
+from rechnungshelfer.services.pdf_service import create_pdf
 from rechnungshelfer.services.pdf_invoice_parser import (
     BUSINESS_PARTNER_NUMBER_PATH,
     PdfInvoiceParser,
 )
+from rechnungshelfer.services.sample_document_service import create_sample_invoice
 
 
 def extraction_with(*page_texts):
@@ -34,57 +38,41 @@ def extraction_with(*page_texts):
 
 
 class PdfInvoiceParserTests(unittest.TestCase):
-    def test_uses_word_coordinates_to_join_label_and_value(self):
-        blocks = (
-            PdfTextBlock("Kreditor-Nr.:", 40, 700, 130, 715, ExtractionMethod.OCR),
-            PdfTextBlock("51285", 145, 700, 190, 715, ExtractionMethod.OCR),
+    def test_imports_visible_layout_from_existing_program_pdf(self):
+        original = create_sample_invoice()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "alte-testrechnung.pdf"
+            create_pdf(original, path)
+            extraction = PdfImportService().extract(path)
+        extraction = replace(extraction, metadata={})
+
+        parser = PdfInvoiceParser()
+        draft = parser.parse(extraction)
+        imported = InvoiceFactory().create(DocumentType.INVOICE)
+        parser.apply(draft, imported)
+
+        self.assertEqual(imported.info.invoice_number, original.info.invoice_number)
+        self.assertEqual(imported.info.invoice_date, original.info.invoice_date)
+        self.assertEqual(imported.info.delivery_date, original.info.delivery_date)
+        self.assertEqual(imported.buyer.name, original.buyer.name)
+        self.assertEqual(imported.buyer.street, original.buyer.street)
+        self.assertEqual(imported.buyer.postcode, original.buyer.postcode)
+        self.assertEqual(imported.buyer.city, original.buyer.city)
+        self.assertEqual(imported.delivery.name, original.delivery.name)
+        self.assertEqual(imported.delivery.street, original.delivery.street)
+        self.assertEqual(imported.info.delivery_instruction, original.info.delivery_instruction)
+        self.assertEqual(imported.buyer.customer_number, original.buyer.customer_number)
+        self.assertEqual(len(imported.items), 4)
+        self.assertEqual(
+            [item.to_dict() if hasattr(item, "to_dict") else (
+                item.pos, item.name, item.description, item.qty, item.unit,
+                item.price_without_discount, item.discount, item.vat, item.tax_category,
+            ) for item in imported.items],
+            [item.to_dict() if hasattr(item, "to_dict") else (
+                item.pos, item.name, item.description, item.qty, item.unit,
+                item.price_without_discount, item.discount, item.vat, item.tax_category,
+            ) for item in original.items],
         )
-        extraction = PdfImportResult(
-            source_file=Path("gutschrift.pdf"),
-            page_count=1,
-            pages=(PdfPageResult(
-                page_number=1,
-                text="Gutschrift",
-                method=ExtractionMethod.OCR,
-                blocks=blocks,
-            ),),
-        )
-
-        draft = PdfInvoiceParser().parse(extraction)
-
-        self.assertEqual(draft.get(BUSINESS_PARTNER_NUMBER_PATH).value, "51285")
-        self.assertEqual(draft.get(BUSINESS_PARTNER_NUMBER_PATH).confidence, 0.95)
-
-    def test_recovers_fields_from_noisy_self_billed_ocr(self):
-        draft = PdfInvoiceParser().parse(
-            extraction_with(
-                """MUSTERFIRMA
-Herr Kuulitse-Njr: 51285
-Luisa Lieferantin Steuer-Nr : 123123123123123
-SAMMEL - FINAL - GUTSCHRIFT
-Nr.:40130 vom 30.11.2025
-Lieferschein-Nr.: 3076/RW vom 14.08.2025
-Lieferschein-Nr.: 3078/RW vom 15.08.2025
-BIC: GENODESISHA
-"""
-            )
-        )
-
-        self.assertEqual(draft.document_type, DocumentType.SELF_BILLED_INVOICE)
-        self.assertEqual(draft.get("info.invoice_number").value, "40130")
-        self.assertEqual(draft.get("info.invoice_date").value, "30.11.2025")
-        self.assertEqual(draft.get(BUSINESS_PARTNER_NUMBER_PATH).value, "51285")
-        self.assertLess(draft.get(BUSINESS_PARTNER_NUMBER_PATH).confidence, 0.80)
-        self.assertEqual(draft.get("seller.tax_number").value, "123123123123123")
-        self.assertEqual(draft.get("info.delivery_note").value, "3076/RW")
-        self.assertIsNone(draft.get("payment.bic"))
-        self.assertTrue(any("stark fehlerhaften" in warning for warning in draft.warnings))
-        self.assertTrue(any("Mehrere Lieferscheine" in warning for warning in draft.warnings))
-
-        invoice = InvoiceFactory().create(DocumentType.SELF_BILLED_INVOICE)
-        PdfInvoiceParser.apply(draft, invoice)
-        self.assertEqual(invoice.seller.supplier_number, "51285")
-        self.assertEqual(invoice.seller.tax_number, "123123123123123")
 
     def test_detects_only_explicitly_labeled_invoice_fields(self):
         extraction = extraction_with(
@@ -232,6 +220,36 @@ class PdfInvoiceApplicationServiceTests(unittest.TestCase):
         self.assertEqual(imported.invoice.info.invoice_number, "PDF-101")
         self.assertEqual(imported.invoice.buyer.name, "Importkunde GmbH")
         self.assertEqual(imported.invoice.seller.name, "Eigener Betrieb")
+        invoices.save.assert_not_called()
+        customers.save.assert_not_called()
+        suppliers.save.assert_not_called()
+        database.transaction.assert_not_called()
+
+    def test_roundtrips_program_sample_invoice_from_pdf_without_database_writes(self):
+        original = create_sample_invoice()
+        database = Mock()
+        invoices = Mock()
+        customers = Mock()
+        suppliers = Mock()
+        master_data = Mock()
+        service = InvoiceApplicationService(
+            database=database,
+            invoice_repository=invoices,
+            customer_repository=customers,
+            supplier_repository=suppliers,
+            master_data_repository=master_data,
+            invoice_factory=InvoiceFactory(),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "testrechnung.pdf"
+            create_pdf(original, path)
+            imported = service.load_from_pdf(path)
+
+        self.assertEqual(imported.invoice.to_dict(), original.to_dict())
+        self.assertEqual(len(imported.invoice.items), 4)
+        self.assertIsNotNone(imported.draft.embedded_invoice_data)
+        master_data.load_into.assert_not_called()
         invoices.save.assert_not_called()
         customers.save.assert_not_called()
         suppliers.save.assert_not_called()

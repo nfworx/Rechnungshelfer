@@ -62,6 +62,7 @@ class PdfImportResult:
     pages: tuple[PdfPageResult, ...]
     warnings: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
+    metadata: dict[str, str] = field(default_factory=dict)
 
     @property
     def page_texts(self) -> tuple[str, ...]:
@@ -133,6 +134,11 @@ class PdfImportService:
                 self._extract_page(document, page_index)
                 for page_index in range(page_count)
             )
+            metadata = {
+                str(key): str(value)
+                for key, value in document.get_metadata_dict().items()
+                if value
+            }
 
         warnings = tuple(
             warning
@@ -150,6 +156,7 @@ class PdfImportService:
             pages=pages,
             warnings=warnings,
             errors=errors,
+            metadata=metadata,
         )
 
     def _validate_source(self, filepath: str | Path) -> Path:

@@ -17,6 +17,7 @@ import sys
 from decimal import Decimal
 from rechnungshelfer.domain.models import Unit
 from pathlib import Path
+from rechnungshelfer.services.pdf_invoice_metadata import encode_invoice_metadata
 
 # ====================
 # Fonts
@@ -158,6 +159,7 @@ def create_pdf(invoice: 'Invoice', output_filename="Rechnung.pdf"):
     class NumberedCanvas(canvas.Canvas):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
+            self._invoice_metadata = encode_invoice_metadata(invoice)
             self._saved_page_states = []
 
         def showPage(self):
@@ -168,9 +170,11 @@ def create_pdf(invoice: 'Invoice', output_filename="Rechnung.pdf"):
             num_pages = len(self._saved_page_states)
             for state in self._saved_page_states:
                 self.__dict__.update(state)
+                self.setSubject(self._invoice_metadata)
                 header_footer(self, doc)
                 self.draw_page_number(num_pages)
                 super().showPage()
+            self.setSubject(self._invoice_metadata)
             super().save()
 
         def draw_page_number(self, page_count):
