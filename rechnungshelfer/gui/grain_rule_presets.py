@@ -104,6 +104,44 @@ def _common_rules(*, shrink_factor: str = "1,3"):
     )
 
 
+def _rapeseed_rules():
+    return (
+        _rule(
+            "moisture-shrink",
+            "Trocknungsschwund",
+            "excess_over_basis",
+            "moisture",
+            parameters="basis_value=8,5; factor=1,3",
+        ),
+        _rule(
+            "dockage-deduction",
+            "Besatzabzug",
+            "excess_over_basis",
+            "dockage",
+            parameters="basis_value=2; factor=1",
+        ),
+        _rule(
+            "drying-cost",
+            "Trocknungskosten",
+            "excess_over_basis",
+            "moisture",
+            parameters="basis_value=8,5; amount_per_unit=8",
+            phase="price_adjustment",
+            quantity_reference="",
+            enabled=False,
+        ),
+        _rule(
+            "quality-assurance-cost",
+            "Qualitaetssicherung / Probenahme",
+            "absolute_per_tonne",
+            parameters="amount_per_tonne=0,50",
+            phase="price_adjustment",
+            quantity_reference="",
+            enabled=False,
+        ),
+    )
+
+
 def _quality_price_rule(
     code: str,
     label: str,
@@ -168,15 +206,15 @@ PRESETS = {
         ),
     ),
     "barley": GrainRulePreset(
-        "Gerste",
+        "Gerste (Futtergerste)",
         _NOTE,
         _common_features(
             _feature("hectolitre_weight", "Hektolitergewicht", "kg/hl"),
-            _feature("protein", "Rohprotein", "%"),
-            _feature("germination", "Keimfaehigkeit", "%"),
-            _feature("whole_grain", "Vollgerstenanteil", "%"),
-            _feature("premalting", "Vermalzung", "%"),
+            _feature("foreign_grain", "Fremdgetreide", "%"),
+            _feature("fusarium", "Fusarium", "%"),
             _feature("don", "DON", "mg/kg"),
+            _feature("zea", "ZEA", "mg/kg"),
+            _feature("ota", "OTA", "mg/kg"),
         ),
         _common_rules()
         + (
@@ -191,6 +229,78 @@ PRESETS = {
                 "Minderpreis Rohprotein",
                 "protein",
                 "..9,5=2 | 9,5..11,5=0 | 11,5..12=1 | 12..=3",
+            ),
+        ),
+    ),
+    "malting_barley": GrainRulePreset(
+        "Braugerste",
+        _NOTE,
+        _common_features(
+            _feature("protein", "Rohprotein", "%"),
+            _feature("germination", "Keimfähigkeit", "%"),
+            _feature("whole_grain", "Vollgerstenanteil", "%"),
+            _feature("sprouted", "Auswuchs", "%"),
+            _feature("premalting", "Vermalzung / Premalting", "%"),
+            _feature("fusarium", "Fusarium", "%"),
+            _feature("don", "DON", "mg/kg"),
+            _feature("zea", "ZEA", "mg/kg"),
+            _feature("ota", "OTA", "mg/kg"),
+        ),
+        _common_rules()
+        + (
+            _rule(
+                "malting-protein-price",
+                "Minderpreis Rohprotein Braugerste",
+                "tiered",
+                "protein",
+                parameters="result_kind=absolute_per_tonne",
+                tiers=(
+                    "..11,6=0 | 11,6..11,7=1,5 | 11,7..11,8=3 | "
+                    "11,8..11,9=4,5 | 11,9..12=6"
+                ),
+                phase="price_adjustment",
+                quantity_reference="",
+                price_reference="base_price",
+                enabled=False,
+            ),
+            _rule(
+                "premalting-price",
+                "Minderpreis Vermalzung",
+                "tiered",
+                "premalting",
+                parameters="result_kind=absolute_per_tonne",
+                tiers="..0,5=0 | 0,5..2=5",
+                phase="price_adjustment",
+                quantity_reference="",
+                price_reference="base_price",
+                enabled=False,
+            ),
+        ),
+    ),
+    "oats": GrainRulePreset(
+        "Hafer",
+        _NOTE,
+        _common_features(
+            _feature("hectolitre_weight", "Hektolitergewicht", "kg/hl"),
+            _feature("foreign_grain", "Fremdgetreide", "%"),
+            _feature("fusarium", "Fusarium", "%"),
+            _feature("don", "DON", "mg/kg"),
+            _feature("zea", "ZEA", "mg/kg"),
+            _feature("ota", "OTA", "mg/kg"),
+        ),
+        _common_rules()
+        + (
+            _quality_price_rule(
+                "hectolitre-price",
+                "Minderpreis Hektolitergewicht",
+                "hectolitre_weight",
+                "..43=3 | 43..44=2 | 44..46=1 | 46..=0",
+            ),
+            _quality_price_rule(
+                "foreign-grain-price",
+                "Minderpreis Fremdgetreide",
+                "foreign_grain",
+                "..5=0 | 5..6=1 | 6..7=2 | 7..8=3 | 8..9=4 | 9..10=5",
             ),
         ),
     ),
@@ -221,25 +331,6 @@ PRESETS = {
             ),
         ),
     ),
-    "triticale": GrainRulePreset(
-        "Triticale",
-        _NOTE,
-        _common_features(
-            _feature("hectolitre_weight", "Hektolitergewicht", "kg/hl"),
-            _feature("sprouted", "Auswuchs", "%"),
-            _feature("ergot", "Mutterkorn", "%"),
-            _feature("don", "DON", "mg/kg"),
-        ),
-        _common_rules()
-        + (
-            _quality_price_rule(
-                "hectolitre-price",
-                "Minderpreis Hektolitergewicht",
-                "hectolitre_weight",
-                "..66=3 | 66..68=2 | 68..70=1 | 70..=0",
-            ),
-        ),
-    ),
     "maize": GrainRulePreset(
         "Mais",
         _NOTE,
@@ -251,6 +342,17 @@ PRESETS = {
             _feature("aflatoxin_b1", "Aflatoxin B1", "µg/kg"),
         ),
         _common_rules(shrink_factor="1,4"),
+    ),
+    "rapeseed": GrainRulePreset(
+        "Raps",
+        _NOTE,
+        _common_features(
+            _feature("oil_content", "Ölgehalt", "%"),
+            _feature("ffa", "Freie Fettsäuren (FFA)", "%"),
+            _feature("glucosinolate", "Glucosinolatgehalt", "µmol/g"),
+            _feature("chlorophyll", "Chlorophyll", "mg/kg"),
+        ),
+        _rapeseed_rules(),
     ),
 }
 

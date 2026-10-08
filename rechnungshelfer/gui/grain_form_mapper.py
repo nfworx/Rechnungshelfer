@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -73,6 +73,53 @@ class GrainSettlementForm:
     features: tuple[FeatureFormValue, ...]
     rules: tuple[RuleFormValue, ...]
     deliveries: tuple[DeliveryFormValue, ...]
+
+
+def serialize_rule_set(
+    name: str,
+    features: tuple[FeatureFormValue, ...],
+    rules: tuple[RuleFormValue, ...],
+) -> dict:
+    """Erzeugt den stabilen JSON-Snapshot eines bearbeitbaren Regelwerks."""
+
+    return {
+        "format_version": 1,
+        "name": str(name or "").strip(),
+        "features": [asdict(value) for value in features],
+        "rules": [asdict(value) for value in rules],
+    }
+
+
+def deserialize_rule_set(
+    payload: dict,
+) -> tuple[tuple[FeatureFormValue, ...], tuple[RuleFormValue, ...]]:
+    """Liest gespeicherte Regelwerke tolerant gegen kuenftige Zusatzfelder."""
+
+    if not isinstance(payload, dict):
+        raise GrainValidationError("Gespeichertes Regelwerk ist ungültig.")
+    if payload.get("format_version", 1) != 1:
+        raise GrainValidationError("Format des Regelwerks wird nicht unterstützt.")
+    try:
+        features_values = payload.get("features", [])
+        rule_values = payload.get("rules", [])
+        features_result = tuple(
+            FeatureFormValue(**_known_fields(FeatureFormValue, value))
+            for value in features_values
+        )
+        rules_result = tuple(
+            RuleFormValue(**_known_fields(RuleFormValue, value))
+            for value in rule_values
+        )
+    except (TypeError, AttributeError) as exc:
+        raise GrainValidationError("Gespeichertes Regelwerk ist beschädigt.") from exc
+    return features_result, rules_result
+
+
+def _known_fields(data_type, value: dict) -> dict:
+    if not isinstance(value, dict):
+        raise TypeError("Konfigurationseintrag muss ein Objekt sein.")
+    allowed = {item.name for item in fields(data_type)}
+    return {key: item for key, item in value.items() if key in allowed}
 
 
 def calculate_settlement_preview(

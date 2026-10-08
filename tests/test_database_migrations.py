@@ -57,7 +57,16 @@ class DatabaseMigrationTests(unittest.TestCase):
                 database.close()
 
             self.assertEqual(version, SCHEMA_VERSION)
-            self.assertTrue({"invoices", "customers", "suppliers"} <= tables)
+            self.assertTrue(
+                {
+                    "invoices",
+                    "customers",
+                    "suppliers",
+                    "grain_scheme_drafts",
+                    "grain_scheme_versions",
+                }
+                <= tables
+            )
             self.assertEqual(list(Path(tmp).glob("*.backup-*.db")), [])
 
     def test_version_one_is_migrated_and_summary_data_is_preserved(self):
@@ -181,7 +190,10 @@ class DatabaseMigrationTests(unittest.TestCase):
                     DatabaseMigrationError,
                     "Schema-Version 1",
                 ):
-                    migrate_database(connection, migrations={1: failing_migration})
+                    migrate_database(
+                        connection,
+                        migrations={1: failing_migration, 2: MIGRATIONS[2]},
+                    )
 
                 columns = {
                     row[1]

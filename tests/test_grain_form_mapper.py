@@ -12,8 +12,10 @@ from rechnungshelfer.gui.grain_form_mapper import (
     RuleFormValue,
     build_preview_scheme,
     calculate_settlement_preview,
+    deserialize_rule_set,
     parse_parameters,
     parse_tiers,
+    serialize_rule_set,
 )
 from rechnungshelfer.gui.main_window import InvoiceGUI
 from rechnungshelfer.gui.grain_settlement_view import GrainSettlementView
@@ -199,6 +201,26 @@ class GrainFormMapperTests(unittest.TestCase):
 
         self.assertEqual(scheme.rules, ())
         self.assertEqual(scheme.quality_features[0].unit, "%")
+
+    def test_rule_set_json_snapshot_roundtrip_preserves_disabled_rules(self):
+        features = (FeatureFormValue("moisture", "Feuchtigkeit", unit="%"),)
+        rules = (
+            RuleFormValue(
+                code="drying",
+                label="Trocknungskosten",
+                kind="absolute_per_tonne",
+                feature_code="",
+                quantity_reference="",
+                parameters="amount_per_tonne=8",
+                phase="price_adjustment",
+                enabled=False,
+            ),
+        )
+
+        payload = serialize_rule_set("Weizen Standard", features, rules)
+        restored = deserialize_rule_set(payload)
+
+        self.assertEqual(restored, (features, rules))
 
 
 class GrainWorkspaceNavigationTests(unittest.TestCase):

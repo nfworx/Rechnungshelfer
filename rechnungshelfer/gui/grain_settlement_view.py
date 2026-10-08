@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import date
 from decimal import Decimal
+import sqlite3
 from tkinter import messagebox
 
 import customtkinter as ctk
@@ -25,6 +26,8 @@ from .grain_form_mapper import (
     GrainSettlementForm,
     RuleFormValue,
     calculate_settlement_preview,
+    deserialize_rule_set,
+    serialize_rule_set,
 )
 from .grain_settlement_dialogs import (
     GRAIN_TYPE_LABELS,
@@ -53,6 +56,7 @@ class GrainSettlementView(ctk.CTkFrame):
             str,
             tuple[tuple[FeatureFormValue, ...], tuple[RuleFormValue, ...]],
         ] = {}
+        self.harvest_year = date.today().year
         self.deliveries: list[DeliveryFormValue] = []
         self.field_entries = {}
         self._next_delivery_number = 1
@@ -351,6 +355,7 @@ class GrainSettlementView(ctk.CTkFrame):
         RuleEditorDialog(
             self,
             grain_type_code=self._default_grain_type_code(),
+            harvest_year=self.harvest_year,
             rule_sets=self.rule_sets,
             on_save=self._replace_rule_sets,
         )
@@ -361,14 +366,46 @@ class GrainSettlementView(ctk.CTkFrame):
             str,
             tuple[tuple[FeatureFormValue, ...], tuple[RuleFormValue, ...]],
         ],
-    ):
+        activated_grain_type: str | None,
+    ) -> bool:
+        payloads = {
+            grain_type_code: serialize_rule_set(
+                f"{GRAIN_TYPE_LABELS[grain_type_code]} Standard",
+                features,
+                rules,
+            )
+            for grain_type_code, (features, rules) in rule_sets.items()
+        }
+        try:
+            self.controller.save_grain_scheme_drafts(
+                self.harvest_year,
+                payloads,
+            )
+            activated_version = None
+            if activated_grain_type:
+                activated_version = self.controller.activate_grain_scheme(
+                    activated_grain_type,
+                    self.harvest_year,
+                    payloads[activated_grain_type],
+                )
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            messagebox.showerror("Abrechnungsregeln", str(exc), parent=self)
+            return False
         self.rule_sets = dict(rule_sets)
         self.features, self.rules = self._current_rule_set()
         active_rules = sum(rule.enabled for rule in self.rules)
         self.rule_button.configure(
             text=f"Regeln bearbeiten ({active_rules} aktiv)"
         )
-        self.calculate()
+        if not self.calculate():
+            return False
+        if activated_version is not None:
+            messagebox.showinfo(
+                "Regelwerk aktiviert",
+                f"Version {activated_version.display_version} wurde angelegt.",
+                parent=self,
+            )
+        return True
 
     def calculate(self) -> bool:
         try:
@@ -551,9 +588,28 @@ class GrainSettlementView(ctk.CTkFrame):
                 grain_preset.features,
                 grain_preset.rules,
             )
+        invalid_drafts = []
+        for draft in self.controller.load_grain_scheme_drafts(self.harvest_year):
+            if draft.grain_type_code not in self.rule_sets:
+                continue
+            try:
+                self.rule_sets[draft.grain_type_code] = deserialize_rule_set(
+                    dict(draft.payload)
+                )
+            except GrainValidationError:
+                invalid_drafts.append(draft.name)
+        if invalid_drafts:
+            messagebox.showwarning(
+                "Abrechnungsregeln",
+                "Beschädigte Regelentwürfe wurden nicht geladen: "
+                + ", ".join(invalid_drafts),
+                parent=self,
+            )
         preset = grain_rule_preset("wheat")
-        self.features = preset.features
-        self.rules = preset.rules
+        self.features, self.rules = self.rule_sets.get(
+            "wheat",
+            (preset.features, preset.rules),
+        )
         today = date.today().strftime("%d.%m.%Y")
         self.deliveries = [
             DeliveryFormValue(

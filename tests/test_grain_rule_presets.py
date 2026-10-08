@@ -3,6 +3,7 @@ import unittest
 from rechnungshelfer.gui.grain_form_mapper import build_preview_scheme
 from rechnungshelfer.gui.grain_rule_presets import PRESETS, grain_rule_preset
 from rechnungshelfer.gui.grain_settlement_dialogs import (
+    GRAIN_TYPES,
     _tiers_for_display,
     _tiers_for_storage,
 )
@@ -36,6 +37,30 @@ class GrainRulePresetTests(unittest.TestCase):
         shrink = next(rule for rule in preset.rules if rule.code == "moisture-shrink")
 
         self.assertIn("factor=1,4", shrink.parameters)
+
+    def test_supported_crops_match_the_visible_selection(self):
+        self.assertEqual(set(PRESETS), set(GRAIN_TYPES.values()))
+        self.assertNotIn("triticale", PRESETS)
+        self.assertTrue(
+            {"malting_barley", "oats", "rapeseed"} <= set(PRESETS)
+        )
+
+    def test_malting_barley_has_its_own_quality_features(self):
+        codes = {
+            feature.code for feature in grain_rule_preset("malting_barley").features
+        }
+
+        self.assertTrue(
+            {"protein", "germination", "whole_grain", "premalting"} <= codes
+        )
+
+    def test_rapeseed_uses_its_lower_moisture_basis(self):
+        preset = grain_rule_preset("rapeseed")
+        shrink = next(rule for rule in preset.rules if rule.code == "moisture-shrink")
+        codes = {feature.code for feature in preset.features}
+
+        self.assertIn("basis_value=8,5", shrink.parameters)
+        self.assertIn("oil_content", codes)
 
     def test_internal_tier_syntax_is_hidden_behind_readable_text(self):
         stored = "..72=4 | 72..73=3 | 73..=0"

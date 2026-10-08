@@ -11,7 +11,7 @@ from pathlib import Path
 from .invoice_record import invoice_summary_from_data
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 Migration = Callable[[sqlite3.Connection], None]
 
 
@@ -99,9 +99,45 @@ def _migration_1_to_2(connection: sqlite3.Connection) -> None:
         )
 
 
+def _migration_2_to_3(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE grain_scheme_drafts (
+            grain_type_code TEXT NOT NULL,
+            harvest_year INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (grain_type_code, harvest_year)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE grain_scheme_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            grain_type_code TEXT NOT NULL,
+            harvest_year INTEGER NOT NULL,
+            revision INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            activated_at TEXT NOT NULL,
+            UNIQUE (grain_type_code, harvest_year, revision)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_grain_scheme_versions_lookup
+        ON grain_scheme_versions (grain_type_code, harvest_year, revision DESC)
+        """
+    )
+
+
 MIGRATIONS: dict[int, Migration] = {
     0: _migration_0_to_1,
     1: _migration_1_to_2,
+    2: _migration_2_to_3,
 }
 
 

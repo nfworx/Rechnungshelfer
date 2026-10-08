@@ -80,10 +80,12 @@ PARAMETER_FIELDS = {
 }
 GRAIN_TYPES = {
     "Weizen": "wheat",
-    "Gerste": "barley",
+    "Gerste (Futtergerste)": "barley",
+    "Braugerste": "malting_barley",
+    "Hafer": "oats",
     "Roggen": "rye",
-    "Triticale": "triticale",
     "Mais": "maize",
+    "Raps": "rapeseed",
 }
 GRAIN_TYPE_LABELS = {value: label for label, value in GRAIN_TYPES.items()}
 
@@ -522,11 +524,12 @@ class RuleEditorDialog(ctk.CTkToplevel):
         parent,
         *,
         grain_type_code: str,
+        harvest_year: int,
         rule_sets: dict[
             str,
             tuple[tuple[FeatureFormValue, ...], tuple[RuleFormValue, ...]],
         ],
-        on_save: Callable[[dict], None],
+        on_save: Callable[[dict, str | None], bool],
     ):
         super().__init__(parent)
         self.title("Abrechnungsregeln")
@@ -534,6 +537,7 @@ class RuleEditorDialog(ctk.CTkToplevel):
         self.configure(fg_color=APP_BG)
         self.transient(parent.winfo_toplevel())
         self.grain_type_code = grain_type_code
+        self.harvest_year = harvest_year
         self.rule_sets = dict(rule_sets)
         self.on_save = on_save
         self.feature_rows: list[_FeatureRow] = []
@@ -559,6 +563,12 @@ class RuleEditorDialog(ctk.CTkToplevel):
         )
         self.grain_type.set(GRAIN_TYPE_LABELS.get(grain_type_code, "Weizen"))
         self.grain_type.pack(side="left")
+        ctk.CTkLabel(
+            selector,
+            text=f"Erntejahr {harvest_year} · Entwurf",
+            font=FONT_NORMAL,
+            text_color=TEXT_MUTED,
+        ).pack(side="left", padx=18)
         preset = grain_rule_preset(grain_type_code)
         self.notice = ctk.CTkFrame(content, fg_color="#fff4d6", corner_radius=8)
         self.notice.pack(fill="x", pady=(0, 14))
@@ -606,7 +616,17 @@ class RuleEditorDialog(ctk.CTkToplevel):
 
         actions = ctk.CTkFrame(self, fg_color="transparent")
         actions.pack(fill="x", padx=12, pady=(0, 12))
-        button(actions, "Übernehmen", self._save, primary=True).pack(side="right")
+        button(
+            actions,
+            "Entwurf speichern",
+            lambda: self._save(activate=False),
+            primary=True,
+        ).pack(side="right")
+        button(
+            actions,
+            "Als neue Version aktivieren",
+            self._activate,
+        ).pack(side="right", padx=8)
         button(actions, "Abbrechen", self.destroy).pack(side="right", padx=8)
         self.after(20, self.grab_set)
 
@@ -688,7 +708,18 @@ class RuleEditorDialog(ctk.CTkToplevel):
         )
         self._show_rule_set(features, rules)
 
-    def _save(self):
+    def _activate(self):
+        grain_label = GRAIN_TYPE_LABELS[self.grain_type_code]
+        if not messagebox.askyesno(
+            "Regelwerk aktivieren",
+            f"Für {grain_label} im Erntejahr {self.harvest_year} wird eine neue "
+            "unveränderliche Version angelegt. Fortfahren?",
+            parent=self,
+        ):
+            return
+        self._save(activate=True)
+
+    def _save(self, *, activate: bool):
         self.rule_sets[self.grain_type_code] = self._current_values()
         try:
             for grain_type_code, (features, rules) in self.rule_sets.items():
@@ -696,5 +727,6 @@ class RuleEditorDialog(ctk.CTkToplevel):
         except (GrainValidationError, ValueError) as exc:
             messagebox.showerror("Abrechnungsregeln", str(exc), parent=self)
             return
-        self.on_save(self.rule_sets)
-        self.destroy()
+        activated_grain = self.grain_type_code if activate else None
+        if self.on_save(self.rule_sets, activated_grain):
+            self.destroy()

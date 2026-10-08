@@ -1,6 +1,9 @@
 """Stabile GUI-Fassade für die Anwendungsfälle des Rechnungshelfers."""
 
 from rechnungshelfer.application.invoice_service import InvoiceApplicationService
+from rechnungshelfer.application.grain_scheme_service import (
+    GrainSchemeApplicationService,
+)
 from rechnungshelfer.application.party_service import PartyApplicationService
 from rechnungshelfer.domain.invoice_factory import InvoiceFactory
 from rechnungshelfer.domain.models import (
@@ -13,6 +16,9 @@ from rechnungshelfer.domain.models import (
 from rechnungshelfer.repositories.customer_repository import CustomerRepository
 from rechnungshelfer.repositories.database import Database
 from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
+from rechnungshelfer.repositories.grain_scheme_repository import (
+    GrainSchemeRepository,
+)
 from rechnungshelfer.repositories.master_data_repository import MasterDataRepository
 from rechnungshelfer.repositories.supplier_repository import SupplierRepository
 from rechnungshelfer.services.export_service import InvoiceExportService
@@ -26,10 +32,15 @@ class InvoiceController:
         self.customer_repo = CustomerRepository(connection=self.database.connection)
         self.master_data_repository = MasterDataRepository()
         self.supplier_repo = SupplierRepository(connection=self.database.connection)
+        self.grain_scheme_repo = GrainSchemeRepository(self.database.connection)
         self.invoice_factory = InvoiceFactory()
         self.invoice_service = self._create_invoice_service()
         self.party_service = self._create_party_service()
         self.export_service = self._create_export_service()
+        self.grain_scheme_service = GrainSchemeApplicationService(
+            database=self.database,
+            repository=self.grain_scheme_repo,
+        )
 
     def _create_invoice_service(self):
         return InvoiceApplicationService(
@@ -118,6 +129,35 @@ class InvoiceController:
 
     def create_invoice_from_pdf_analysis(self, analysis):
         return self._get_invoice_service().create_invoice_from_pdf_analysis(analysis)
+
+    # Getreide-Regelwerke
+    def load_grain_scheme_drafts(self, harvest_year: int):
+        return self.grain_scheme_service.load_drafts(harvest_year)
+
+    def save_grain_scheme_drafts(self, harvest_year: int, drafts: dict):
+        return self.grain_scheme_service.save_drafts(harvest_year, drafts)
+
+    def activate_grain_scheme(
+        self,
+        grain_type_code: str,
+        harvest_year: int,
+        payload: dict,
+    ):
+        return self.grain_scheme_service.activate(
+            grain_type_code,
+            harvest_year,
+            payload,
+        )
+
+    def list_grain_scheme_versions(
+        self,
+        grain_type_code: str,
+        harvest_year: int,
+    ):
+        return self.grain_scheme_service.list_versions(
+            grain_type_code,
+            harvest_year,
+        )
 
     def copy_invoice(self, invoice: Invoice) -> Invoice:
         return self._get_invoice_service().copy_invoice(invoice)
