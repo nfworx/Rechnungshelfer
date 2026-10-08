@@ -18,7 +18,10 @@ from rechnungshelfer.services.pdf_invoice_parser import (
     BUSINESS_PARTNER_NUMBER_PATH,
     PdfInvoiceParser,
 )
-from rechnungshelfer.services.sample_document_service import create_sample_invoice
+from rechnungshelfer.services.sample_document_service import (
+    create_sample_invoice,
+    create_sample_self_billed_invoice,
+)
 
 
 def extraction_with(*page_texts):
@@ -64,14 +67,8 @@ class PdfInvoiceParserTests(unittest.TestCase):
         self.assertEqual(imported.buyer.customer_number, original.buyer.customer_number)
         self.assertEqual(len(imported.items), 4)
         self.assertEqual(
-            [item.to_dict() if hasattr(item, "to_dict") else (
-                item.pos, item.name, item.description, item.qty, item.unit,
-                item.price_without_discount, item.discount, item.vat, item.tax_category,
-            ) for item in imported.items],
-            [item.to_dict() if hasattr(item, "to_dict") else (
-                item.pos, item.name, item.description, item.qty, item.unit,
-                item.price_without_discount, item.discount, item.vat, item.tax_category,
-            ) for item in original.items],
+            [vars(item) for item in imported.items],
+            [vars(item) for item in original.items],
         )
 
     def test_detects_only_explicitly_labeled_invoice_fields(self):
@@ -113,6 +110,21 @@ Lieferschein: LS-88
         self.assertEqual(draft.document_type, DocumentType.SELF_BILLED_INVOICE)
         self.assertEqual(draft.get("seller.name").value, "Hof Beispiel")
         self.assertTrue(any("muss geprueft" in warning for warning in draft.warnings))
+
+    def test_visible_self_billed_layout_maps_recipient_to_seller(self):
+        original = create_sample_self_billed_invoice()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "alte-testgutschrift.pdf"
+            create_pdf(original, path)
+            extraction = replace(PdfImportService().extract(path), metadata={})
+
+        draft = PdfInvoiceParser().parse(extraction)
+
+        self.assertIsNone(draft.get("buyer.name"))
+        self.assertEqual(draft.get("seller.name").value, original.seller.name)
+        self.assertEqual(draft.get("seller.street").value, original.seller.street)
+        self.assertEqual(draft.get("seller.postcode").value, original.seller.postcode)
+        self.assertEqual(draft.get("seller.city").value, original.seller.city)
 
     def test_applies_business_partner_number_by_document_role(self):
         parser = PdfInvoiceParser()
@@ -254,7 +266,6 @@ class PdfInvoiceApplicationServiceTests(unittest.TestCase):
         customers.save.assert_not_called()
         suppliers.save.assert_not_called()
         database.transaction.assert_not_called()
-
 
 if __name__ == "__main__":
     unittest.main()

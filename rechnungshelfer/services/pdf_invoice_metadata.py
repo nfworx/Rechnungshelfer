@@ -6,7 +6,7 @@ import json
 
 
 METADATA_PREFIX = "Rechnungshelfer-Invoice-v1:"
-MAX_METADATA_LENGTH = 200_000
+MAX_METADATA_LENGTH = 20_000_000
 
 
 def encode_invoice_metadata(invoice) -> str:
@@ -14,12 +14,15 @@ def encode_invoice_metadata(invoice) -> str:
         "schema": 1,
         "invoice": invoice.to_dict(),
     }
-    return METADATA_PREFIX + json.dumps(
+    result = METADATA_PREFIX + json.dumps(
         payload,
         ensure_ascii=True,
         separators=(",", ":"),
         sort_keys=True,
     )
+    if len(result) > MAX_METADATA_LENGTH:
+        raise ValueError("Eingebettete Rechnungsdaten sind zu gross.")
+    return result
 
 
 def decode_invoice_metadata(subject: str | None) -> dict | None:
@@ -27,7 +30,6 @@ def decode_invoice_metadata(subject: str | None) -> dict | None:
         return None
     if len(subject) > MAX_METADATA_LENGTH:
         raise ValueError("Eingebettete Rechnungsdaten sind zu gross.")
-
     try:
         payload = json.loads(subject[len(METADATA_PREFIX):])
     except (TypeError, ValueError) as exc:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 import re
@@ -35,22 +35,9 @@ class DetectedInvoiceItem:
     discount: str
     vat: str
     tax_category: str
-    confidence: float
-    page_number: int
-    source: str
 
     def to_invoice_item(self) -> InvoiceItem:
-        return InvoiceItem(
-            pos=self.pos,
-            name=self.name,
-            description=self.description,
-            qty=self.qty,
-            unit=self.unit,
-            price_without_discount=self.price_without_discount,
-            discount=self.discount,
-            vat=self.vat,
-            tax_category=self.tax_category,
-        )
+        return InvoiceItem(**asdict(self))
 
 
 @dataclass(frozen=True)
@@ -240,7 +227,7 @@ class PdfInvoiceParser:
     def parse(self, extraction: PdfImportResult) -> PdfInvoiceDraft:
         document_type = self._detect_document_type(extraction.full_text)
         detected = {}
-        detected_items: list[DetectedInvoiceItem] = []
+        detected_items: dict[int, DetectedInvoiceItem] = {}
 
         for page in extraction.pages:
             page_text = self._searchable_page_text(page)
@@ -286,10 +273,14 @@ class PdfInvoiceParser:
                     )
 
             self._parse_app_header(page_text, page.page_number, detected)
-            self._parse_app_parties(page_text, page.page_number, detected)
-            for item in self._parse_app_items(page_text, page.page_number):
-                if not any(existing.pos == item.pos for existing in detected_items):
-                    detected_items.append(item)
+            self._parse_app_parties(
+                page_text,
+                page.page_number,
+                detected,
+                document_type,
+            )
+            for item in self._parse_app_items(page_text):
+                detected_items.setdefault(item.pos, item)
 
         warnings = []
         embedded_invoice_data = None
@@ -328,7 +319,7 @@ class PdfInvoiceParser:
         return PdfInvoiceDraft(
             document_type=document_type,
             fields=tuple(detected.values()),
-            items=tuple(detected_items),
+            items=tuple(detected_items.values()),
             embedded_invoice_data=embedded_invoice_data,
             warnings=tuple(warnings),
         )
@@ -356,7 +347,7 @@ class PdfInvoiceParser:
             )
 
     @classmethod
-    def _parse_app_parties(cls, text, page_number, detected):
+    def _parse_app_parties(cls, text, page_number, detected, document_type):
         header = cls._APP_HEADER_PATTERN.search(text)
         if not header:
             return
@@ -380,14 +371,21 @@ class PdfInvoiceParser:
             recipient = lines[start:city_index + 1]
             if len(recipient) >= 3:
                 postcode, city = recipient[-1].split(maxsplit=1)
+                party_path = (
+                    "seller"
+                    if document_type is DocumentType.SELF_BILLED_INVOICE
+                    else "buyer"
+                )
                 values = {
-                    "buyer.name": recipient[0],
-                    "buyer.street": recipient[-2],
-                    "buyer.postcode": postcode,
-                    "buyer.city": city,
+                    f"{party_path}.name": recipient[0],
+                    f"{party_path}.street": recipient[-2],
+                    f"{party_path}.postcode": postcode,
+                    f"{party_path}.city": city,
                 }
                 if len(recipient) > 3:
-                    values["buyer.contact_name"] = " ".join(recipient[1:-2])
+                    values[f"{party_path}.contact_name"] = " ".join(
+                        recipient[1:-2]
+                    )
                 for path, value in values.items():
                     detected.setdefault(
                         path,
@@ -423,7 +421,7 @@ class PdfInvoiceParser:
                     )
 
     @classmethod
-    def _parse_app_items(cls, text, page_number):
+    def _parse_app_items(cls, text):
         matches = list(cls._APP_ITEM_PATTERN.finditer(text))
         items = []
         for index, match in enumerate(matches):
@@ -461,9 +459,6 @@ class PdfInvoiceParser:
                     discount=discount,
                     vat=vat,
                     tax_category="Z" if Decimal(vat) == 0 else "S",
-                    confidence=0.98,
-                    page_number=page_number,
-                    source=match.group(0).strip(),
                 )
             )
         return items
@@ -535,6 +530,10 @@ class PdfInvoiceParser:
             "buyer.city",
             "buyer.leitweg_id",
             "seller.name",
+            "seller.contact_name",
+            "seller.street",
+            "seller.postcode",
+            "seller.city",
             "delivery.name",
             "delivery.street",
             "delivery.postcode",
