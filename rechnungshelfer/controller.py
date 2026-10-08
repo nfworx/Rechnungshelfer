@@ -6,6 +6,7 @@ from rechnungshelfer.application.grain_scheme_service import (
 )
 from rechnungshelfer.application.party_service import PartyApplicationService
 from rechnungshelfer.domain.invoice_factory import InvoiceFactory
+from rechnungshelfer.domain.business_partner import BusinessPartnerProfile
 from rechnungshelfer.domain.models import (
     Buyer,
     DocumentType,
@@ -230,6 +231,18 @@ class InvoiceController:
 
     def delete_supplier(self, supplier_number: str):
         return self._get_party_service().delete_supplier(supplier_number)
+
+    def list_business_partners(self):
+        return self._get_party_service().list_business_partners()
+
+    def load_business_partner(self, partner_number: str):
+        return self._get_party_service().load_business_partner(partner_number)
+
+    def save_business_partner(self, profile: BusinessPartnerProfile):
+        return self._get_party_service().save_business_partner(profile)
+
+    def delete_business_partner(self, partner_number: str):
+        return self._get_party_service().delete_business_partner(partner_number)
 
     @staticmethod
     def _seller_to_buyer(seller: Seller) -> Buyer:

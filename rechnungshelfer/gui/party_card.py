@@ -24,6 +24,7 @@ class PartyCard:
         controller=None,
         on_customer_select=None,
         label_overrides=None,
+        readonly_fields=None,
     ):
         self.parent = parent
         self.title = title
@@ -38,6 +39,7 @@ class PartyCard:
         self.controller = controller
         self.on_customer_select = on_customer_select
         self.label_overrides = label_overrides or {}
+        self.readonly_fields = set(readonly_fields or [])
 
         self.frame = None
 
@@ -66,7 +68,7 @@ class PartyCard:
             "use_invoice_address_as_delivery",
         }
 
-        readonly_fields = getattr(model, "readonly_fields", [])
+        readonly_fields = set(getattr(model, "readonly_fields", [])) | self.readonly_fields
 
         date_fields = {
             "invoice_date": "Rechnungsdatum",

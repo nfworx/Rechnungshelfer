@@ -1,5 +1,6 @@
 """Anwendungsfälle für Kunden, Lieferanten und eigene Stammdaten."""
 
+from rechnungshelfer.domain.business_partner import BusinessPartnerProfile
 from rechnungshelfer.domain.invoice_factory import InvoiceFactory
 from rechnungshelfer.domain.models import Buyer, Payment, Seller
 
@@ -17,10 +18,12 @@ class PartyApplicationService:
     def save_customer(self, buyer: Buyer) -> None:
         if not buyer.customer_number:
             raise ValueError(
-                "GeschÃ¤ftspartnernummer fehlt. Kunde kann nicht gespeichert werden."
+                "Geschäftspartnernummer fehlt. Kunde kann nicht gespeichert werden."
             )
         if not buyer.name:
-            raise ValueError("Name des Kunden fehlt. Kunde kann nicht gespeichert werden.")
+            raise ValueError(
+                "Name des Kunden fehlt. Kunde kann nicht gespeichert werden."
+            )
         self._partners.save_customer(buyer)
 
     def search_customers(self, field: str, query: str):
@@ -31,7 +34,7 @@ class PartyApplicationService:
 
     def delete_customer(self, customer_number: str) -> None:
         if not customer_number:
-            raise ValueError("Keine GeschÃ¤ftspartnernummer angegeben")
+            raise ValueError("Keine Geschäftspartnernummer angegeben")
         self._partners.delete_customer(customer_number)
 
     def load_master_data(self, seller: Seller, payment: Payment):
@@ -58,3 +61,15 @@ class PartyApplicationService:
 
     def delete_supplier(self, supplier_number: str) -> None:
         self._partners.delete_supplier(supplier_number)
+
+    def list_business_partners(self):
+        return self._partners.list_partners()
+
+    def load_business_partner(self, partner_number: str):
+        return self._partners.load_partner(partner_number)
+
+    def save_business_partner(self, profile: BusinessPartnerProfile) -> str:
+        return self._partners.save_partner(profile)
+
+    def delete_business_partner(self, partner_number: str) -> None:
+        self._partners.delete_partner(partner_number)

@@ -2,6 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from rechnungshelfer.domain.business_partner import (
+    BusinessPartnerProfile,
+    BusinessPartnerRole,
+)
 from rechnungshelfer.domain.models import Buyer, Payment, Seller
 from rechnungshelfer.repositories.business_partner_repository import (
     BusinessPartnerRepository,
@@ -90,6 +94,57 @@ class BusinessPartnerRepositoryTests(unittest.TestCase):
             ).fetchone()[0],
             0,
         )
+
+    def test_profile_can_add_supplier_role_to_existing_customer(self):
+        self.repository.save_customer(
+            Buyer(customer_number="0042", name="Musterhof", city="Altdorf")
+        )
+        profile = self.repository.load_partner("0042")
+        profile.roles = frozenset(
+            {BusinessPartnerRole.CUSTOMER, BusinessPartnerRole.SUPPLIER}
+        )
+        profile.payment.iban = "DE89370400440532013000"
+
+        self.repository.save_partner(profile)
+
+        loaded = self.repository.load_partner("0042")
+        self.assertEqual(
+            loaded.roles,
+            frozenset(
+                {BusinessPartnerRole.CUSTOMER, BusinessPartnerRole.SUPPLIER}
+            ),
+        )
+        self.assertEqual(loaded.payment.iban, "DE89370400440532013000")
+        self.assertEqual(len(self.repository.list_partners()), 1)
+
+    def test_profile_can_remove_one_role_without_deleting_partner(self):
+        self.repository.save_customer(Buyer(customer_number="42", name="Musterhof"))
+        self.repository.save_supplier(
+            Seller(supplier_number="42", name="Musterhof"),
+            Payment(),
+        )
+        profile = self.repository.load_partner("42")
+        profile.roles = frozenset({BusinessPartnerRole.SUPPLIER})
+
+        self.repository.save_partner(profile)
+
+        loaded = self.repository.load_partner("42")
+        self.assertEqual(loaded.roles, frozenset({BusinessPartnerRole.SUPPLIER}))
+        self.assertEqual(self.repository.list_customers(), [])
+        self.assertEqual(len(self.repository.list_suppliers()), 1)
+
+    def test_profile_requires_at_least_one_role(self):
+        profile = BusinessPartnerProfile(
+            buyer=Buyer(customer_number="42", name="Musterhof"),
+            seller=Seller(supplier_number="42", name="Musterhof"),
+            payment=Payment(),
+            roles=frozenset(),
+        )
+
+        with self.assertRaisesRegex(ValueError, "mindestens eine Rolle"):
+            self.repository.save_partner(profile)
+
+        self.assertIsNone(self.repository.load_partner("42"))
 
 
 if __name__ == "__main__":

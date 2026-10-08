@@ -8,28 +8,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rechnungshelfer.domain.business_partner import (
+    BusinessPartnerProfile,
     BusinessPartnerRole,
+    COMMON_PARTY_FIELDS,
+    CUSTOMER_ROLE_FIELDS,
+    SUPPLIER_ROLE_FIELDS,
     normalize_partner_number,
 )
 from rechnungshelfer.domain.models import Buyer, Payment, Seller
 from rechnungshelfer.repositories.database import open_database
-
-
-COMMON_FIELDS = (
-    "name",
-    "street",
-    "postcode",
-    "city",
-    "country",
-    "phone",
-    "email",
-    "vat",
-    "tax_number",
-    "registry_number",
-    "contact_name",
-)
-CUSTOMER_FIELDS = ("leitweg_id", "use_invoice_address_as_delivery")
-SUPPLIER_FIELDS = ("buyer_reference",)
 
 
 class BusinessPartnerRepository:
@@ -50,7 +37,7 @@ class BusinessPartnerRepository:
         self._save_role(
             number,
             BusinessPartnerRole.CUSTOMER,
-            {field: getattr(buyer, field) for field in CUSTOMER_FIELDS},
+            {field: getattr(buyer, field) for field in CUSTOMER_ROLE_FIELDS},
         )
         buyer.customer_number = number
         return number
@@ -67,7 +54,9 @@ class BusinessPartnerRepository:
                 return self.save_supplier(seller, payment, commit=False)
         number = normalize_partner_number(seller.supplier_number)
         self._save_partner(number, seller)
-        role_data = {field: getattr(seller, field) for field in SUPPLIER_FIELDS}
+        role_data = {
+            field: getattr(seller, field) for field in SUPPLIER_ROLE_FIELDS
+        }
         role_data["payment"] = dict(payment.__dict__)
         self._save_role(number, BusinessPartnerRole.SUPPLIER, role_data)
         seller.supplier_number = number
@@ -103,7 +92,7 @@ class BusinessPartnerRepository:
             (number,),
         ).fetchone()
         common = json.loads(row[0]) if row else {}
-        for field in COMMON_FIELDS:
+        for field in COMMON_PARTY_FIELDS:
             value = getattr(party, field, "")
             # Das automatische Speichern eines Belegs darf bereits gepflegte
             # Partnerdaten nicht durch in diesem Formular ausgeblendete Leerwerte
@@ -147,6 +136,158 @@ class BusinessPartnerRepository:
             for row in self._role_rows(BusinessPartnerRole.SUPPLIER)
         ]
 
+    def list_partners(self) -> list[BusinessPartnerProfile]:
+        rows = self.conn.execute(
+            """
+            SELECT partner_number, common_data
+            FROM business_partners
+            ORDER BY name COLLATE NOCASE, partner_number
+            """
+        ).fetchall()
+        return [self._profile_from_row(number, common_json) for number, common_json in rows]
+
+    def load_partner(self, partner_number: str) -> BusinessPartnerProfile | None:
+        number = normalize_partner_number(partner_number)
+        row = self.conn.execute(
+            """
+            SELECT partner_number, common_data
+            FROM business_partners
+            WHERE partner_number = ?
+            """,
+            (number,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._profile_from_row(row[0], row[1])
+
+    def _profile_from_row(
+        self,
+        number: str,
+        common_json: str,
+    ) -> BusinessPartnerProfile:
+        common = json.loads(common_json)
+        role_rows = self.conn.execute(
+            """
+            SELECT role, role_data
+            FROM business_partner_roles
+            WHERE partner_number = ?
+            """,
+            (number,),
+        ).fetchall()
+        role_payloads = {role: json.loads(payload) for role, payload in role_rows}
+        roles = frozenset(BusinessPartnerRole(role) for role in role_payloads)
+
+        customer_values = dict(common)
+        customer_values.update(role_payloads.get(BusinessPartnerRole.CUSTOMER.value, {}))
+        customer_values["customer_number"] = number
+
+        supplier_payload = role_payloads.get(BusinessPartnerRole.SUPPLIER.value, {})
+        supplier_values = dict(common)
+        supplier_values["buyer_reference"] = supplier_payload.get(
+            "buyer_reference",
+            "",
+        )
+        supplier_values["supplier_number"] = number
+        payment_values = supplier_payload.get("payment", {})
+        if BusinessPartnerRole.SUPPLIER not in roles:
+            payment_values = {
+                "iban": "",
+                "bic": "",
+                "account_holder": "",
+                "payment_means_code": "58",
+                "payment_terms": "",
+            }
+
+        return BusinessPartnerProfile(
+            buyer=Buyer(**_constructor_values(Buyer, customer_values)),
+            seller=Seller(**_constructor_values(Seller, supplier_values)),
+            payment=Payment(**_constructor_values(Payment, payment_values)),
+            roles=roles,
+        )
+
+    def save_partner(
+        self,
+        profile: BusinessPartnerProfile,
+        *,
+        commit: bool = True,
+    ) -> str:
+        if commit:
+            with self.conn:
+                return self.save_partner(profile, commit=False)
+        if not profile.roles:
+            raise ValueError("Ein Geschäftspartner benötigt mindestens eine Rolle.")
+
+        number = normalize_partner_number(profile.partner_number)
+        name = str(profile.buyer.name or profile.seller.name or "").strip()
+        if not name:
+            raise ValueError("Name des Geschäftspartners fehlt.")
+
+        profile.buyer.customer_number = number
+        profile.seller.supplier_number = number
+        common_data = {
+            field: getattr(profile.buyer, field, getattr(profile.seller, field, ""))
+            for field in COMMON_PARTY_FIELDS
+        }
+        common_data["name"] = name
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            """
+            INSERT INTO business_partners
+                (partner_number, name, common_data, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(partner_number) DO UPDATE SET
+                name = excluded.name,
+                common_data = excluded.common_data,
+                updated_at = excluded.updated_at
+            """,
+            (number, name, json.dumps(common_data, ensure_ascii=False), now),
+        )
+
+        selected_roles = {role.value for role in profile.roles}
+        placeholders = ", ".join("?" for _ in selected_roles)
+        self.conn.execute(
+            f"""
+            DELETE FROM business_partner_roles
+            WHERE partner_number = ? AND role NOT IN ({placeholders})
+            """,
+            (number, *sorted(selected_roles)),
+        )
+        if BusinessPartnerRole.CUSTOMER in profile.roles:
+            self._save_role(
+                number,
+                BusinessPartnerRole.CUSTOMER,
+                {
+                    field: getattr(profile.buyer, field)
+                    for field in CUSTOMER_ROLE_FIELDS
+                },
+            )
+        if BusinessPartnerRole.SUPPLIER in profile.roles:
+            supplier_role_data = {
+                field: getattr(profile.seller, field)
+                for field in SUPPLIER_ROLE_FIELDS
+            }
+            supplier_role_data["payment"] = dict(profile.payment.__dict__)
+            self._save_role(
+                number,
+                BusinessPartnerRole.SUPPLIER,
+                supplier_role_data,
+            )
+        return number
+
+    def delete_partner(self, partner_number: str) -> None:
+        number = normalize_partner_number(partner_number)
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM business_partner_roles WHERE partner_number = ?",
+                (number,),
+            )
+            deleted = self.conn.execute(
+                "DELETE FROM business_partners WHERE partner_number = ?",
+                (number,),
+            ).rowcount
+            if not deleted:
+                raise KeyError(f"Geschäftspartner nicht gefunden: {number}")
+
     def _role_rows(self, role: BusinessPartnerRole):
         return self.conn.execute(
             """
@@ -173,7 +314,12 @@ class BusinessPartnerRepository:
         number, common_json, role_json = row
         values = json.loads(common_json)
         role_data = json.loads(role_json)
-        values.update({field: role_data.get(field, "") for field in SUPPLIER_FIELDS})
+        values.update(
+            {
+                field: role_data.get(field, "")
+                for field in SUPPLIER_ROLE_FIELDS
+            }
+        )
         values["supplier_number"] = number
         payment_data = role_data.get("payment", {})
         return (

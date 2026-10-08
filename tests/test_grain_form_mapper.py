@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 from decimal import Decimal
 from unittest.mock import Mock, patch
 
@@ -430,10 +431,7 @@ class GrainWorkspaceNavigationTests(unittest.TestCase):
             state="disabled",
         )
         gui.file_menu.entryconfigure.assert_any_call(5, label="Speichern")
-        gui.master_data_menu.entryconfigure.assert_any_call(
-            0,
-            label="Lieferantenliste",
-        )
+        gui.master_data_menu.entryconfigure.assert_not_called()
         gui.workspace_variable.set.assert_called_once_with("grain")
 
 
@@ -442,6 +440,7 @@ class GrainRuleSetSelectionTests(unittest.TestCase):
         view = GrainSettlementView.__new__(GrainSettlementView)
         view._form_value = Mock()
         view._render_deliveries = Mock()
+        view._clear_totals = Mock()
         view._last_result = None
         view.status_label = Mock()
 
@@ -460,7 +459,81 @@ class GrainRuleSetSelectionTests(unittest.TestCase):
 
         self.assertFalse(calculated)
         showerror.assert_not_called()
+        view._render_deliveries.assert_called_once_with()
+        view._clear_totals.assert_called_once_with()
         view.status_label.configure.assert_called_once_with(text="Eingaben prüfen")
+
+    def test_example_deliveries_include_all_required_rule_features(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.features = (
+            FeatureFormValue("moisture", "Feuchtigkeit", required=True),
+            FeatureFormValue("dockage", "Besatz", required=True),
+            FeatureFormValue("protein", "Rohprotein", required=True),
+            FeatureFormValue("optional", "Optional", required=False),
+        )
+
+        analyses = view._example_analyses(moisture="16,0", dockage="3,0")
+
+        self.assertEqual(
+            {analysis.feature_code: analysis.raw_value for analysis in analyses},
+            {
+                "moisture": "16,0",
+                "dockage": "3,0",
+                "protein": "12,5",
+            },
+        )
+
+    def test_saved_active_rules_produce_adjustment_and_residual_rows(self):
+        preset = grain_rule_preset("wheat")
+        active_codes = {
+            "moisture-shrink",
+            "dockage-deduction",
+            "drying-cost",
+            "protein-price",
+        }
+        rules = tuple(
+            replace(rule, enabled=rule.code in active_codes)
+            for rule in preset.rules
+        )
+        features = require_features_used_by_active_rules(preset.features, rules)
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.features = features
+        analyses = view._example_analyses(moisture="16,0", dockage="3,0")
+        delivery = DeliveryFormValue(
+            id="delivery-1",
+            delivery_date="09.10.2026",
+            ticket_number="WS-1",
+            grain_type_code="wheat",
+            gross_quantity_kg="10.000",
+            base_price_per_tonne="200,00",
+            analyses=analyses,
+        )
+
+        result = calculate_settlement_preview(
+            GrainSettlementForm("1001", features, rules, (delivery,))
+        ).delivery_results[0]
+
+        self.assertEqual(len(view._adjustment_rows(result)), 3)
+        self.assertEqual(view._residual_row(result)[-1], "1.824,54")
+
+    def test_previous_valid_result_is_restored_after_rejected_edit(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        result = Mock(delivery_results=(Mock(), Mock()))
+        view._last_result = None
+        view._render_deliveries = Mock()
+        view._show_totals = Mock()
+        view._clear_totals = Mock()
+        view.status_label = Mock()
+
+        view._restore_calculation(result)
+
+        self.assertIs(view._last_result, result)
+        view._render_deliveries.assert_called_once_with(result)
+        view._show_totals.assert_called_once_with(result)
+        view._clear_totals.assert_not_called()
+        view.status_label.configure.assert_called_once_with(
+            text="2 Lieferungen berechnet"
+        )
 
     def test_current_delivery_selects_its_own_rule_set(self):
         view = GrainSettlementView.__new__(GrainSettlementView)

@@ -15,9 +15,7 @@ from .item_table import ItemTable
 from .totals_card import TotalsCard
 from .show_seller_dialog import SellerDialog
 from .invoice_load_dialog import InvoiceLoadDialog
-from .customer_load_dialog import CustomerLoadDialog
-from .supplier_load_dialog import SupplierLoadDialog
-from .supplier_edit_dialog import SupplierEditDialog
+from .business_partner_dialog import BusinessPartnerListDialog
 from .test_document_dialog import TestDocumentDialog
 from .pdf_import_dialog import PdfImportDialog
 from .update_dialog import UpdateDialog
@@ -26,6 +24,7 @@ from .export_workflow import ExportWorkflow
 from .grain_settlement_view import GrainSettlementView
 from rechnungshelfer.services.update_service import check_for_application_update
 from rechnungshelfer.application.errors import CustomerDuplicateError
+from rechnungshelfer.domain.business_partner import BusinessPartnerRole
 from rechnungshelfer.domain.models import DocumentType
 
 class InvoiceGUI:
@@ -163,12 +162,8 @@ class InvoiceGUI:
 
         self.master_data_menu = Menu(self.menu_bar, tearoff=False)
         self.master_data_menu.add_command(
-            label="Kundenliste",
+            label="Geschäftspartnerliste",
             command=self._show_current_party_list,
-        )
-        self.master_data_menu.add_command(
-            label="Neuer Lieferant",
-            command=self._create_supplier_from_menu,
         )
         self.master_data_menu.add_separator()
         self.master_data_menu.add_command(
@@ -420,18 +415,6 @@ class InvoiceGUI:
             ),
         )
         self.document_menu.entryconfigure(4, state=document_state)
-        self.master_data_menu.entryconfigure(
-            0,
-            label=(
-                "Lieferantenliste"
-                if is_grain or is_self_billed
-                else "Kundenliste"
-            ),
-        )
-        self.master_data_menu.entryconfigure(
-            1,
-            state="normal" if is_grain or is_self_billed else "disabled",
-        )
         self.workspace_variable.set(self.active_workspace)
 
     def _refresh_document_labels(self):
@@ -598,39 +581,30 @@ class InvoiceGUI:
         self.show_form()
 
     def show_party_list(self):
-        if self.invoice.is_self_billed:
-            dialog = SupplierLoadDialog(
-                self.root,
-                self.controller,
-                on_supplier_selected=self._on_supplier_selected,
-            )
-            dialog.open()
-        else:
-            self.show_customer_list()
+        required_role = (
+            BusinessPartnerRole.SUPPLIER
+            if self.invoice.is_self_billed
+            else BusinessPartnerRole.CUSTOMER
+        )
+
+        def select(profile):
+            if required_role is BusinessPartnerRole.SUPPLIER:
+                self._on_supplier_selected(profile.seller, profile.payment)
+            else:
+                self._on_customer_selected(profile.buyer)
+
+        BusinessPartnerListDialog(
+            self.root,
+            self.controller,
+            required_role=required_role,
+            on_selected=select,
+        ).open()
 
     def _show_current_party_list(self):
         if self.active_workspace == "grain":
             self.grain_view.open_supplier_list()
             return
         self.show_party_list()
-
-    def _create_supplier_from_menu(self):
-        if self.active_workspace == "grain":
-            self.grain_view.open_supplier_editor()
-            return
-        SupplierEditDialog(
-            self.root,
-            self.controller,
-            on_saved=self._on_supplier_selected,
-        ).open()
-
-    def show_customer_list(self):
-        dialog = CustomerLoadDialog(
-            self.root,
-            self.controller,
-            on_customer_selected=self._on_customer_selected,
-        )
-        dialog.open()
 
     def show_seller(self):
         dialog_invoice = self.invoice

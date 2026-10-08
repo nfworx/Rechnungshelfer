@@ -15,6 +15,7 @@ from rechnungshelfer.domain.grain_models import (
     SettlementBatchResult,
     SettlementResult,
 )
+from rechnungshelfer.domain.business_partner import BusinessPartnerRole
 from rechnungshelfer.domain.models import DocumentType
 from rechnungshelfer.services.format_service import format_de
 
@@ -37,10 +38,21 @@ from .grain_settlement_dialogs import (
     require_features_used_by_active_rules,
 )
 from .grain_rule_presets import grain_rule_preset
+from .business_partner_dialog import BusinessPartnerListDialog
 from .party_card import PartyCard
 from .styles import APP_BG, FONT_NORMAL, FONT_SECTION, FONT_SMALL, TEXT, TEXT_MUTED
-from .supplier_edit_dialog import SupplierEditDialog
-from .supplier_load_dialog import SupplierLoadDialog
+
+
+_EXAMPLE_ANALYSIS_VALUES = {
+    "moisture": "14,5",
+    "dockage": "2,0",
+    "hectolitre_weight": "76",
+    "protein": "12,5",
+    "falling_number": "250",
+    "germination": "98",
+    "whole_grain": "92",
+    "oil_content": "40",
+}
 
 
 class GrainSettlementView(ctk.CTkFrame):
@@ -280,18 +292,14 @@ class GrainSettlementView(ctk.CTkFrame):
             set_button_enabled(output_button, False)
 
     def open_supplier_list(self):
-        SupplierLoadDialog(
+        BusinessPartnerListDialog(
             self,
             self.controller,
-            on_supplier_selected=self._select_supplier,
-            on_create_supplier=self.open_supplier_editor,
-        ).open()
-
-    def open_supplier_editor(self):
-        SupplierEditDialog(
-            self,
-            self.controller,
-            on_saved=self._select_supplier,
+            required_role=BusinessPartnerRole.SUPPLIER,
+            on_selected=lambda profile: self._select_supplier(
+                profile.seller,
+                profile.payment,
+            ),
         ).open()
 
     def _select_supplier(self, seller, payment):
@@ -317,11 +325,12 @@ class GrainSettlementView(ctk.CTkFrame):
         )
 
     def _append_delivery(self, value: DeliveryFormValue):
+        previous_result = self._last_result
         self.deliveries.append(value)
         if self.calculate():
             return True
         self.deliveries.pop()
-        self._render_deliveries(self._last_result)
+        self._restore_calculation(previous_result)
         return False
 
     def edit_delivery(self, index: int):
@@ -336,11 +345,12 @@ class GrainSettlementView(ctk.CTkFrame):
 
     def _replace_delivery(self, index: int, value: DeliveryFormValue):
         previous = self.deliveries[index]
+        previous_result = self._last_result
         self.deliveries[index] = value
         if self.calculate():
             return True
         self.deliveries[index] = previous
-        self._render_deliveries(self._last_result)
+        self._restore_calculation(previous_result)
         return False
 
     def remove_delivery(self, index: int):
@@ -433,7 +443,9 @@ class GrainSettlementView(ctk.CTkFrame):
         try:
             result = calculate_settlement_preview(self._form_value())
         except (GrainValidationError, ValueError, ArithmeticError) as exc:
-            self._render_deliveries(self._last_result)
+            self._last_result = None
+            self._render_deliveries()
+            self._clear_totals()
             self.status_label.configure(text="Eingaben prüfen")
             if show_error:
                 messagebox.showerror("Getreideabrechnung", str(exc), parent=self)
@@ -445,6 +457,21 @@ class GrainSettlementView(ctk.CTkFrame):
             text=f"{len(result.delivery_results)} Lieferungen berechnet"
         )
         return True
+
+    def _restore_calculation(
+        self,
+        result: SettlementBatchResult | None,
+    ) -> None:
+        self._last_result = result
+        self._render_deliveries(result)
+        if result is None:
+            self._clear_totals()
+            self.status_label.configure(text="")
+            return
+        self._show_totals(result)
+        self.status_label.configure(
+            text=f"{len(result.delivery_results)} Lieferungen berechnet"
+        )
 
     def _form_value(self) -> GrainSettlementForm:
         features, rules = self._current_rule_set()
@@ -718,6 +745,21 @@ class GrainSettlementView(ctk.CTkFrame):
             self.rule_sets[grain_type_code] = (preset.features, preset.rules)
         return self.rule_sets[grain_type_code]
 
+    def _example_analyses(self, **overrides: str) -> tuple[AnalysisFormValue, ...]:
+        """Erzeugt vollständige Beispieldaten für das aktuell aktive Regelwerk."""
+
+        return tuple(
+            AnalysisFormValue(
+                feature.code,
+                overrides.get(
+                    feature.code,
+                    _EXAMPLE_ANALYSIS_VALUES.get(feature.code, "0"),
+                ),
+            )
+            for feature in self.features
+            if feature.required or feature.code in overrides
+        )
+
     def _show_totals(self, result: SettlementBatchResult):
         self.total_rows["gross"].configure(
             text=f"{self._quantity(result.gross_quantity_kg)} kg"
@@ -800,9 +842,9 @@ class GrainSettlementView(ctk.CTkFrame):
                 grain_type_code="wheat",
                 gross_quantity_kg="10.000",
                 base_price_per_tonne="200,00",
-                analyses=(
-                    AnalysisFormValue("moisture", "14,5"),
-                    AnalysisFormValue("dockage", "3,0"),
+                analyses=self._example_analyses(
+                    moisture="16,0",
+                    dockage="3,0",
                 ),
             ),
             DeliveryFormValue(
@@ -812,9 +854,9 @@ class GrainSettlementView(ctk.CTkFrame):
                 grain_type_code="wheat",
                 gross_quantity_kg="8.000",
                 base_price_per_tonne="200,00",
-                analyses=(
-                    AnalysisFormValue("moisture", "14,5"),
-                    AnalysisFormValue("dockage", "2,0"),
+                analyses=self._example_analyses(
+                    moisture="14,5",
+                    dockage="2,0",
                 ),
             ),
         ]
