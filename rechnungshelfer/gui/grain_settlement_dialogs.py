@@ -522,11 +522,11 @@ class RuleEditorDialog(ctk.CTkToplevel):
         parent,
         *,
         grain_type_code: str,
-        features: tuple[FeatureFormValue, ...],
-        rules: tuple[RuleFormValue, ...],
-        on_save: Callable[
-            [tuple[FeatureFormValue, ...], tuple[RuleFormValue, ...]], None
+        rule_sets: dict[
+            str,
+            tuple[tuple[FeatureFormValue, ...], tuple[RuleFormValue, ...]],
         ],
+        on_save: Callable[[dict], None],
     ):
         super().__init__(parent)
         self.title("Abrechnungsregeln")
@@ -534,25 +534,45 @@ class RuleEditorDialog(ctk.CTkToplevel):
         self.configure(fg_color=APP_BG)
         self.transient(parent.winfo_toplevel())
         self.grain_type_code = grain_type_code
+        self.rule_sets = dict(rule_sets)
         self.on_save = on_save
         self.feature_rows: list[_FeatureRow] = []
         self.rule_rows: list[_RuleRow] = []
 
         content = ctk.CTkScrollableFrame(self, fg_color="white")
         content.pack(fill="both", expand=True, padx=12, pady=12)
-        preset = grain_rule_preset(grain_type_code)
-        notice = ctk.CTkFrame(content, fg_color="#fff4d6", corner_radius=8)
-        notice.pack(fill="x", pady=(0, 14))
+        selector = ctk.CTkFrame(content, fg_color="transparent")
+        selector.pack(fill="x", pady=(0, 10))
         ctk.CTkLabel(
-            notice,
+            selector,
+            text="Regelwerk für Getreideart",
+            font=("Segoe UI", 16, "bold"),
+            text_color=TEXT,
+        ).pack(side="left", padx=(0, 12))
+        self.grain_type = ctk.CTkOptionMenu(
+            selector,
+            values=list(GRAIN_TYPES),
+            width=190,
+            height=32,
+            font=FONT_NORMAL,
+            command=self._change_grain_type,
+        )
+        self.grain_type.set(GRAIN_TYPE_LABELS.get(grain_type_code, "Weizen"))
+        self.grain_type.pack(side="left")
+        preset = grain_rule_preset(grain_type_code)
+        self.notice = ctk.CTkFrame(content, fg_color="#fff4d6", corner_radius=8)
+        self.notice.pack(fill="x", pady=(0, 14))
+        self.notice_label = ctk.CTkLabel(
+            self.notice,
             text=f"Praxisvorlage {preset.label}: {preset.note}",
             font=FONT_SMALL,
             text_color=TEXT,
             wraplength=850,
             justify="left",
-        ).pack(side="left", fill="x", expand=True, padx=12, pady=10)
+        )
+        self.notice_label.pack(side="left", fill="x", expand=True, padx=12, pady=10)
         button(
-            notice,
+            self.notice,
             "Praxisvorlage neu laden",
             self._load_preset,
         ).pack(side="right", padx=10, pady=8)
@@ -571,8 +591,6 @@ class RuleEditorDialog(ctk.CTkToplevel):
         ).pack(anchor="w")
         self.feature_host = ctk.CTkFrame(content, fg_color="transparent")
         self.feature_host.pack(fill="x")
-        for value in features:
-            self._add_feature(value)
 
         ctk.CTkLabel(
             content,
@@ -583,8 +601,8 @@ class RuleEditorDialog(ctk.CTkToplevel):
         button(content, "+ Regel", lambda: self._add_rule()).pack(anchor="w", pady=5)
         self.rule_host = ctk.CTkFrame(content, fg_color="transparent")
         self.rule_host.pack(fill="x", pady=5)
-        for value in rules:
-            self._add_rule(value)
+        features, rules = self.rule_sets[grain_type_code]
+        self._show_rule_set(features, rules)
 
         actions = ctk.CTkFrame(self, fg_color="transparent")
         actions.pack(fill="x", padx=12, pady=(0, 12))
@@ -640,22 +658,43 @@ class RuleEditorDialog(ctk.CTkToplevel):
             parent=self,
         ):
             return
+        self._show_rule_set(preset.features, preset.rules)
+
+    def _current_values(self):
+        features = tuple(row.value() for row in self.feature_rows)
+        rules = tuple(row.value(index) for index, row in enumerate(self.rule_rows))
+        return features, rules
+
+    def _show_rule_set(self, features, rules):
         for row in (*self.feature_rows, *self.rule_rows):
             row.frame.destroy()
         self.feature_rows.clear()
         self.rule_rows.clear()
-        for value in preset.features:
+        for value in features:
             self._add_feature(value)
-        for value in preset.rules:
+        for value in rules:
             self._add_rule(value)
 
+    def _change_grain_type(self, label: str):
+        self.rule_sets[self.grain_type_code] = self._current_values()
+        self.grain_type_code = GRAIN_TYPES[label]
+        preset = grain_rule_preset(self.grain_type_code)
+        self.notice_label.configure(
+            text=f"Praxisvorlage {preset.label}: {preset.note}"
+        )
+        features, rules = self.rule_sets.get(
+            self.grain_type_code,
+            (preset.features, preset.rules),
+        )
+        self._show_rule_set(features, rules)
+
     def _save(self):
-        features = tuple(row.value() for row in self.feature_rows)
-        rules = tuple(row.value(index) for index, row in enumerate(self.rule_rows))
+        self.rule_sets[self.grain_type_code] = self._current_values()
         try:
-            build_preview_scheme(self.grain_type_code, features, rules)
+            for grain_type_code, (features, rules) in self.rule_sets.items():
+                build_preview_scheme(grain_type_code, features, rules)
         except (GrainValidationError, ValueError) as exc:
             messagebox.showerror("Abrechnungsregeln", str(exc), parent=self)
             return
-        self.on_save(features, rules)
+        self.on_save(self.rule_sets)
         self.destroy()

@@ -16,6 +16,7 @@ from rechnungshelfer.gui.grain_form_mapper import (
     parse_tiers,
 )
 from rechnungshelfer.gui.main_window import InvoiceGUI
+from rechnungshelfer.gui.grain_settlement_view import GrainSettlementView
 
 
 class GrainFormMapperTests(unittest.TestCase):
@@ -271,6 +272,33 @@ class GrainWorkspaceNavigationTests(unittest.TestCase):
             label="Lieferantenliste",
         )
         gui.workspace_variable.set.assert_called_once_with("grain")
+
+
+class GrainRuleSetSelectionTests(unittest.TestCase):
+    def test_current_delivery_selects_its_own_rule_set(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        barley_delivery = GrainFormMapperTests._delivery(
+            grain_type_code="barley"
+        )
+        wheat = ((FeatureFormValue("w", "Weizen"),), ())
+        barley = ((FeatureFormValue("b", "Gerste"),), ())
+        view.deliveries = [barley_delivery]
+        view.rule_sets = {"wheat": wheat, "barley": barley}
+
+        self.assertIs(view._current_rule_set(), barley)
+
+    def test_missing_rule_set_is_initialized_from_matching_preset(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.deliveries = [
+            GrainFormMapperTests._delivery(grain_type_code="maize")
+        ]
+        view.rule_sets = {}
+
+        features, rules = view._current_rule_set()
+
+        self.assertIn("maize", view.rule_sets)
+        self.assertTrue(any(feature.code == "aflatoxin_b1" for feature in features))
+        self.assertTrue(any(rule.code == "moisture-shrink" for rule in rules))
 
 
 if __name__ == "__main__":

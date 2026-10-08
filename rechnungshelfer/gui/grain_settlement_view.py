@@ -49,6 +49,10 @@ class GrainSettlementView(ctk.CTkFrame):
         )
         self.features: tuple[FeatureFormValue, ...] = ()
         self.rules: tuple[RuleFormValue, ...] = ()
+        self.rule_sets: dict[
+            str,
+            tuple[tuple[FeatureFormValue, ...], tuple[RuleFormValue, ...]],
+        ] = {}
         self.deliveries: list[DeliveryFormValue] = []
         self.field_entries = {}
         self._next_delivery_number = 1
@@ -347,19 +351,20 @@ class GrainSettlementView(ctk.CTkFrame):
         RuleEditorDialog(
             self,
             grain_type_code=self._default_grain_type_code(),
-            features=self.features,
-            rules=self.rules,
-            on_save=self._replace_rules,
+            rule_sets=self.rule_sets,
+            on_save=self._replace_rule_sets,
         )
 
-    def _replace_rules(
+    def _replace_rule_sets(
         self,
-        features: tuple[FeatureFormValue, ...],
-        rules: tuple[RuleFormValue, ...],
+        rule_sets: dict[
+            str,
+            tuple[tuple[FeatureFormValue, ...], tuple[RuleFormValue, ...]],
+        ],
     ):
-        self.features = features
-        self.rules = rules
-        active_rules = sum(rule.enabled for rule in rules)
+        self.rule_sets = dict(rule_sets)
+        self.features, self.rules = self._current_rule_set()
+        active_rules = sum(rule.enabled for rule in self.rules)
         self.rule_button.configure(
             text=f"Regeln bearbeiten ({active_rules} aktiv)"
         )
@@ -382,10 +387,12 @@ class GrainSettlementView(ctk.CTkFrame):
         return True
 
     def _form_value(self) -> GrainSettlementForm:
+        features, rules = self._current_rule_set()
+        self.features, self.rules = features, rules
         return GrainSettlementForm(
             supplier_number=self.document.seller.supplier_number,
-            features=self.features,
-            rules=self.rules,
+            features=features,
+            rules=rules,
             deliveries=tuple(self.deliveries),
         )
 
@@ -490,6 +497,13 @@ class GrainSettlementView(ctk.CTkFrame):
     def _default_grain_type_code(self) -> str:
         return self.deliveries[0].grain_type_code if self.deliveries else "wheat"
 
+    def _current_rule_set(self):
+        grain_type_code = self._default_grain_type_code()
+        if grain_type_code not in self.rule_sets:
+            preset = grain_rule_preset(grain_type_code)
+            self.rule_sets[grain_type_code] = (preset.features, preset.rules)
+        return self.rule_sets[grain_type_code]
+
     def _show_totals(self, result: SettlementBatchResult):
         self.total_rows["gross"].configure(
             text=f"{self._quantity(result.gross_quantity_kg)} kg"
@@ -530,6 +544,13 @@ class GrainSettlementView(ctk.CTkFrame):
         self.document.info.delivery_date = date.today().strftime("%d.%m.%Y")
         self.document.seller.supplier_number = "L0001"
         self.document.seller.name = "Beispiellieferant"
+        self.rule_sets = {}
+        for grain_type_code in GRAIN_TYPE_LABELS:
+            grain_preset = grain_rule_preset(grain_type_code)
+            self.rule_sets[grain_type_code] = (
+                grain_preset.features,
+                grain_preset.rules,
+            )
         preset = grain_rule_preset("wheat")
         self.features = preset.features
         self.rules = preset.rules
