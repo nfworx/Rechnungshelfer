@@ -10,6 +10,7 @@ from rechnungshelfer.gui.grain_form_mapper import (
     FeatureFormValue,
     GrainSettlementForm,
     RuleFormValue,
+    build_preview_scheme,
     calculate_settlement_preview,
     parse_parameters,
     parse_tiers,
@@ -177,6 +178,26 @@ class GrainFormMapperTests(unittest.TestCase):
         delivery = self._delivery(analyses=(AnalysisFormValue("dockage", ""),))
         with self.assertRaisesRegex(GrainValidationError, "Besatz"):
             calculate_settlement_preview(self._form(deliveries=(delivery,)))
+
+    def test_disabled_rules_are_not_added_to_preview_scheme(self):
+        rule = RuleFormValue(
+            code="optional",
+            label="Optionale Regel",
+            kind="fixed_quantity",
+            feature_code="",
+            quantity_reference="gross_quantity",
+            parameters="amount_kg=100",
+            enabled=False,
+        )
+
+        scheme = build_preview_scheme(
+            "wheat",
+            (FeatureFormValue("moisture", "Feuchtigkeit", unit="%"),),
+            (rule,),
+        )
+
+        self.assertEqual(scheme.rules, ())
+        self.assertEqual(scheme.quality_features[0].unit, "%")
 
 
 class GrainWorkspaceNavigationTests(unittest.TestCase):

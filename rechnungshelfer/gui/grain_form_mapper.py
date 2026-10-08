@@ -30,6 +30,7 @@ class FeatureFormValue:
     code: str
     label: str
     required: bool = True
+    unit: str = "%"
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class RuleFormValue:
     phase: str = "quantity_deduction"
     direction: str = "deduction"
     price_reference: str = ""
+    enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -105,11 +107,12 @@ def build_preview_scheme(
             QualityFeature(
                 code=_required_text(value.code, "Merkmalscode"),
                 label=_required_text(value.label, "Merkmalsbezeichnung"),
+                unit=str(value.unit or "").strip(),
                 required=value.required,
             )
             for value in features
         ),
-        rules=tuple(_map_rule(value) for value in rules),
+        rules=tuple(_map_rule(value) for value in rules if value.enabled),
     )
 
 

@@ -16,26 +16,28 @@ from .grain_form_mapper import (
     FeatureFormValue,
     RuleFormValue,
     build_preview_scheme,
+    parse_parameters,
 )
+from .grain_rule_presets import grain_rule_preset
 from .styles import APP_BG, FONT_NORMAL, FONT_SMALL, TEXT, TEXT_MUTED
 
 
 RULE_TYPES = {
-    "Menge · Analysewert prozentual": (
+    "Mengenabzug · Anteil des Analysewerts": (
         "quantity_deduction",
         "percentage_of_measurement",
     ),
-    "Menge · Nur über Basiswert": ("quantity_deduction", "excess_over_basis"),
-    "Menge · Fester kg-Abzug": ("quantity_deduction", "fixed_quantity"),
-    "Menge · Staffel": ("quantity_deduction", "tiered"),
-    "Preis · Fester Betrag EUR/t": ("price_adjustment", "absolute_per_tonne"),
-    "Preis · Analyse über Basiswert": (
+    "Mengenabzug · Nur oberhalb des Basiswerts": ("quantity_deduction", "excess_over_basis"),
+    "Mengenabzug · Feste Menge in kg": ("quantity_deduction", "fixed_quantity"),
+    "Mengenabzug · Nach Wertestaffel": ("quantity_deduction", "tiered"),
+    "Preisabzug · Fester Betrag je Tonne": ("price_adjustment", "absolute_per_tonne"),
+    "Preisabzug · Je Einheit oberhalb des Basiswerts": (
         "price_adjustment",
         "excess_over_basis",
     ),
-    "Preis · Prozent vom Preis": ("price_adjustment", "percentage_of_price"),
-    "Preis · Analyse-Staffel": ("price_adjustment", "tiered"),
-    "Kosten · Fester Betrag EUR": ("cost", "fixed_amount"),
+    "Preisabzug · Prozent vom Preis": ("price_adjustment", "percentage_of_price"),
+    "Preisabzug · Nach Wertestaffel": ("price_adjustment", "tiered"),
+    "Kosten · Fester Betrag je Lieferung": ("cost", "fixed_amount"),
 }
 RULE_TYPE_LABELS = {value: label for label, value in RULE_TYPES.items()}
 RULE_REFERENCES = {
@@ -51,6 +53,31 @@ RULE_DIRECTIONS = {
     "Zuschlag": "surcharge",
 }
 DIRECTION_LABELS = {value: label for label, value in RULE_DIRECTIONS.items()}
+PARAMETER_FIELDS = {
+    ("quantity_deduction", "percentage_of_measurement"): (
+        ("factor", "Abzugsfaktor", "1,0 = 1 % Mengenabzug je Prozentpunkt"),
+    ),
+    ("quantity_deduction", "excess_over_basis"): (
+        ("basis_value", "Freigrenze / Basiswert", "Nur der darüberliegende Anteil zählt"),
+        ("factor", "Abzugsfaktor", "1,0 = 1 % Mengenabzug je Prozentpunkt"),
+    ),
+    ("quantity_deduction", "fixed_quantity"): (
+        ("amount_kg", "Abzugsmenge", "kg"),
+    ),
+    ("price_adjustment", "absolute_per_tonne"): (
+        ("amount_per_tonne", "Betrag", "EUR je Tonne"),
+    ),
+    ("price_adjustment", "excess_over_basis"): (
+        ("basis_value", "Freigrenze / Basiswert", "Nur der darüberliegende Anteil zählt"),
+        ("amount_per_unit", "Preisabzug je Einheit", "EUR/t je Prozentpunkt bzw. Messeinheit"),
+    ),
+    ("price_adjustment", "percentage_of_price"): (
+        ("percentage", "Preisabzug", "% vom gewählten Preis"),
+    ),
+    ("cost", "fixed_amount"): (
+        ("amount", "Betrag", "EUR je Lieferung"),
+    ),
+}
 GRAIN_TYPES = {
     "Weizen": "wheat",
     "Gerste": "barley",
@@ -59,6 +86,53 @@ GRAIN_TYPES = {
     "Mais": "maize",
 }
 GRAIN_TYPE_LABELS = {value: label for label, value in GRAIN_TYPES.items()}
+
+
+def _tiers_for_display(value: str) -> str:
+    """Uebersetzt die interne Staffelnotation in lesbaren Bedienertext."""
+
+    result = []
+    for part in (item.strip() for item in str(value or "").split("|")):
+        if not part:
+            continue
+        interval, tier_value = (item.strip() for item in part.split("=", 1))
+        lower, upper = (item.strip() for item in interval.split("..", 1))
+        if lower and upper:
+            boundary = f"{lower} bis unter {upper}"
+        elif lower:
+            boundary = f"ab {lower}"
+        else:
+            boundary = f"unter {upper}"
+        result.append(f"{boundary}: {tier_value}")
+    return " | ".join(result)
+
+
+def _tiers_for_storage(value: str) -> str:
+    """Uebersetzt lesbare Staffelgrenzen in die kompakte Domaenennotation."""
+
+    result = []
+    for part in (item.strip() for item in str(value or "").split("|")):
+        if not part:
+            continue
+        if ":" not in part:
+            raise GrainValidationError(
+                "Staffel bitte als 'unter 72: 4', '72 bis unter 73: 3' "
+                "oder 'ab 73: 0' eingeben."
+            )
+        boundary, tier_value = (item.strip() for item in part.split(":", 1))
+        if boundary.startswith("unter "):
+            interval = f"..{boundary[6:].strip()}"
+        elif boundary.startswith("ab "):
+            interval = f"{boundary[3:].strip()}.."
+        elif " bis unter " in boundary:
+            lower, upper = boundary.split(" bis unter ", 1)
+            interval = f"{lower.strip()}..{upper.strip()}"
+        else:
+            raise GrainValidationError(
+                f"Staffelgrenze '{boundary}' ist nicht verständlich."
+            )
+        result.append(f"{interval}={tier_value}")
+    return " | ".join(result)
 
 
 class DeliveryDialog(ctk.CTkToplevel):
@@ -130,7 +204,9 @@ class DeliveryDialog(ctk.CTkToplevel):
         self.analysis_entries = {}
         for index, feature in enumerate(features, start=6):
             current = existing_analyses.get(feature.code)
-            label = f"{feature.label} ({feature.code})"
+            label = feature.label
+            if feature.unit:
+                label += f" ({feature.unit})"
             if feature.required:
                 label += " *"
             ctk.CTkLabel(
@@ -197,13 +273,21 @@ class DeliveryDialog(ctk.CTkToplevel):
 
 
 class _FeatureRow:
-    def __init__(self, parent, on_remove, value: FeatureFormValue | None = None):
+    def __init__(
+        self,
+        parent,
+        on_remove,
+        *,
+        code: str,
+        value: FeatureFormValue | None = None,
+    ):
         self.frame = ctk.CTkFrame(parent, fg_color="transparent")
         small_button(self.frame, "−", lambda: on_remove(self)).pack(side="left")
-        self.code = form_entry(self.frame, value.code if value else "", 130)
-        self.code.pack(side="left", padx=5)
+        self.code = value.code if value else code
         self.label = form_entry(self.frame, value.label if value else "", 220)
         self.label.pack(side="left", padx=5)
+        self.unit = form_entry(self.frame, value.unit if value else "%", 90)
+        self.unit.pack(side="left", padx=5)
         self.required = ctk.CTkCheckBox(self.frame, text="Pflicht", font=FONT_SMALL)
         self.required.pack(side="left", padx=5)
         if value is None or value.required:
@@ -211,77 +295,205 @@ class _FeatureRow:
 
     def value(self) -> FeatureFormValue:
         return FeatureFormValue(
-            code=self.code.get(),
+            code=self.code,
             label=self.label.get(),
             required=bool(self.required.get()),
+            unit=self.unit.get(),
         )
 
 
 class _RuleRow:
-    def __init__(self, parent, on_remove, value: RuleFormValue | None = None):
-        self.frame = ctk.CTkFrame(parent, fg_color="transparent")
-        small_button(self.frame, "−", lambda: on_remove(self)).pack(side="left")
-        self.code = form_entry(self.frame, value.code if value else "", 120)
-        self.code.pack(side="left", padx=3)
-        self.label = form_entry(self.frame, value.label if value else "", 150)
-        self.label.pack(side="left", padx=3)
+    NO_FEATURE = "Kein Analysemerkmal"
+
+    def __init__(
+        self,
+        parent,
+        on_remove,
+        *,
+        code: str,
+        features: tuple[FeatureFormValue, ...],
+        value: RuleFormValue | None = None,
+    ):
+        self.frame = ctk.CTkFrame(parent, fg_color="#f4f6f8", corner_radius=8)
+        self.frame.grid_columnconfigure(1, weight=1)
+        self.code = value.code if value else code
+        self._features = features
+        self._parameters = parse_parameters(value.parameters) if value else {}
+        self.parameter_entries = {}
+
+        header = ctk.CTkFrame(self.frame, fg_color="transparent")
+        header.grid(row=0, column=0, columnspan=4, sticky="ew", padx=10, pady=(8, 4))
+        self.enabled = ctk.CTkCheckBox(header, text="Regel aktiv", font=FONT_SMALL)
+        self.enabled.pack(side="left")
+        if value is None or value.enabled:
+            self.enabled.select()
+        small_button(header, "−", lambda: on_remove(self)).pack(side="right")
+
+        self._label(self.frame, 1, 0, "Bezeichnung")
+        self._label(self.frame, 1, 1, "Wirkung")
+        self._label(self.frame, 1, 2, "Analysemerkmal")
+        self._label(self.frame, 1, 3, "Richtung")
+        self.label = form_entry(self.frame, value.label if value else "", 210)
+        self.label.grid(row=2, column=0, sticky="ew", padx=8, pady=(0, 8))
         self.kind = ctk.CTkOptionMenu(
-            self.frame, values=list(RULE_TYPES), width=190, height=28, font=FONT_SMALL
+            self.frame,
+            values=list(RULE_TYPES),
+            width=300,
+            height=28,
+            font=FONT_SMALL,
+            command=lambda _choice: self._render_parameters(),
         )
         kind = (
             RULE_TYPE_LABELS.get(
                 (value.phase, value.kind),
-                "Menge · Analysewert prozentual",
+                "Mengenabzug · Anteil des Analysewerts",
             )
             if value
-            else "Menge · Analysewert prozentual"
+            else "Mengenabzug · Anteil des Analysewerts"
         )
         self.kind.set(kind)
-        self.kind.pack(side="left", padx=3)
-        self.feature_code = form_entry(
-            self.frame,
-            value.feature_code if value else "",
-            105,
+        self.kind.grid(row=2, column=1, sticky="ew", padx=8, pady=(0, 8))
+
+        self.feature_labels = {
+            feature.label: feature.code for feature in self._features
+        }
+        feature_values = [self.NO_FEATURE, *self.feature_labels]
+        self.feature = ctk.CTkOptionMenu(
+            self.frame, values=feature_values, width=190, height=28, font=FONT_SMALL
         )
-        self.feature_code.pack(side="left", padx=3)
-        self.reference = ctk.CTkOptionMenu(
-            self.frame,
-            values=list(RULE_REFERENCES),
-            width=160,
-            height=28,
-            font=FONT_SMALL,
-        )
-        reference = (
-            REFERENCE_LABELS.get(
-                (value.quantity_reference, value.price_reference),
-                "Ohne Bezug",
+        current_feature = self.NO_FEATURE
+        if value and value.feature_code:
+            current_feature = next(
+                (
+                    feature.label
+                    for feature in self._features
+                    if feature.code == value.feature_code
+                ),
+                self.NO_FEATURE,
             )
-            if value
-            else "Bruttomenge"
-        )
-        self.reference.set(reference)
-        self.reference.pack(side="left", padx=3)
+        self.feature.set(current_feature)
+        self.feature.grid(row=2, column=2, sticky="ew", padx=8, pady=(0, 8))
+
         self.direction = ctk.CTkOptionMenu(
             self.frame,
             values=list(RULE_DIRECTIONS),
-            width=100,
+            width=110,
             height=28,
             font=FONT_SMALL,
         )
         self.direction.set(
-            DIRECTION_LABELS.get(value.direction, "Abzug")
+            DIRECTION_LABELS.get(value.direction, "Abzug") if value else "Abzug"
+        )
+        self.direction.grid(row=2, column=3, sticky="ew", padx=8, pady=(0, 8))
+
+        self.details = ctk.CTkFrame(self.frame, fg_color="transparent")
+        self.details.grid(row=3, column=0, columnspan=4, sticky="ew", padx=4, pady=(0, 8))
+        self._tiers = _tiers_for_display(value.tiers) if value else ""
+        self._reference = (
+            REFERENCE_LABELS.get(
+                (value.quantity_reference, value.price_reference), "Ohne Bezug"
+            )
             if value
-            else "Abzug"
+            else "Bruttomenge"
         )
-        self.direction.pack(side="left", padx=3)
-        self.parameters = form_entry(
-            self.frame,
-            value.parameters if value else "",
-            210,
+        self._render_parameters()
+
+    @staticmethod
+    def _label(parent, row, column, text):
+        ctk.CTkLabel(
+            parent, text=text, font=FONT_SMALL, text_color=TEXT_MUTED
+        ).grid(row=row, column=column, sticky="w", padx=8)
+
+    def _render_parameters(self):
+        for entry in self.parameter_entries.values():
+            self._parameters[entry._parameter_name] = entry.get()
+        if getattr(self, "tiers", None) is not None:
+            self._tiers = self.tiers.get()
+        if hasattr(self, "reference"):
+            self._reference = self.reference.get()
+        for widget in self.details.winfo_children():
+            widget.destroy()
+        self.parameter_entries = {}
+
+        phase_kind = RULE_TYPES[self.kind.get()]
+        fields = PARAMETER_FIELDS.get(phase_kind, ())
+        column = 0
+        for name, label, help_text in fields:
+            field = ctk.CTkFrame(self.details, fg_color="transparent")
+            field.grid(row=0, column=column, sticky="w", padx=4)
+            ctk.CTkLabel(
+                field, text=label, font=FONT_SMALL, text_color=TEXT
+            ).pack(anchor="w")
+            display_value = str(self._parameters.get(name, "")).replace(".", ",")
+            entry = form_entry(field, display_value, 160)
+            entry._parameter_name = name
+            entry.pack(anchor="w")
+            ctk.CTkLabel(
+                field, text=help_text, font=FONT_SMALL, text_color=TEXT_MUTED
+            ).pack(anchor="w")
+            self.parameter_entries[name] = entry
+            column += 1
+
+        if phase_kind[1] == "tiered":
+            field = ctk.CTkFrame(self.details, fg_color="transparent")
+            field.grid(row=0, column=column, sticky="ew", padx=4)
+            ctk.CTkLabel(
+                field,
+                text="Wertestaffel",
+                font=FONT_SMALL,
+                text_color=TEXT,
+            ).pack(anchor="w")
+            self.tiers = form_entry(field, self._tiers, 460)
+            self.tiers.pack(anchor="w")
+            ctk.CTkLabel(
+                field,
+                text="Beispiel: unter 72: 4 | 72 bis unter 73: 3 | ab 73: 0",
+                font=FONT_SMALL,
+                text_color=TEXT_MUTED,
+            ).pack(anchor="w")
+            column += 1
+        else:
+            self.tiers = None
+
+        field = ctk.CTkFrame(self.details, fg_color="transparent")
+        field.grid(row=0, column=column, sticky="w", padx=4)
+        ctk.CTkLabel(
+            field, text="Berechnungsbasis", font=FONT_SMALL, text_color=TEXT
+        ).pack(anchor="w")
+        phase, kind = phase_kind
+        if phase == "quantity_deduction":
+            reference_values = ["Bruttomenge", "Verbleibende Menge"]
+        elif phase == "price_adjustment" and kind in {
+            "percentage_of_price",
+            "tiered",
+        }:
+            reference_values = ["Basispreis", "Laufender Preis"]
+        else:
+            reference_values = ["Ohne Bezug"]
+        self.reference = ctk.CTkOptionMenu(
+            field,
+            values=reference_values,
+            width=160,
+            height=28,
+            font=FONT_SMALL,
         )
-        self.parameters.pack(side="left", padx=3)
-        self.tiers = form_entry(self.frame, value.tiers if value else "", 280)
-        self.tiers.pack(side="left", padx=3)
+        selected_reference = (
+            self._reference
+            if self._reference in reference_values
+            else reference_values[0]
+        )
+        self.reference.set(selected_reference)
+        self._reference = selected_reference
+        self.reference.pack(anchor="w")
+
+    def _serialized_parameters(self, phase: str, kind: str) -> str:
+        values = []
+        for name, _label, _help in PARAMETER_FIELDS.get((phase, kind), ()):
+            entry = self.parameter_entries[name]
+            values.append(f"{name}={entry.get()}")
+        if kind == "tiered" and phase == "price_adjustment":
+            values.append("result_kind=percentage_of_price")
+        return "; ".join(values)
 
     def value(self, order: int) -> RuleFormValue:
         phase, kind = RULE_TYPES[self.kind.get()]
@@ -289,17 +501,18 @@ class _RuleRow:
             self.reference.get()
         ]
         return RuleFormValue(
-            code=self.code.get(),
+            code=self.code,
             label=self.label.get(),
             kind=kind,
-            feature_code=self.feature_code.get(),
+            feature_code=self.feature_labels.get(self.feature.get(), ""),
             quantity_reference=quantity_reference,
-            parameters=self.parameters.get(),
-            tiers=self.tiers.get(),
+            parameters=self._serialized_parameters(phase, kind),
+            tiers=_tiers_for_storage(self.tiers.get()) if self.tiers else "",
             order=order,
             phase=phase,
             direction=RULE_DIRECTIONS[self.direction.get()],
             price_reference=price_reference,
+            enabled=bool(self.enabled.get()),
         )
 
 
@@ -317,7 +530,7 @@ class RuleEditorDialog(ctk.CTkToplevel):
     ):
         super().__init__(parent)
         self.title("Abrechnungsregeln")
-        self.geometry("1180x650")
+        self.geometry("1180x760")
         self.configure(fg_color=APP_BG)
         self.transient(parent.winfo_toplevel())
         self.grain_type_code = grain_type_code
@@ -327,6 +540,22 @@ class RuleEditorDialog(ctk.CTkToplevel):
 
         content = ctk.CTkScrollableFrame(self, fg_color="white")
         content.pack(fill="both", expand=True, padx=12, pady=12)
+        preset = grain_rule_preset(grain_type_code)
+        notice = ctk.CTkFrame(content, fg_color="#fff4d6", corner_radius=8)
+        notice.pack(fill="x", pady=(0, 14))
+        ctk.CTkLabel(
+            notice,
+            text=f"Praxisvorlage {preset.label}: {preset.note}",
+            font=FONT_SMALL,
+            text_color=TEXT,
+            wraplength=850,
+            justify="left",
+        ).pack(side="left", fill="x", expand=True, padx=12, pady=10)
+        button(
+            notice,
+            "Praxisvorlage neu laden",
+            self._load_preset,
+        ).pack(side="right", padx=10, pady=8)
         ctk.CTkLabel(
             content,
             text="Analysemerkmale",
@@ -334,6 +563,12 @@ class RuleEditorDialog(ctk.CTkToplevel):
             text_color=TEXT,
         ).pack(anchor="w")
         button(content, "+ Merkmal", lambda: self._add_feature()).pack(anchor="w", pady=5)
+        ctk.CTkLabel(
+            content,
+            text="Bezeichnung | Einheit | Pflichtfeld  (interne Codes werden automatisch verwaltet)",
+            font=FONT_SMALL,
+            text_color=TEXT_MUTED,
+        ).pack(anchor="w")
         self.feature_host = ctk.CTkFrame(content, fg_color="transparent")
         self.feature_host.pack(fill="x")
         for value in features:
@@ -346,21 +581,6 @@ class RuleEditorDialog(ctk.CTkToplevel):
             text_color=TEXT,
         ).pack(anchor="w", pady=(18, 0))
         button(content, "+ Regel", lambda: self._add_rule()).pack(anchor="w", pady=5)
-        ctk.CTkLabel(
-            content,
-            text=(
-                "Code | Bezeichnung | Typ | Merkmal | Bezug | Richtung | "
-                "Parameter | Staffeln\n"
-                "Menge: factor=1,1 · basis_value=14 · amount_kg=100   "
-                "Preis: amount_per_tonne=5 · percentage=2 · "
-                "basis_value=14,5; amount_per_unit=2   "
-                "Kosten: amount=25\n"
-                "Staffel: ..14,5=0 | 14,5..16=2 | 16..=3,5"
-            ),
-            font=FONT_SMALL,
-            text_color=TEXT_MUTED,
-            justify="left",
-        ).pack(anchor="w")
         self.rule_host = ctk.CTkFrame(content, fg_color="transparent")
         self.rule_host.pack(fill="x", pady=5)
         for value in rules:
@@ -373,7 +593,12 @@ class RuleEditorDialog(ctk.CTkToplevel):
         self.after(20, self.grab_set)
 
     def _add_feature(self, value: FeatureFormValue | None = None):
-        row = _FeatureRow(self.feature_host, self._remove_feature, value)
+        row = _FeatureRow(
+            self.feature_host,
+            self._remove_feature,
+            code=value.code if value else self._next_code("feature"),
+            value=value,
+        )
         row.frame.pack(fill="x", pady=2)
         self.feature_rows.append(row)
 
@@ -382,13 +607,47 @@ class RuleEditorDialog(ctk.CTkToplevel):
         self.feature_rows.remove(row)
 
     def _add_rule(self, value: RuleFormValue | None = None):
-        row = _RuleRow(self.rule_host, self._remove_rule, value)
-        row.frame.pack(fill="x", pady=2)
+        row = _RuleRow(
+            self.rule_host,
+            self._remove_rule,
+            code=value.code if value else self._next_code("rule"),
+            features=tuple(feature.value() for feature in self.feature_rows),
+            value=value,
+        )
+        row.frame.pack(fill="x", pady=5)
         self.rule_rows.append(row)
 
     def _remove_rule(self, row: _RuleRow):
         row.frame.destroy()
         self.rule_rows.remove(row)
+
+    def _next_code(self, prefix: str) -> str:
+        used = {
+            *(row.code for row in self.feature_rows),
+            *(row.code for row in self.rule_rows),
+        }
+        number = 1
+        while f"{prefix}-{number}" in used:
+            number += 1
+        return f"{prefix}-{number}"
+
+    def _load_preset(self):
+        preset = grain_rule_preset(self.grain_type_code)
+        if not messagebox.askyesno(
+            "Praxisvorlage laden",
+            "Die aktuellen Merkmale und Regeln werden durch die Praxisvorlage "
+            f"für {preset.label} ersetzt. Fortfahren?",
+            parent=self,
+        ):
+            return
+        for row in (*self.feature_rows, *self.rule_rows):
+            row.frame.destroy()
+        self.feature_rows.clear()
+        self.rule_rows.clear()
+        for value in preset.features:
+            self._add_feature(value)
+        for value in preset.rules:
+            self._add_rule(value)
 
     def _save(self):
         features = tuple(row.value() for row in self.feature_rows)

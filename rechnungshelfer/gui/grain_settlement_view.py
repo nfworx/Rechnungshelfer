@@ -31,6 +31,7 @@ from .grain_settlement_dialogs import (
     DeliveryDialog,
     RuleEditorDialog,
 )
+from .grain_rule_presets import grain_rule_preset
 from .party_card import PartyCard
 from .styles import APP_BG, FONT_NORMAL, FONT_SECTION, FONT_SMALL, TEXT, TEXT_MUTED
 from .supplier_edit_dialog import SupplierEditDialog
@@ -358,7 +359,10 @@ class GrainSettlementView(ctk.CTkFrame):
     ):
         self.features = features
         self.rules = rules
-        self.rule_button.configure(text=f"Regeln bearbeiten ({len(rules)})")
+        active_rules = sum(rule.enabled for rule in rules)
+        self.rule_button.configure(
+            text=f"Regeln bearbeiten ({active_rules} aktiv)"
+        )
         self.calculate()
 
     def calculate(self) -> bool:
@@ -526,17 +530,9 @@ class GrainSettlementView(ctk.CTkFrame):
         self.document.info.delivery_date = date.today().strftime("%d.%m.%Y")
         self.document.seller.supplier_number = "L0001"
         self.document.seller.name = "Beispiellieferant"
-        self.features = (FeatureFormValue("dockage", "Besatz"),)
-        self.rules = (
-            RuleFormValue(
-                code="dockage-deduction",
-                label="Besatzabzug",
-                kind="percentage_of_measurement",
-                feature_code="dockage",
-                quantity_reference="gross_quantity",
-                parameters="factor=1,1",
-            ),
-        )
+        preset = grain_rule_preset("wheat")
+        self.features = preset.features
+        self.rules = preset.rules
         today = date.today().strftime("%d.%m.%Y")
         self.deliveries = [
             DeliveryFormValue(
@@ -546,7 +542,10 @@ class GrainSettlementView(ctk.CTkFrame):
                 grain_type_code="wheat",
                 gross_quantity_kg="10.000",
                 base_price_per_tonne="200,00",
-                analyses=(AnalysisFormValue("dockage", "3,0"),),
+                analyses=(
+                    AnalysisFormValue("moisture", "14,5"),
+                    AnalysisFormValue("dockage", "3,0"),
+                ),
             ),
             DeliveryFormValue(
                 id="delivery-2",
@@ -555,10 +554,16 @@ class GrainSettlementView(ctk.CTkFrame):
                 grain_type_code="wheat",
                 gross_quantity_kg="8.000",
                 base_price_per_tonne="200,00",
-                analyses=(AnalysisFormValue("dockage", "2,0"),),
+                analyses=(
+                    AnalysisFormValue("moisture", "14,5"),
+                    AnalysisFormValue("dockage", "2,0"),
+                ),
             ),
         ]
         self._next_delivery_number = 3
         self._render_top_cards()
-        self.rule_button.configure(text="Regeln bearbeiten (1)")
+        active_rules = sum(rule.enabled for rule in self.rules)
+        self.rule_button.configure(
+            text=f"Regeln bearbeiten ({active_rules} aktiv)"
+        )
         self.calculate()
