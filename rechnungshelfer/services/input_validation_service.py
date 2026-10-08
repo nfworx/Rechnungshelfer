@@ -1,6 +1,7 @@
 # rechnungshelfer/services/input_validation_service.py
 from datetime import datetime
 import re
+from rechnungshelfer.domain.business_partner import normalize_partner_number
 from rechnungshelfer.domain.models import Invoice
 
 class InputValidationError(Exception):
@@ -81,5 +82,21 @@ def normalize_invoice_input(invoice: Invoice) -> Invoice:
         "Lieferdatum",
         required=False
     )
+
+    if invoice.is_self_billed:
+        if invoice.seller.supplier_number:
+            try:
+                invoice.seller.supplier_number = normalize_partner_number(
+                    invoice.seller.supplier_number
+                )
+            except ValueError as exc:
+                raise InputValidationError(str(exc)) from exc
+    elif invoice.buyer.customer_number:
+        try:
+            invoice.buyer.customer_number = normalize_partner_number(
+                invoice.buyer.customer_number
+            )
+        except ValueError as exc:
+            raise InputValidationError(str(exc)) from exc
 
     return invoice

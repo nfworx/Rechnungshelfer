@@ -13,14 +13,15 @@ from rechnungshelfer.domain.models import (
     Payment,
     Seller,
 )
-from rechnungshelfer.repositories.customer_repository import CustomerRepository
+from rechnungshelfer.repositories.business_partner_repository import (
+    BusinessPartnerRepository,
+)
 from rechnungshelfer.repositories.database import Database
 from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
 from rechnungshelfer.repositories.grain_scheme_repository import (
     GrainSchemeRepository,
 )
 from rechnungshelfer.repositories.master_data_repository import MasterDataRepository
-from rechnungshelfer.repositories.supplier_repository import SupplierRepository
 from rechnungshelfer.services.export_service import InvoiceExportService
 from rechnungshelfer.services.kosit_validation_service import KositValidator
 
@@ -29,9 +30,10 @@ class InvoiceController:
     def __init__(self):
         self.database = Database()
         self.repo = InvoiceRepository(connection=self.database.connection)
-        self.customer_repo = CustomerRepository(connection=self.database.connection)
+        self.partner_repo = BusinessPartnerRepository(
+            connection=self.database.connection
+        )
         self.master_data_repository = MasterDataRepository()
-        self.supplier_repo = SupplierRepository(connection=self.database.connection)
         self.grain_scheme_repo = GrainSchemeRepository(self.database.connection)
         self.invoice_factory = InvoiceFactory()
         self.invoice_service = self._create_invoice_service()
@@ -46,8 +48,7 @@ class InvoiceController:
         return InvoiceApplicationService(
             database=self.database,
             invoice_repository=self.repo,
-            customer_repository=self.customer_repo,
-            supplier_repository=self.supplier_repo,
+            business_partner_repository=self.partner_repo,
             master_data_repository=self.master_data_repository,
             invoice_factory=getattr(self, "invoice_factory", InvoiceFactory()),
         )
@@ -59,10 +60,7 @@ class InvoiceController:
 
     def _create_party_service(self):
         return PartyApplicationService(
-            database=self.database,
-            invoice_repository=self.repo,
-            customer_repository=self.customer_repo,
-            supplier_repository=self.supplier_repo,
+            business_partner_repository=self.partner_repo,
             master_data_repository=self.master_data_repository,
         )
 
@@ -72,14 +70,8 @@ class InvoiceController:
         return self.party_service
 
     def _create_export_service(self):
-        supplier_number_provider = (
-            self.supplier_repo.next_supplier_number
-            if hasattr(self, "supplier_repo")
-            else None
-        )
         return InvoiceExportService(
             external_validator=KositValidator(),
-            supplier_number_provider=supplier_number_provider,
         )
 
     def _get_export_service(self):
@@ -227,9 +219,6 @@ class InvoiceController:
     def apply_master_data_to_invoice(self, invoice):
         return self._get_party_service().apply_master_data_to_invoice(invoice)
 
-    def migrate_customers_from_invoices_if_empty(self):
-        return self._get_party_service().migrate_customers_from_invoices_if_empty()
-
     def find_customer_duplicates(self, buyer: Buyer):
         return self._get_party_service().find_customer_duplicates(buyer)
 
@@ -253,6 +242,5 @@ class InvoiceController:
 
         # Kompatibilität für gezielt ohne __init__ erzeugte Test-Controller.
         self.repo.close()
-        if hasattr(self.customer_repo, "close"):
-            self.customer_repo.close()
-        self.supplier_repo.close()
+        if hasattr(self, "partner_repo"):
+            self.partner_repo.close()

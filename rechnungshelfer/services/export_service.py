@@ -48,12 +48,10 @@ class InvoiceExportService:
         self,
         *,
         external_validator: ExternalInvoiceValidator | None = None,
-        supplier_number_provider: Callable[[], str] | None = None,
         pdf_renderer: Callable = create_pdf,
         xml_renderer: Callable = create_xml,
     ):
         self._external_validator = external_validator
-        self._supplier_number_provider = supplier_number_provider
         self._pdf_renderer = pdf_renderer
         self._xml_renderer = xml_renderer
 
@@ -72,7 +70,6 @@ class InvoiceExportService:
         filepath: str | Path,
     ) -> XmlExportResult:
         self._normalize(invoice)
-        self._ensure_self_billed_supplier_number(invoice)
 
         missing = self.get_missing_required_fields(invoice, for_xml=True)
         if missing:
@@ -108,8 +105,6 @@ class InvoiceExportService:
         return check_required_field(invoice, section, attr, item_pos=item_pos)
 
     def get_missing_required_fields(self, invoice, for_xml=True):
-        if for_xml:
-            self._ensure_self_billed_supplier_number(invoice)
         return find_missing_required_fields(invoice, for_xml=for_xml)
 
     @staticmethod
@@ -125,13 +120,6 @@ class InvoiceExportService:
             normalize_invoice_input(invoice)
         except InputValidationError as exc:
             raise ValueError(str(exc)) from exc
-
-    def _ensure_self_billed_supplier_number(self, invoice: Invoice) -> None:
-        if not invoice.is_self_billed or invoice.seller.supplier_number:
-            return
-        if self._supplier_number_provider is None:
-            raise ValueError("Lieferantennummer fehlt.")
-        invoice.seller.supplier_number = self._supplier_number_provider()
 
     @staticmethod
     def _format_validation_issues(result: ValidationResult) -> str:

@@ -18,7 +18,7 @@ class SupplierDialogTests(unittest.TestCase):
         self.assertEqual(events, ["close", "create"])
 
     def test_new_supplier_is_saved_and_returned_to_caller(self):
-        seller = Seller(name="Musterhof", supplier_number="L0042")
+        seller = Seller(name="Musterhof", supplier_number="0042")
         payment = Payment()
         dialog = SupplierEditDialog.__new__(SupplierEditDialog)
         dialog.seller = seller
@@ -34,7 +34,7 @@ class SupplierDialogTests(unittest.TestCase):
         saved_seller, saved_payment = dialog.on_saved.call_args.args
         self.assertIsNot(saved_seller, seller)
         self.assertIsNot(saved_payment, payment)
-        self.assertEqual(saved_seller.supplier_number, "L0042")
+        self.assertEqual(saved_seller.supplier_number, "0042")
         dialog.close.assert_called_once_with()
 
 

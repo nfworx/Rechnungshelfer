@@ -1,6 +1,6 @@
 import unittest
 from decimal import Decimal
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from rechnungshelfer.domain.grain_models import GrainValidationError
 from rechnungshelfer.domain.models import DocumentType
@@ -45,7 +45,7 @@ class GrainFormMapperTests(unittest.TestCase):
     @classmethod
     def _form(cls, **changes):
         values = {
-            "supplier_number": "L0001",
+            "supplier_number": "0001",
             "features": (FeatureFormValue("dockage", "Besatz"),),
             "rules": (
                 RuleFormValue(
@@ -308,7 +308,7 @@ class GrainFormMapperTests(unittest.TestCase):
     def test_zero_effect_rules_are_not_shown_as_adjustment_rows(self):
         preset = grain_rule_preset("wheat")
         form = GrainSettlementForm(
-            supplier_number="L0001",
+            supplier_number="0001",
             features=preset.features,
             rules=preset.rules,
             deliveries=(
@@ -438,6 +438,30 @@ class GrainWorkspaceNavigationTests(unittest.TestCase):
 
 
 class GrainRuleSetSelectionTests(unittest.TestCase):
+    def test_silent_initial_calculation_does_not_open_error_dialog(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view._form_value = Mock()
+        view._render_deliveries = Mock()
+        view._last_result = None
+        view.status_label = Mock()
+
+        with (
+            patch(
+                "rechnungshelfer.gui.grain_settlement_view.calculate_settlement_preview",
+                side_effect=GrainValidationError(
+                    "Erforderliche Analysewerte fehlen: Rohprotein"
+                ),
+            ),
+            patch(
+                "rechnungshelfer.gui.grain_settlement_view.messagebox.showerror"
+            ) as showerror,
+        ):
+            calculated = view.calculate(show_error=False)
+
+        self.assertFalse(calculated)
+        showerror.assert_not_called()
+        view.status_label.configure.assert_called_once_with(text="Eingaben prüfen")
+
     def test_current_delivery_selects_its_own_rule_set(self):
         view = GrainSettlementView.__new__(GrainSettlementView)
         barley_delivery = GrainFormMapperTests._delivery(

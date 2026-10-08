@@ -11,16 +11,35 @@ from pathlib import Path
 from .invoice_record import invoice_summary_from_data
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 Migration = Callable[[sqlite3.Connection], None]
 
 
 class DatabaseMigrationError(RuntimeError):
     """Eine Schemamigration konnte nicht vollständig ausgeführt werden."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        user_message: str | None = None,
+        backup_path: Path | None = None,
+    ):
+        super().__init__(message)
+        self.user_message = user_message or message
+        self.backup_path = backup_path
+
 
 class UnsupportedDatabaseVersion(DatabaseMigrationError):
     """Die Datenbank stammt aus einer neueren, nicht unterstützten Version."""
+
+
+class MigrationDataConflict(ValueError):
+    """Bestandsdaten lassen sich nicht ohne Benutzerentscheidung migrieren."""
+
+    def __init__(self, technical_message: str, user_message: str):
+        super().__init__(technical_message)
+        self.user_message = user_message
 
 
 def _migration_0_to_1(connection: sqlite3.Connection) -> None:
@@ -134,10 +153,203 @@ def _migration_2_to_3(connection: sqlite3.Connection) -> None:
     )
 
 
+_PARTNER_COMMON_FIELDS = (
+    "name",
+    "street",
+    "postcode",
+    "city",
+    "country",
+    "phone",
+    "email",
+    "vat",
+    "tax_number",
+    "registry_number",
+    "contact_name",
+)
+
+
+def _migration_3_to_4(connection: sqlite3.Connection) -> None:
+    """Fuehrt Kunden und Lieferanten ohne Praefix-Aliase zusammen."""
+
+    connection.execute(
+        """
+        CREATE TABLE business_partners (
+            partner_number TEXT PRIMARY KEY
+                CHECK (
+                    partner_number <> ''
+                    AND partner_number NOT GLOB '*[^0-9]*'
+                ),
+            name TEXT NOT NULL,
+            common_data TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE business_partner_roles (
+            partner_number TEXT NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('customer', 'supplier')),
+            role_data TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (partner_number, role),
+            FOREIGN KEY (partner_number)
+                REFERENCES business_partners(partner_number)
+                ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_business_partner_roles_role
+        ON business_partner_roles (role, partner_number)
+        """
+    )
+
+    for number, data_json, updated_at in connection.execute(
+        "SELECT customer_number, data, updated_at FROM customers"
+    ).fetchall():
+        data = json.loads(data_json)
+        _migrate_partner_role(
+            connection,
+            number=number,
+            common_data=data,
+            role="customer",
+            role_data={
+                "leitweg_id": data.get("leitweg_id", ""),
+                "use_invoice_address_as_delivery": data.get(
+                    "use_invoice_address_as_delivery",
+                    False,
+                ),
+            },
+            updated_at=updated_at,
+        )
+
+    for number, seller_json, payment_json, updated_at in connection.execute(
+        """
+        SELECT supplier_number, seller_data, payment_data, updated_at
+        FROM suppliers
+        """
+    ).fetchall():
+        seller_data = json.loads(seller_json)
+        _migrate_partner_role(
+            connection,
+            number=number,
+            common_data=seller_data,
+            role="supplier",
+            role_data={
+                "buyer_reference": seller_data.get("buyer_reference", ""),
+                "payment": json.loads(payment_json),
+            },
+            updated_at=updated_at,
+        )
+
+    connection.execute("DROP TABLE customers")
+    connection.execute("DROP TABLE suppliers")
+
+
+def _migrate_partner_role(
+    connection: sqlite3.Connection,
+    *,
+    number,
+    common_data: dict,
+    role: str,
+    role_data: dict,
+    updated_at: str,
+) -> None:
+    number = _normalize_migrated_partner_number(number)
+
+    incoming = {
+        field: common_data.get(field, "")
+        for field in _PARTNER_COMMON_FIELDS
+    }
+    existing_row = connection.execute(
+        "SELECT common_data FROM business_partners WHERE partner_number = ?",
+        (number,),
+    ).fetchone()
+    if existing_row:
+        existing = json.loads(existing_row[0])
+        conflicts = [
+            field
+            for field in _PARTNER_COMMON_FIELDS
+            if existing.get(field) not in (None, "")
+            and incoming.get(field) not in (None, "")
+            and existing[field] != incoming[field]
+        ]
+        if conflicts:
+            raise MigrationDataConflict(
+                f"Kunde und Lieferant {number} besitzen widersprüchliche "
+                "Stammdaten.",
+                f"Geschäftspartnernummer {number} ist mehrfach mit "
+                "unterschiedlichen Stammdaten belegt. Bitte korrigieren Sie "
+                "die betreffenden Kunden/Lieferanten vor dem Update.",
+            )
+        common = {
+            field: incoming.get(field) or existing.get(field, "")
+            for field in _PARTNER_COMMON_FIELDS
+        }
+    else:
+        common = incoming
+
+    connection.execute(
+        """
+        INSERT INTO business_partners
+            (partner_number, name, common_data, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(partner_number) DO UPDATE SET
+            name = excluded.name,
+            common_data = excluded.common_data,
+            updated_at = excluded.updated_at
+        """,
+        (
+            number,
+            common.get("name", ""),
+            json.dumps(common, ensure_ascii=False),
+            updated_at,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO business_partner_roles
+            (partner_number, role, role_data, updated_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            number,
+            role,
+            json.dumps(role_data, ensure_ascii=False),
+            updated_at,
+        ),
+    )
+
+
+def _normalize_migrated_partner_number(value) -> str:
+    """Normalisiert ausschliesslich die frueher automatisch erzeugten Praefixe."""
+
+    number = str(value or "").strip()
+    if number and number.isascii() and number.isdigit():
+        return number
+    if len(number) > 1 and number[0] in ("K", "L"):
+        numeric_part = number[1:]
+        if numeric_part.startswith("-"):
+            numeric_part = numeric_part[1:]
+        if numeric_part and numeric_part.isascii() and numeric_part.isdigit():
+            return numeric_part
+    shown_number = number or "<leer>"
+    raise MigrationDataConflict(
+        "Geschäftspartnernummer ist nicht eindeutig migrierbar: "
+        f"{shown_number}",
+        f"Die Geschäftspartnernummer {shown_number} kann nicht automatisch "
+        "in eine rein numerische Nummer umgewandelt werden. Bitte korrigieren "
+        "Sie diesen Kunden/Lieferanten vor dem Update.",
+    )
+
+
 MIGRATIONS: dict[int, Migration] = {
     0: _migration_0_to_1,
     1: _migration_1_to_2,
     2: _migration_2_to_3,
+    3: _migration_3_to_4,
 }
 
 
@@ -229,8 +441,12 @@ def migrate_database(
         connection.commit()
     except Exception as exc:
         connection.rollback()
-        raise DatabaseMigrationError(
-            f"Datenbankmigration ab Schema-Version {current_version} fehlgeschlagen."
-        ) from exc
+        error = DatabaseMigrationError(
+            f"Datenbankmigration ab Schema-Version {current_version} fehlgeschlagen: "
+            f"{exc}",
+            user_message=getattr(exc, "user_message", None),
+            backup_path=backup,
+        )
+        raise error from exc
 
     return backup

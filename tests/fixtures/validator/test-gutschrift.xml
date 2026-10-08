@@ -2,7 +2,7 @@
 <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2 UBL-Invoice-2.1.xsd">
   <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0</cbc:CustomizationID>
   <cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>
-  <cbc:ID>GS-VALIDATOR-2026-0001</cbc:ID>
+  <cbc:ID>80002</cbc:ID>
   <cbc:IssueDate>2026-10-02</cbc:IssueDate>
   <cbc:DueDate>2026-10-16</cbc:DueDate>
   <cbc:InvoiceTypeCode>389</cbc:InvoiceTypeCode>
@@ -16,7 +16,7 @@
     <cac:Party>
       <cbc:EndpointID schemeID="EM">abrechnung@example.com</cbc:EndpointID>
       <cac:PartyIdentification>
-        <cbc:ID>L-3000</cbc:ID>
+        <cbc:ID>3000</cbc:ID>
       </cac:PartyIdentification>
       <cac:PostalAddress>
         <cbc:StreetName>Feldweg 7</cbc:StreetName>

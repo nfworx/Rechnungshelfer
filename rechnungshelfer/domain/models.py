@@ -105,7 +105,7 @@ class Seller(Validatable):
         "contact_name": "Kontaktperson",
         "phone": "Telefon",
         "tax_number": "Steuernummer",
-        "supplier_number": "Lieferantennummer",
+        "supplier_number": "GeschÃ¤ftspartnernummer",
         "buyer_reference": "Käuferreferenz (BT-10)",
     }
 
@@ -140,7 +140,7 @@ class Buyer(Validatable):
         "email": "E-Mail",
         "leitweg_id": "Käuferreferenz (BT-10)",
         "contact_name": "Ansprechpartner",
-        "customer_number": "Kundennummer",
+        "customer_number": "GeschÃ¤ftspartnernummer",
         "phone": "Telefon",
         "vat": "USt-IdNr.",
         "tax_number": "Steuernummer",

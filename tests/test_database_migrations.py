@@ -39,6 +39,36 @@ class DatabaseMigrationTests(unittest.TestCase):
             "monetarytotal": {"payable_amount": "119.00"},
         }
 
+    @staticmethod
+    def _create_version_three_database(path: Path, customer_number: str) -> None:
+        DatabaseMigrationTests._create_version_one_database(path)
+        connection = sqlite3.connect(path)
+        try:
+            MIGRATIONS[1](connection)
+            MIGRATIONS[2](connection)
+            customer = {
+                "customer_number": customer_number,
+                "name": "Alter Kunde",
+                "street": "Dorfstrasse 1",
+                "postcode": "12345",
+                "city": "Dorf",
+                "country": "DE",
+                "email": "kunde@example.de",
+            }
+            connection.execute(
+                "INSERT INTO customers VALUES (?, ?, ?, ?)",
+                (
+                    customer_number,
+                    customer["name"],
+                    json.dumps(customer),
+                    "2026-01-01T00:00:00+00:00",
+                ),
+            )
+            connection.execute("PRAGMA user_version=3")
+            connection.commit()
+        finally:
+            connection.close()
+
     def test_fresh_database_runs_all_migrations_without_backup(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "fresh.db"
@@ -60,13 +90,15 @@ class DatabaseMigrationTests(unittest.TestCase):
             self.assertTrue(
                 {
                     "invoices",
-                    "customers",
-                    "suppliers",
+                    "business_partners",
+                    "business_partner_roles",
                     "grain_scheme_drafts",
                     "grain_scheme_versions",
                 }
                 <= tables
             )
+            self.assertNotIn("customers", tables)
+            self.assertNotIn("suppliers", tables)
             self.assertEqual(list(Path(tmp).glob("*.backup-*.db")), [])
 
     def test_version_one_is_migrated_and_summary_data_is_preserved(self):
@@ -145,6 +177,121 @@ class DatabaseMigrationTests(unittest.TestCase):
 
             self.assertEqual(list(Path(tmp).glob("current.backup-*.db")), [])
 
+    def test_numeric_customer_number_is_preserved_as_customer_role(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "numeric-customer.db"
+            self._create_version_three_database(path, "0042")
+
+            database = Database(path)
+            try:
+                partner = database.connection.execute(
+                    "SELECT partner_number, name FROM business_partners"
+                ).fetchone()
+                role = database.connection.execute(
+                    "SELECT partner_number, role FROM business_partner_roles"
+                ).fetchone()
+            finally:
+                database.close()
+
+            self.assertEqual(partner, ("0042", "Alter Kunde"))
+            self.assertEqual(role, ("0042", "customer"))
+            self.assertEqual(
+                len(list(Path(tmp).glob("numeric-customer.backup-v3-*.db"))),
+                1,
+            )
+
+    def test_generated_customer_prefix_is_removed_during_migration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prefixed-customer.db"
+            self._create_version_three_database(path, "K0042")
+
+            database = Database(path)
+            try:
+                partner = database.connection.execute(
+                    "SELECT partner_number FROM business_partners"
+                ).fetchone()
+            finally:
+                database.close()
+
+            self.assertEqual(partner, ("0042",))
+
+    def test_hyphenated_customer_prefix_is_removed_during_migration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "hyphenated-customer.db"
+            self._create_version_three_database(path, "K-2000")
+
+            database = Database(path)
+            try:
+                partner = database.connection.execute(
+                    "SELECT partner_number FROM business_partners"
+                ).fetchone()
+            finally:
+                database.close()
+
+            self.assertEqual(partner, ("2000",))
+
+    def test_unknown_prefix_aborts_migration_without_data_loss(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "unknown-prefix.db"
+            self._create_version_three_database(path, "X-0042")
+
+            with self.assertRaises(DatabaseMigrationError):
+                Database(path)
+
+            connection = sqlite3.connect(path)
+            try:
+                version = connection.execute("PRAGMA user_version").fetchone()[0]
+                customer = connection.execute(
+                    "SELECT customer_number FROM customers"
+                ).fetchone()
+                new_table = connection.execute(
+                    """
+                    SELECT name FROM sqlite_master
+                    WHERE type = 'table' AND name = 'business_partners'
+                    """
+                ).fetchone()
+            finally:
+                connection.close()
+
+            self.assertEqual(version, 3)
+            self.assertEqual(customer, ("X-0042",))
+            self.assertIsNone(new_table)
+
+    def test_partner_number_collision_has_user_message_and_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "partner-conflict.db"
+            self._create_version_three_database(path, "K0001")
+            connection = sqlite3.connect(path)
+            try:
+                seller = {
+                    "supplier_number": "L0001",
+                    "name": "Anderer Lieferant",
+                    "city": "Anderer Ort",
+                }
+                connection.execute(
+                    "INSERT INTO suppliers VALUES (?, ?, ?, ?, ?)",
+                    (
+                        "L0001",
+                        seller["name"],
+                        json.dumps(seller),
+                        json.dumps({}),
+                        "2026-01-01T00:00:00+00:00",
+                    ),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            with self.assertRaises(DatabaseMigrationError) as raised:
+                Database(path)
+
+            self.assertIn(
+                "Geschäftspartnernummer 0001 ist mehrfach",
+                raised.exception.user_message,
+            )
+            self.assertIsNotNone(raised.exception.backup_path)
+            self.assertTrue(raised.exception.backup_path.exists())
+
     def test_newer_database_version_is_rejected_without_modification(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "future.db"
@@ -192,7 +339,11 @@ class DatabaseMigrationTests(unittest.TestCase):
                 ):
                     migrate_database(
                         connection,
-                        migrations={1: failing_migration, 2: MIGRATIONS[2]},
+                        migrations={
+                            1: failing_migration,
+                            2: MIGRATIONS[2],
+                            3: MIGRATIONS[3],
+                        },
                     )
 
                 columns = {

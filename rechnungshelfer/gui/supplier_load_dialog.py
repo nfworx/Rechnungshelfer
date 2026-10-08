@@ -51,7 +51,9 @@ class SupplierLoadDialog:
 
         self.search_entry = ctk.CTkEntry(
             self.window,
-            placeholder_text="Suche nach Lieferantennummer, Name, Ort oder Steuernummer...",
+            placeholder_text=(
+                "Suche nach GeschÃ¤ftspartnernummer, Name, Ort oder Steuernummer..."
+            ),
             height=34,
         )
         self.search_entry.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 12))

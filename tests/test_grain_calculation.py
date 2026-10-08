@@ -45,7 +45,7 @@ class GrainCalculationContractTests(unittest.TestCase):
     def _delivery(**changes):
         values = {
             "id": "delivery-1",
-            "supplier_number": "L0001",
+            "supplier_number": "0001",
             "delivery_date": date(2026, 8, 1),
             "ticket_number": "WS-4711",
             "grain_type_code": "wheat",
@@ -118,7 +118,7 @@ class GrainCalculationContractTests(unittest.TestCase):
                     self._delivery(
                         id="delivery-2",
                         ticket_number="WS-4712",
-                        supplier_number="L0002",
+                        supplier_number="0002",
                     ),
                 ),
                 self._scheme(),

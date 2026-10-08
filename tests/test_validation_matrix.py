@@ -286,6 +286,17 @@ class ValidationDocumentTests(unittest.TestCase):
         normalize_invoice_input(invoice)
         self.assertEqual(invoice.info.delivery_date, "")
 
+    def test_business_partner_numbers_must_be_numeric(self):
+        invoice = create_validator_invoice()
+        invoice.buyer.customer_number = "K0042"
+        with self.assertRaisesRegex(InputValidationError, "nur aus Ziffern"):
+            normalize_invoice_input(invoice)
+
+        credit_note = create_validator_self_billed_invoice()
+        credit_note.seller.supplier_number = "L0042"
+        with self.assertRaisesRegex(InputValidationError, "nur aus Ziffern"):
+            normalize_invoice_input(credit_note)
+
     def test_document_rule_matrix(self):
         cases = [
             (

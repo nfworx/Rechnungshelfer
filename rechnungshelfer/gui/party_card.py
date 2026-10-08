@@ -105,6 +105,16 @@ class PartyCard:
             entry.insert(0, str(value or ""))
             entry.grid(row=row, column=1, sticky="ew", padx=(0, 6), pady=2)
 
+            if field in ("customer_number", "supplier_number") and not self.disabled:
+                validate_number = self.frame.register(
+                    lambda proposed: not proposed
+                    or (proposed.isascii() and proposed.isdigit())
+                )
+                entry.configure(
+                    validate="key",
+                    validatecommand=(validate_number, "%P"),
+                )
+
             if (
                 self.title == "Kunde"
                 and self.controller

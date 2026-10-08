@@ -51,7 +51,7 @@ class InvoiceFactoryTests(unittest.TestCase):
             DocumentType.SELF_BILLED_INVOICE,
             own_company=self.own_company,
             own_payment=self.own_payment,
-            supplier_number="L0042",
+            supplier_number="0042",
         )
 
         self.assertTrue(invoice.is_self_billed)
@@ -59,7 +59,7 @@ class InvoiceFactoryTests(unittest.TestCase):
         self.assertEqual(invoice.buyer.name, "Eigene Firma")
         self.assertEqual(invoice.buyer.leitweg_id, "EINKAUF")
         self.assertEqual(invoice.delivery.street, "Hauptstraße 1")
-        self.assertEqual(invoice.seller.supplier_number, "L0042")
+        self.assertEqual(invoice.seller.supplier_number, "0042")
         self.assertEqual(invoice.seller.name, "")
         self.assertEqual(invoice.payment.iban, "")
         self.assertIn("iban", invoice.payment.required_fields)
@@ -85,7 +85,7 @@ class InvoiceFactoryTests(unittest.TestCase):
         buyer = self.factory.seller_to_buyer(Seller(buyer_reference=""))
         self.assertEqual(buyer.leitweg_id, DEFAULT_BUYER_REFERENCE)
 
-    def test_controller_uses_master_data_and_supplier_number_for_creation(self):
+    def test_controller_uses_master_data_and_leaves_partner_number_manual(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict("os.environ", {DATA_DIR_ENV: str(Path(tmp) / "data")}):
                 controller = InvoiceController()
@@ -101,7 +101,7 @@ class InvoiceFactoryTests(unittest.TestCase):
                     controller.close()
 
         self.assertEqual(invoice.buyer.name, "Eigene Firma")
-        self.assertRegex(invoice.seller.supplier_number, r"^L\d{4}$")
+        self.assertEqual(invoice.seller.supplier_number, "")
 
 
 if __name__ == "__main__":

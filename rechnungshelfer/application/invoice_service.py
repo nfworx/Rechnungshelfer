@@ -27,8 +27,7 @@ class InvoiceApplicationService:
         *,
         database,
         invoice_repository,
-        customer_repository,
-        supplier_repository,
+        business_partner_repository,
         master_data_repository,
         invoice_factory: InvoiceFactory,
         pdf_import_service=None,
@@ -36,8 +35,7 @@ class InvoiceApplicationService:
     ):
         self._database = database
         self._invoices = invoice_repository
-        self._customers = customer_repository
-        self._suppliers = supplier_repository
+        self._partners = business_partner_repository
         self._master_data = master_data_repository
         self._factory = invoice_factory
         self._pdf_import = pdf_import_service or PdfImportService()
@@ -52,16 +50,10 @@ class InvoiceApplicationService:
             Seller(),
             Payment(),
         )
-        supplier_number = (
-            self._suppliers.next_supplier_number()
-            if document_type is DocumentType.SELF_BILLED_INVOICE
-            else ""
-        )
         return self._factory.create(
             document_type,
             own_company=own_company,
             own_payment=own_payment,
-            supplier_number=supplier_number,
         )
 
     def save_invoice(
@@ -85,7 +77,11 @@ class InvoiceApplicationService:
 
         with self._database.transaction():
             if invoice.is_self_billed and invoice.seller.name:
-                self._suppliers.save(invoice.seller, invoice.payment, commit=False)
+                self._partners.save_supplier(
+                    invoice.seller,
+                    invoice.payment,
+                    commit=False,
+                )
 
             self._invoices.save(invoice, commit=False)
 
@@ -94,7 +90,7 @@ class InvoiceApplicationService:
                 and invoice.buyer.customer_number
                 and invoice.buyer.name
             ):
-                self._customers.save(invoice.buyer, commit=False)
+                self._partners.save_customer(invoice.buyer, commit=False)
 
     def _different_customer_duplicates(self, invoice: Invoice):
         if (
@@ -106,7 +102,7 @@ class InvoiceApplicationService:
 
         return [
             duplicate
-            for duplicate in self._customers.find_duplicates(invoice.buyer)
+            for duplicate in self._partners.find_customer_duplicates(invoice.buyer)
             if duplicate.customer_number != invoice.buyer.customer_number
         ]
 

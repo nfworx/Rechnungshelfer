@@ -429,13 +429,14 @@ class GrainSettlementView(ctk.CTkFrame):
             )
         return True
 
-    def calculate(self) -> bool:
+    def calculate(self, *, show_error: bool = True) -> bool:
         try:
             result = calculate_settlement_preview(self._form_value())
         except (GrainValidationError, ValueError, ArithmeticError) as exc:
             self._render_deliveries(self._last_result)
             self.status_label.configure(text="Eingaben prüfen")
-            messagebox.showerror("Getreideabrechnung", str(exc), parent=self)
+            if show_error:
+                messagebox.showerror("Getreideabrechnung", str(exc), parent=self)
             return False
         self._last_result = result
         self._render_deliveries(result)
@@ -753,9 +754,9 @@ class GrainSettlementView(ctk.CTkFrame):
         self.document = self.controller.create_empty_invoice(
             DocumentType.SELF_BILLED_INVOICE
         )
-        self.document.info.invoice_number = "GS-ENTWURF-001"
+        self.document.info.invoice_number = "80001"
         self.document.info.delivery_date = date.today().strftime("%d.%m.%Y")
-        self.document.seller.supplier_number = "L0001"
+        self.document.seller.supplier_number = "1001"
         self.document.seller.name = "Beispiellieferant"
         self.rule_sets = {}
         for grain_type_code in GRAIN_TYPE_LABELS:
@@ -823,4 +824,4 @@ class GrainSettlementView(ctk.CTkFrame):
         self.rule_button.configure(
             text=f"Regeln bearbeiten ({active_rules} aktiv)"
         )
-        self.calculate()
+        self.calculate(show_error=False)

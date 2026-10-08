@@ -12,7 +12,9 @@ from rechnungshelfer.application.errors import CustomerDuplicateError
 from rechnungshelfer.domain.models import Buyer, DEFAULT_BUYER_REFERENCE, Payment, Seller
 from rechnungshelfer.gui.export_workflow import ExportWorkflow
 from rechnungshelfer.gui.main_window import InvoiceGUI
-from rechnungshelfer.repositories.customer_repository import CustomerRepository
+from rechnungshelfer.repositories.business_partner_repository import (
+    BusinessPartnerRepository,
+)
 from rechnungshelfer.repositories.database import Database
 from rechnungshelfer.repositories.invoice_repository import (
     InvoiceRepository,
@@ -21,7 +23,6 @@ from rechnungshelfer.repositories.invoice_repository import (
 )
 from app_info import DATA_DIR_ENV
 from rechnungshelfer.repositories.master_data_repository import MasterDataRepository
-from rechnungshelfer.repositories.supplier_repository import SupplierRepository
 from rechnungshelfer.services.format_service import parse_de
 from rechnungshelfer.services.validation_service import validate_document, validate_xsd
 from rechnungshelfer.services.xml_service import create_xml
@@ -43,10 +44,7 @@ class RegressionTests(unittest.TestCase):
         controller = InvoiceController.__new__(InvoiceController)
         controller.database = Database(directory / "audit.db")
         controller.repo = InvoiceRepository(connection=controller.database.connection)
-        controller.customer_repo = CustomerRepository(
-            connection=controller.database.connection
-        )
-        controller.supplier_repo = SupplierRepository(
+        controller.partner_repo = BusinessPartnerRepository(
             connection=controller.database.connection
         )
         controller.master_data_repository = MasterDataRepository(directory / "master.json")
@@ -107,11 +105,11 @@ class RegressionTests(unittest.TestCase):
             invoice = self._invoice()
             invoice.set_document_type("invoice")
             invoice.info.invoice_number = "DUP-1"
-            invoice.buyer.customer_number = "K-NEW"
+            invoice.buyer.customer_number = "2002"
 
             existing = copy.deepcopy(invoice.buyer)
-            existing.customer_number = "K-OLD"
-            controller.customer_repo.save(existing)
+            existing.customer_number = "2001"
+            controller.partner_repo.save_customer(existing)
 
             try:
                 with self.assertRaises(CustomerDuplicateError) as raised:
@@ -119,7 +117,7 @@ class RegressionTests(unittest.TestCase):
 
                 self.assertEqual(
                     [buyer.customer_number for buyer in raised.exception.duplicates],
-                    ["K-OLD"],
+                    ["2001"],
                 )
                 self.assertFalse(controller.repo.exists("DUP-1"))
             finally:
@@ -128,7 +126,7 @@ class RegressionTests(unittest.TestCase):
     def test_gui_handles_typed_customer_duplicate_error(self):
         invoice = self._invoice()
         duplicate = copy.deepcopy(invoice.buyer)
-        duplicate.customer_number = "K-OLD"
+        duplicate.customer_number = "2001"
         controller = MagicMock()
         controller.invoice_exists.return_value = False
         controller.save_invoice.side_effect = [
@@ -148,14 +146,14 @@ class RegressionTests(unittest.TestCase):
         ):
             gui.save_invoice()
 
-        self.assertIn("K-OLD", ask.call_args.args[1])
+        self.assertIn("2001", ask.call_args.args[1])
         self.assertEqual(controller.save_invoice.call_count, 2)
         controller.save_invoice.assert_called_with(
             invoice,
             allow_customer_duplicate=True,
         )
 
-    def test_gui_startup_does_not_run_data_migrations(self):
+    def test_gui_startup_loads_latest_invoice(self):
         gui = InvoiceGUI.__new__(InvoiceGUI)
         gui.controller = MagicMock()
         gui.root = MagicMock()
@@ -165,7 +163,6 @@ class RegressionTests(unittest.TestCase):
         with patch.object(__import__("sys"), "frozen", False, create=True):
             gui._do_startup_tasks()
 
-        gui.controller.migrate_customers_from_invoices_if_empty.assert_not_called()
         gui.load_latest_invoice.assert_called_once_with()
         gui.on_ready.assert_called_once_with()
 
@@ -178,7 +175,7 @@ class RegressionTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "DB error"):
                     controller.save_invoice(invoice)
 
-            self.assertEqual(controller.supplier_repo.list_suppliers(), [])
+            self.assertEqual(controller.partner_repo.list_suppliers(), [])
             controller.close()
 
     def test_zero_vat_uses_zero_rated_category(self):
@@ -371,7 +368,7 @@ class RegressionTests(unittest.TestCase):
             <= issue_fields
         )
 
-    def test_missing_self_billed_supplier_number_is_assigned(self):
+    def test_missing_self_billed_supplier_number_is_reported(self):
         with tempfile.TemporaryDirectory() as tmp:
             controller = self._controller_for(Path(tmp))
             invoice = self._invoice()
@@ -380,8 +377,8 @@ class RegressionTests(unittest.TestCase):
             invoice.seller.registry_number = ""
             invoice.seller.vat = ""
 
-            self.assertTrue(controller.check_xml_required_fields(invoice))
-            self.assertRegex(invoice.seller.supplier_number, r"^L\d{4}$")
+            self.assertFalse(controller.check_xml_required_fields(invoice))
+            self.assertEqual(invoice.seller.supplier_number, "")
             controller.close()
 
     def test_zero_quantity_is_rejected(self):
@@ -469,15 +466,18 @@ class RegressionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             controller = self._controller_for(Path(tmp))
             buyer = copy.deepcopy(self._invoice().buyer)
-            buyer.customer_number = "K0001"
+            buyer.customer_number = "0001"
             buyer.city = "Hamburg"
-            controller.customer_repo.save(buyer)
+            controller.partner_repo.save_customer(buyer)
 
-            results = controller.customer_repo.search("city", "Hamb", limit=1)
+            results = controller.partner_repo.search_customers("city", "Hamb", limit=1)
 
             self.assertEqual(len(results), 1)
-            self.assertEqual(results[0].customer_number, "K0001")
-            self.assertEqual(controller.customer_repo.search("unknown", "x"), [])
+            self.assertEqual(results[0].customer_number, "0001")
+            self.assertEqual(
+                controller.partner_repo.search_customers("unknown", "x"),
+                [],
+            )
             controller.close()
 
     def test_data_directory_can_be_overridden(self):

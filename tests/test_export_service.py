@@ -65,21 +65,17 @@ class InvoiceExportServiceTests(unittest.TestCase):
         self.assertIn("KoSIT-Testfehler", raised.exception.details)
         self.assertEqual(raised.exception.report_html, "<html>Fehler</html>")
 
-    def test_self_billed_export_gets_supplier_number_from_provider(self):
+    def test_self_billed_export_does_not_generate_supplier_number(self):
         validator = StubValidator(KositValidationResult(valid=True))
-        number_provider = MagicMock(return_value="L0099")
-        service = InvoiceExportService(
-            external_validator=validator,
-            supplier_number_provider=number_provider,
-        )
+        service = InvoiceExportService(external_validator=validator)
         invoice = create_validator_self_billed_invoice()
         invoice.seller.supplier_number = ""
 
         with tempfile.TemporaryDirectory() as tmp:
-            service.export_xml(invoice, Path(tmp) / "credit-note.xml")
+            with self.assertRaises(ValueError):
+                service.export_xml(invoice, Path(tmp) / "credit-note.xml")
 
-        self.assertEqual(invoice.seller.supplier_number, "L0099")
-        number_provider.assert_called_once_with()
+        self.assertEqual(invoice.seller.supplier_number, "")
 
     def test_pdf_export_delegates_to_injected_renderer(self):
         renderer = MagicMock()

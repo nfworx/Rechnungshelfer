@@ -29,14 +29,14 @@ def create_sample_invoice() -> Invoice:
         city="Berlin", country="DE", phone="+49 30 12345670",
         email="rechnung@example.org", vat="DE136695976",
         tax_number="30/123/45678", registry_number="HRB 123456 B",
-        contact_name="Erika Beispiel", supplier_number="LF-1000",
+        contact_name="Erika Beispiel", supplier_number="1000",
         buyer_reference="BUCHHALTUNG",
     )
     buyer = Buyer(
         name="Musterkunde AG", street="Pruefstrasse 20", postcode="20095",
         city="Hamburg", country="DE", leitweg_id="04011000-12345-67",
         email="e-rechnung@example.net", contact_name="Max Mustermann",
-        customer_number="K-2000", use_invoice_address_as_delivery=False,
+        customer_number="2000", use_invoice_address_as_delivery=False,
         phone="+49 40 76543210", vat="DE122119035",
         tax_number="22/456/78901", registry_number="HRB 654321",
     )
@@ -51,7 +51,7 @@ def create_sample_invoice() -> Invoice:
         buyer=buyer,
         delivery=delivery,
         info=InvoiceInfo(
-            invoice_number="RE-VALIDATOR-2026-0001",
+            invoice_number="80001",
             invoice_date="01.10.2026",
             delivery_date="30.09.2026",
             payment_due_date="15.10.2026",
@@ -78,7 +78,7 @@ def create_sample_self_billed_invoice() -> Invoice:
         city="Schwarmstedt", country="DE", phone="+49 5071 123456",
         email="abrechnung@example.com", vat="", tax_number="24/111/22222",
         registry_number="", contact_name="Luise Landwirtin",
-        supplier_number="L-3000", buyer_reference="BUCHHALTUNG",
+        supplier_number="3000", buyer_reference="BUCHHALTUNG",
     )
     buyer = Buyer(
         name="Abrechnung Handel GmbH", street="Kontorstrasse 12",
@@ -94,7 +94,7 @@ def create_sample_self_billed_invoice() -> Invoice:
         buyer=buyer,
         delivery=Delivery(),
         info=InvoiceInfo(
-            invoice_number="GS-VALIDATOR-2026-0001",
+            invoice_number="80002",
             invoice_date="02.10.2026",
             delivery_date="",
             payment_due_date="16.10.2026",

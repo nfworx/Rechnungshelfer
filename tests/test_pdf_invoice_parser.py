@@ -180,8 +180,7 @@ class PdfInvoiceApplicationServiceTests(unittest.TestCase):
         pdf_import.extract.return_value = extraction
         database = Mock()
         invoices = Mock()
-        customers = Mock()
-        suppliers = Mock()
+        partners = Mock()
         master_data = Mock()
         master_data.load_into.return_value = (
             Seller(name="Eigener Betrieb"),
@@ -190,20 +189,19 @@ class PdfInvoiceApplicationServiceTests(unittest.TestCase):
         service = InvoiceApplicationService(
             database=database,
             invoice_repository=invoices,
-            customer_repository=customers,
-            supplier_repository=suppliers,
+            business_partner_repository=partners,
             master_data_repository=master_data,
             invoice_factory=InvoiceFactory(),
             pdf_import_service=pdf_import,
             pdf_invoice_parser=PdfInvoiceParser(),
         )
-        return service, database, invoices, customers, suppliers, master_data
+        return service, database, invoices, partners, master_data
 
     def test_background_analysis_does_not_access_repositories_or_master_data(self):
         extraction = extraction_with(
             "Gutschrift\nGutschriftsnummer: GS-2026-1\nLieferant: Beispielhof"
         )
-        service, database, invoices, customers, suppliers, master_data = self._service(
+        service, database, invoices, partners, master_data = self._service(
             extraction
         )
 
@@ -211,10 +209,9 @@ class PdfInvoiceApplicationServiceTests(unittest.TestCase):
 
         self.assertEqual(analysis.draft.document_type, DocumentType.SELF_BILLED_INVOICE)
         master_data.load_into.assert_not_called()
-        suppliers.next_supplier_number.assert_not_called()
         invoices.save.assert_not_called()
-        customers.save.assert_not_called()
-        suppliers.save.assert_not_called()
+        partners.save_customer.assert_not_called()
+        partners.save_supplier.assert_not_called()
         database.transaction.assert_not_called()
 
     def test_pdf_import_creates_in_memory_invoice_without_repository_writes(self):
@@ -222,7 +219,7 @@ class PdfInvoiceApplicationServiceTests(unittest.TestCase):
             "Rechnungsnummer: PDF-101\nRechnungsdatum: 08.10.2026\n"
             "Kundenname: Importkunde GmbH"
         )
-        service, database, invoices, customers, suppliers, _master_data = self._service(
+        service, database, invoices, partners, _master_data = self._service(
             extraction
         )
 
@@ -233,22 +230,20 @@ class PdfInvoiceApplicationServiceTests(unittest.TestCase):
         self.assertEqual(imported.invoice.buyer.name, "Importkunde GmbH")
         self.assertEqual(imported.invoice.seller.name, "Eigener Betrieb")
         invoices.save.assert_not_called()
-        customers.save.assert_not_called()
-        suppliers.save.assert_not_called()
+        partners.save_customer.assert_not_called()
+        partners.save_supplier.assert_not_called()
         database.transaction.assert_not_called()
 
     def test_roundtrips_program_sample_invoice_from_pdf_without_database_writes(self):
         original = create_sample_invoice()
         database = Mock()
         invoices = Mock()
-        customers = Mock()
-        suppliers = Mock()
+        partners = Mock()
         master_data = Mock()
         service = InvoiceApplicationService(
             database=database,
             invoice_repository=invoices,
-            customer_repository=customers,
-            supplier_repository=suppliers,
+            business_partner_repository=partners,
             master_data_repository=master_data,
             invoice_factory=InvoiceFactory(),
         )
@@ -263,8 +258,8 @@ class PdfInvoiceApplicationServiceTests(unittest.TestCase):
         self.assertIsNotNone(imported.draft.embedded_invoice_data)
         master_data.load_into.assert_not_called()
         invoices.save.assert_not_called()
-        customers.save.assert_not_called()
-        suppliers.save.assert_not_called()
+        partners.save_customer.assert_not_called()
+        partners.save_supplier.assert_not_called()
         database.transaction.assert_not_called()
 
 if __name__ == "__main__":

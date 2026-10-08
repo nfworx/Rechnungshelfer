@@ -47,7 +47,7 @@ class CustomerLoadDialog:
 
         self.search_entry = ctk.CTkEntry(
             self.window,
-            placeholder_text="Suche nach Kundennummer, Name, Ort oder E-Mail...",
+            placeholder_text="Suche nach GeschÃ¤ftspartnernummer, Name, Ort oder E-Mail...",
             height=34,
             font=FONT_NORMAL,
             corner_radius=8,
@@ -78,7 +78,7 @@ class CustomerLoadDialog:
 
     def _columns(self):
         return [
-            ("Kundennummer", 150, "w"),
+            ("GeschÃ¤ftspartnernummer", 180, "w"),
             ("Name", 280, "w"),
             ("Ort", 180, "w"),
             ("E-Mail", 230, "w"),

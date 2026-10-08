@@ -15,7 +15,9 @@ from rechnungshelfer.domain.models import (
     Seller,
 )
 from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
-from rechnungshelfer.repositories.supplier_repository import SupplierRepository
+from rechnungshelfer.repositories.business_partner_repository import (
+    BusinessPartnerRepository,
+)
 from rechnungshelfer.services.pdf_service import (
     _pdf_detail_layout,
     _pdf_invoice_details,
@@ -41,7 +43,7 @@ class SelfBilledInvoiceTests(unittest.TestCase):
             tax_number="12/345/67890",
             registry_number="",
             contact_name="",
-            supplier_number="L0001",
+            supplier_number="0001",
         )
         buyer = Buyer(
             name="Mein Betrieb GmbH",
@@ -149,16 +151,16 @@ class SelfBilledInvoiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             db_path = Path(directory) / "test.db"
             invoice_repo = InvoiceRepository(db_path)
-            supplier_repo = SupplierRepository(db_path)
+            supplier_repo = BusinessPartnerRepository(db_path)
             invoice = self.create_invoice()
             invoice_repo.save(invoice)
-            supplier_repo.save(invoice.seller, invoice.payment)
+            supplier_repo.save_supplier(invoice.seller, invoice.payment)
             loaded = invoice_repo.load(invoice.info.invoice_number)
             suppliers = supplier_repo.list_suppliers()
             invoice_repo.close()
             supplier_repo.close()
         self.assertTrue(loaded.is_self_billed)
-        self.assertEqual(suppliers[0][0].supplier_number, "L0001")
+        self.assertEqual(suppliers[0][0].supplier_number, "0001")
         self.assertEqual(suppliers[0][1].iban, "DE89370400440532013000")
 
     def test_pdf_is_created(self):
