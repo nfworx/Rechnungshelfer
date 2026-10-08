@@ -104,6 +104,12 @@ class InvoiceController:
     def load_from_xml(self, filepath):
         return self._get_invoice_service().load_from_xml(filepath)
 
+    def load_from_pdf(self, filepath, *, password=None):
+        return self._get_invoice_service().load_from_pdf(
+            filepath,
+            password=password,
+        )
+
     def copy_invoice(self, invoice: Invoice) -> Invoice:
         return self._get_invoice_service().copy_invoice(invoice)
 

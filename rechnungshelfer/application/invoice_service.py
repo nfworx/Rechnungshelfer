@@ -12,6 +12,11 @@ from rechnungshelfer.services.input_validation_service import (
     InputValidationError,
     normalize_invoice_input,
 )
+from rechnungshelfer.services.pdf_import_service import PdfImportService
+from rechnungshelfer.services.pdf_invoice_parser import (
+    PdfInvoiceImport,
+    PdfInvoiceParser,
+)
 from rechnungshelfer.services.xml_reader import InvoiceParsingError, read_xml_file
 
 
@@ -25,6 +30,8 @@ class InvoiceApplicationService:
         supplier_repository,
         master_data_repository,
         invoice_factory: InvoiceFactory,
+        pdf_import_service=None,
+        pdf_invoice_parser=None,
     ):
         self._database = database
         self._invoices = invoice_repository
@@ -32,6 +39,8 @@ class InvoiceApplicationService:
         self._suppliers = supplier_repository
         self._master_data = master_data_repository
         self._factory = invoice_factory
+        self._pdf_import = pdf_import_service or PdfImportService()
+        self._pdf_parser = pdf_invoice_parser or PdfInvoiceParser()
 
     def create_empty_invoice(
         self,
@@ -129,6 +138,19 @@ class InvoiceApplicationService:
             raise ValueError(f"XML Fehler: {exc}") from exc
         except Exception as exc:
             raise RuntimeError(f"Fehler beim Laden: {exc}") from exc
+
+    def load_from_pdf(self, filepath, *, password=None) -> PdfInvoiceImport:
+        """Extrahiert einen Beleg in den Arbeitsspeicher, ohne ihn zu speichern."""
+
+        extraction = self._pdf_import.extract(filepath, password=password)
+        draft = self._pdf_parser.parse(extraction)
+        invoice = self.create_empty_invoice(draft.document_type)
+        self._pdf_parser.apply(draft, invoice)
+        return PdfInvoiceImport(
+            extraction=extraction,
+            draft=draft,
+            invoice=invoice,
+        )
 
     def copy_invoice(self, invoice: Invoice) -> Invoice:
         return self._factory.copy(invoice)
