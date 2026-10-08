@@ -64,6 +64,7 @@ def create_size_report(
     internal = build_dir / "_internal"
     java = internal / "external" / "java"
     kosit = internal / "external" / "kosit"
+    tesseract = internal / "external" / "tesseract"
     kosit_validator = kosit / "validator"
     xrechnung = kosit / "xrechnung"
     ubl = kosit / "xrechnung" / "resources" / "ubl"
@@ -72,18 +73,25 @@ def create_size_report(
     complete_bytes, complete_files = path_size(build_dir)
     java_bytes, _ = path_size(java)
     kosit_bytes, _ = path_size(kosit)
-    python_bytes = complete_bytes - java_bytes - kosit_bytes
+    tesseract_bytes, _ = path_size(tesseract)
+    python_bytes = complete_bytes - java_bytes - kosit_bytes - tesseract_bytes
 
     measurements: dict[str, dict[str, object]] = {
         "release_build": _measurement(build_dir, build_dir.parent),
         "python_application": {
-            "path": f"{build_dir.name} (ohne Java und KoSIT)",
+            "path": f"{build_dir.name} (ohne Java, KoSIT und Tesseract)",
             "bytes": python_bytes,
             "mib": round(python_bytes / MIB, 3),
-            "files": complete_files - path_size(java)[1] - path_size(kosit)[1],
+            "files": (
+                complete_files
+                - path_size(java)[1]
+                - path_size(kosit)[1]
+                - path_size(tesseract)[1]
+            ),
         },
         "java_runtime": _measurement(java, build_dir),
         "kosit_bundle": _measurement(kosit, build_dir),
+        "tesseract_runtime": _measurement(tesseract, build_dir),
         "kosit_validator": _measurement(kosit_validator, build_dir),
         "xrechnung_configuration": _measurement(xrechnung, build_dir),
         "ubl_schemas": _measurement(ubl, build_dir),
@@ -121,6 +129,7 @@ def render_table(report: dict[str, object]) -> str:
         "release_archive": "Release-ZIP",
         "python_application": "Python-Anwendung",
         "java_runtime": "Java-Runtime",
+        "tesseract_runtime": "Tesseract-OCR-Runtime",
         "kosit_bundle": "KoSIT gesamt",
         "kosit_validator": "KoSIT-Validator",
         "xrechnung_configuration": "XRechnung-Konfiguration",

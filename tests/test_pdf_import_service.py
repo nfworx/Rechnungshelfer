@@ -55,7 +55,7 @@ class PdfImportServiceTests(unittest.TestCase):
             path = Path(tmp) / "gemischt.pdf"
             self._create_pdf(path, ["Digitale Rechnungsseite", ""])
 
-            result = PdfImportService().extract(path)
+            result = PdfImportService(ocr_engine=None).extract(path)
 
         self.assertEqual(result.pages[0].method, ExtractionMethod.DIGITAL)
         self.assertEqual(result.pages[1].method, ExtractionMethod.NONE)

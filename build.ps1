@@ -8,6 +8,7 @@ Set-Location -LiteralPath $PSScriptRoot
 
 $python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 $java = Join-Path $PSScriptRoot "external\java\bin\java.exe"
+$tesseract = Join-Path $PSScriptRoot "external\tesseract\tesseract.exe"
 
 $generatedReports = Get-ChildItem `
     -LiteralPath (Join-Path $PSScriptRoot "external\kosit") `
@@ -27,6 +28,15 @@ if (-not (Test-Path -LiteralPath $python)) {
 
 if (-not (Test-Path -LiteralPath $java)) {
     throw "Portable Java-Laufzeit fehlt: $java"
+}
+
+if (-not (Test-Path -LiteralPath $tesseract)) {
+    throw "Portable Tesseract-Laufzeit fehlt: $tesseract"
+}
+
+& $python -c "from pathlib import Path; from build_support.tesseract_runtime import validate_installed_runtime; validate_installed_runtime(Path.cwd())"
+if ($LASTEXITCODE -ne 0) {
+    throw "Portable Tesseract-Laufzeit entspricht nicht der lokalen Freigabe."
 }
 
 & $python -c "import PyInstaller" 2>$null

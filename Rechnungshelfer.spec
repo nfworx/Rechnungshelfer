@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 from app_info import APP_EXECUTABLE_NAME
+from build_support.tesseract_runtime import validate_installed_runtime
 
 
 project_root = Path.cwd()
@@ -11,6 +12,7 @@ required_directories = (
     project_root / "assets",
     project_root / "external" / "java",
     project_root / "external" / "kosit",
+    project_root / "external" / "tesseract",
 )
 component_registry = project_root / "external" / "components.json"
 ubl_invoice_schema = (
@@ -56,6 +58,8 @@ if not version_info_path.is_file():
     )
 
 datas = collect_data_files("customtkinter")
+datas.extend(copy_metadata("pypdfium2"))
+tesseract_runtime = validate_installed_runtime(project_root)
 datas.extend(
     [
         (str(project_root / "assets"), "assets"),
@@ -64,6 +68,9 @@ datas.extend(
         (str(component_registry), "external"),
     ]
 )
+for path in tesseract_runtime.files:
+    relative_parent = path.relative_to(project_root).parent.as_posix()
+    datas.append((str(path), relative_parent))
 
 a = Analysis(
     ["main.py"],

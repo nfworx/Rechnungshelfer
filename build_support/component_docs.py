@@ -11,6 +11,7 @@ END = "<!-- END GENERATED EXTERNAL COMPONENTS -->"
 COMPONENT_NAMES = {
     "java-runtime": "Java-Laufzeit",
     "kosit-validator": "KoSIT XML Validator",
+    "tesseract-runtime": "Tesseract OCR mit deutschen Sprachdaten",
     "xrechnung-configuration": "XRechnung-Konfiguration",
 }
 

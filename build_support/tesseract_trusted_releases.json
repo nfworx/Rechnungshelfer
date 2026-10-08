@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "releases": [
+    {
+      "version": "5.5.3.20260724",
+      "release_tag": "5.5.3",
+      "source_url": "https://github.com/tesseract-ocr/tesseract/releases/download/5.5.3/tesseract-ocr-w64-setup-5.5.3.20260724.exe",
+      "installer_filename": "tesseract-ocr-w64-setup-5.5.3.20260724.exe",
+      "installer_sha256": "bee9e3434bd94fd65387d9be28cd467a41f61b1275383b55b0f59a1331270ae4",
+      "runtime_sha256": "276bfd3da352786830af2f562ebf6e358c13cf34f2f4f00a42140e71be06600d"
+    }
+  ]
+}

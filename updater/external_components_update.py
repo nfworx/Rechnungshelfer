@@ -16,6 +16,40 @@ from updater.core import (
 
 
 def _validate_component(component: ComponentUpdate, project_root: Path) -> None:
+    if component.component_id == "tesseract-runtime":
+        executable = project_root / "external" / "tesseract" / "tesseract.exe"
+        language = project_root / "external" / "tesseract" / "tessdata" / "deu.traineddata"
+        if not executable.is_file() or not language.is_file():
+            raise UpdateError("Tesseract-Smoke-Test findet Laufzeit oder deutsche Sprachdaten nicht.")
+        try:
+            version = subprocess.run(
+                [str(executable), "--version"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=15,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            languages = subprocess.run(
+                [str(executable), "--list-langs"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=15,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise UpdateError(f"Tesseract-Smoke-Test konnte nicht ausgefuehrt werden: {exc}") from exc
+        version_text = version.stdout.decode("utf-8", errors="replace").lower()
+        language_text = languages.stdout.decode("utf-8", errors="replace").splitlines()
+        if (
+            version.returncode != 0
+            or f"tesseract v{component.version}" not in version_text
+            or languages.returncode != 0
+            or "deu" not in {line.strip() for line in language_text}
+        ):
+            raise UpdateError("Tesseract-Smoke-Test ist fehlgeschlagen.")
+        return
     if component.component_id != "kosit-validator":
         return
     java_name = "java.exe" if os.name == "nt" else "java"

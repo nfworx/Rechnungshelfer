@@ -306,6 +306,7 @@ Dieser Abschnitt wird vom Release-Werkzeug aus `external/components.json` erzeug
 |---|---|
 | Java-Laufzeit | `21.0.12.1` |
 | KoSIT XML Validator | `1.6.3` |
+| Tesseract OCR mit deutschen Sprachdaten | `5.5.3.20260724` |
 | XRechnung-Konfiguration | `2026.01.31` |
 <!-- END GENERATED EXTERNAL COMPONENTS -->
 

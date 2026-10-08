@@ -33,6 +33,7 @@ COMPONENT_MANAGED_PATHS = {
     "kosit-validator": ("external/kosit/validator",),
     "xrechnung-configuration": ("external/kosit/xrechnung",),
     "java-runtime": ("external/java",),
+    "tesseract-runtime": ("external/tesseract",),
 }
 
 

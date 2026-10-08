@@ -3,6 +3,7 @@
   "components": {
     "java-runtime": "21.0.12.1",
     "kosit-validator": "1.6.3",
+    "tesseract-runtime": "5.5.3.20260724",
     "xrechnung-configuration": "2026.01.31"
   }
 }

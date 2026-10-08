@@ -11,6 +11,7 @@ class SizeReportTests(unittest.TestCase):
     def _build(root: Path) -> Path:
         build = root / "dist" / "Rechnungshelfer"
         (build / "_internal" / "external" / "java" / "bin").mkdir(parents=True)
+        (build / "_internal" / "external" / "tesseract").mkdir(parents=True)
         (build / "_internal" / "external" / "kosit" / "xrechnung" / "resources" / "ubl").mkdir(
             parents=True
         )
@@ -18,6 +19,7 @@ class SizeReportTests(unittest.TestCase):
         (build / "Rechnungshelfer.exe").write_bytes(b"a" * 11)
         (build / "_internal" / "python.dll").write_bytes(b"p" * 13)
         (build / "_internal" / "external" / "java" / "bin" / "java.exe").write_bytes(b"j" * 17)
+        (build / "_internal" / "external" / "tesseract" / "tesseract.exe").write_bytes(b"t" * 5)
         (build / "_internal" / "external" / "kosit" / "validator").mkdir()
         (build / "_internal" / "external" / "kosit" / "validator" / "validator.jar").write_bytes(b"k" * 19)
         (build / "_internal" / "external" / "kosit" / "xrechnung" / "resources" / "ubl" / "ubl.xsd").write_bytes(
@@ -36,15 +38,16 @@ class SizeReportTests(unittest.TestCase):
             report = create_size_report(build, archive=archive)
             measurements = report["measurements"]
 
-            self.assertEqual(measurements["release_build"]["bytes"], sum((11, 13, 17, 19, 23, 7)))
+            self.assertEqual(measurements["release_build"]["bytes"], sum((11, 13, 17, 5, 19, 23, 7)))
             self.assertEqual(measurements["java_runtime"]["bytes"], 17)
             self.assertEqual(measurements["kosit_bundle"]["bytes"], 42)
+            self.assertEqual(measurements["tesseract_runtime"]["bytes"], 5)
             self.assertEqual(measurements["kosit_validator"]["bytes"], 19)
             self.assertEqual(measurements["xrechnung_configuration"]["bytes"], 23)
             self.assertEqual(measurements["ubl_schemas"]["bytes"], 23)
             self.assertEqual(measurements["python_application"]["bytes"], 31)
             self.assertEqual(measurements["release_archive"]["bytes"], 29)
-            self.assertEqual(path_size(build)[1], 6)
+            self.assertEqual(path_size(build)[1], 7)
 
     def test_baseline_delta_and_json_output_are_reusable(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -59,7 +62,7 @@ class SizeReportTests(unittest.TestCase):
             output = root / "report.json"
             write_size_report(report, output)
 
-            self.assertEqual(report["deltas"]["release_build"]["bytes"], 10)
+            self.assertEqual(report["deltas"]["release_build"]["bytes"], 15)
             self.assertEqual(json.loads(output.read_text(encoding="utf-8"))["schema_version"], 1)
             self.assertIn("Veraenderung zur Ausgangsbasis", render_table(report))
 

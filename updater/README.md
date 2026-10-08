@@ -61,6 +61,7 @@ Komponenten und ihre erlaubten Ziele:
 | `kosit-validator` | `external/kosit/validator` |
 | `xrechnung-configuration` | `external/kosit/xrechnung` |
 | `java-runtime` | `external/java` |
+| `tesseract-runtime` | `external/tesseract` |
 
 Die installierten Komponentenstaende stehen in `external/components.json`.
 Die von der lokalen XSD-Pruefung verwendeten UBL-2.1-Schemata sind Bestandteil

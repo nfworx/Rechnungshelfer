@@ -8,6 +8,7 @@ import unittest
 import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from packaging.version import Version
@@ -18,6 +19,20 @@ from build_support.release_tool import Reporter, _run_tests, _verify_artifacts, 
 
 
 class ReleaseToolTests(unittest.TestCase):
+    def setUp(self):
+        patcher = patch(
+            "build_support.release_tool.validate_tesseract_runtime",
+            return_value=SimpleNamespace(
+                version="5.5.3.20260724",
+                installer_filename="tesseract-installer.exe",
+                installer_sha256="c" * 64,
+                runtime_sha256="d" * 64,
+                languages=("deu", "eng", "osd"),
+            ),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _project(self, root: Path) -> Path:
         (root / "external" / "java" / "bin").mkdir(parents=True)
         (root / "external" / "java" / "bin" / "java.exe").write_bytes(b"java")
@@ -60,6 +75,7 @@ class ReleaseToolTests(unittest.TestCase):
                 "java-runtime": "21.0.12.1",
                 "kosit-validator": "1.6.2",
                 "xrechnung-configuration": "2026.01.31",
+                "tesseract-runtime": "5.5.3.20260724",
             },
         }), encoding="utf-8")
         (root / "build.ps1").write_text("", encoding="utf-8")
@@ -103,6 +119,21 @@ class ReleaseToolTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
+        (root / "build_support" / "tesseract_trusted_releases.json").write_text(
+            json.dumps({"schema_version": 1, "releases": [{
+                "version": "5.5.3.20260724",
+                "installer_filename": "tesseract-installer.exe",
+                "installer_sha256": "c" * 64,
+                "runtime_sha256": "d" * 64,
+            }]}),
+            encoding="utf-8",
+        )
+        tesseract = root / "external" / "tesseract"
+        (tesseract / "tessdata" / "configs").mkdir(parents=True)
+        (tesseract / "tesseract.exe").write_bytes(b"tesseract")
+        (tesseract / "runtime.dll").write_bytes(b"dll")
+        (tesseract / "tessdata" / "deu.traineddata").write_bytes(b"deu")
+        (tesseract / "tessdata" / "configs" / "tsv").write_text("tsv", encoding="ascii")
         return root
 
     @staticmethod
@@ -325,6 +356,9 @@ class ReleaseToolTests(unittest.TestCase):
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr("Rechnungshelfer.exe", b"app")
                 package.writestr("_internal/Updater.exe", b"updater")
+                package.writestr("_internal/external/tesseract/tesseract.exe", b"ocr")
+                package.writestr("_internal/external/tesseract/tessdata/deu.traineddata", b"deu")
+                package.writestr("_internal/external/tesseract/tessdata/configs/tsv", b"tsv")
                 package.writestr("_internal/runtime.dat", b"runtime")
             digest = hashlib.sha256(archive.read_bytes()).hexdigest()
             Path(str(archive) + ".sha256").write_text(f"{digest}  {archive.name}\n", encoding="ascii")
@@ -355,6 +389,9 @@ class ReleaseToolTests(unittest.TestCase):
             with zipfile.ZipFile(archive, "w") as package:
                 package.writestr("Rechnungshelfer.exe", b"app")
                 package.writestr("_internal/Updater.exe", b"updater")
+                package.writestr("_internal/external/tesseract/tesseract.exe", b"ocr")
+                package.writestr("_internal/external/tesseract/tessdata/deu.traineddata", b"deu")
+                package.writestr("_internal/external/tesseract/tessdata/configs/tsv", b"tsv")
             digest = hashlib.sha256(archive.read_bytes()).hexdigest()
             Path(str(archive) + ".sha256").write_text(digest, encoding="ascii")
             (release_dir / "Rechnungshelfer-1.0.1-test-manifest.json").write_text(json.dumps({

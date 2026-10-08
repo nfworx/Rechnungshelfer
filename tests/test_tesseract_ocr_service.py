@@ -1,9 +1,12 @@
 import subprocess
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
+from PIL import Image, ImageDraw, ImageFont
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from rechnungshelfer.services.pdf_import_service import (
@@ -25,6 +28,7 @@ TSV_RESULT = """level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\tt
 5\t1\t1\t1\t1\t2\t300\t200\t160\t40\t92.0\tRechnung
 5\t1\t1\t1\t2\t1\t100\t280\t120\t40\t89.5\t4711
 """
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class TesseractRuntimeTests(unittest.TestCase):
@@ -230,6 +234,37 @@ class TesseractOcrEngineTests(unittest.TestCase):
                 page_height=800,
                 scale=1,
             )
+
+    @unittest.skipUnless(
+        (PROJECT_ROOT / "external" / "tesseract" / "tesseract.exe").is_file(),
+        "Portable Tesseract-Laufzeit ist nicht installiert.",
+    )
+    def test_real_portable_runtime_recognizes_scanned_pdf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "echter-scan.pdf"
+            image = Image.new("RGB", (1800, 500), "white")
+            font = ImageFont.truetype(
+                str(PROJECT_ROOT / "assets" / "fonts" / "LMRoman10-Bold.ttf"),
+                110,
+            )
+            ImageDraw.Draw(image).text(
+                (100, 150),
+                "RECHNUNG 4711",
+                font=font,
+                fill="black",
+            )
+            image_data = BytesIO()
+            image.save(image_data, format="PNG")
+            image_data.seek(0)
+            document = canvas.Canvas(str(pdf_path), pagesize=(900, 250))
+            document.drawImage(ImageReader(image_data), 0, 0, width=900, height=250)
+            document.showPage()
+            document.save()
+
+            result = PdfImportService().extract(pdf_path)
+
+        self.assertEqual(result.pages[0].method, ExtractionMethod.OCR)
+        self.assertIn("4711", result.full_text)
 
 
 if __name__ == "__main__":

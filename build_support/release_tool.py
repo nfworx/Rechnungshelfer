@@ -27,6 +27,10 @@ from packaging.version import InvalidVersion, Version
 from build_support.component_docs import outdated_component_documentation, update_component_documentation
 from build_support.java_runtime import JavaRuntimeError, validate_installed_runtime
 from build_support.kosit_builder import KositBuilderError, fetch_latest_release, install_release, installed_version
+from build_support.tesseract_runtime import (
+    TesseractRuntimeError,
+    validate_installed_runtime as validate_tesseract_runtime,
+)
 from updater.core import ApplicationManifest, UpdateError, load_manifest
 
 
@@ -255,6 +259,8 @@ def _preflight(project_root: Path) -> None:
         "external/java/bin/java.exe", "external/java/release",
         "external/kosit/xrechnung/resources/ubl/2.1/xsd/maindoc/UBL-Invoice-2.1.xsd",
         "build_support/java_trusted_releases.json", "build_support/kosit_trusted_releases.json",
+        "build_support/tesseract_trusted_releases.json",
+        "external/tesseract/tesseract.exe", "external/tesseract/tessdata/deu.traineddata",
     )
     missing = [relative for relative in required if not (project_root / relative).exists()]
     if missing:
@@ -268,6 +274,11 @@ def _preflight(project_root: Path) -> None:
     try:
         validate_installed_runtime(project_root)
     except JavaRuntimeError as exc:
+        raise BuilderError(str(exc)) from exc
+
+    try:
+        validate_tesseract_runtime(project_root)
+    except TesseractRuntimeError as exc:
         raise BuilderError(str(exc)) from exc
 
 
@@ -284,6 +295,18 @@ def _report_component_status(reporter: Reporter, project_root: Path):
     reporter.ok(
         "KOMPONENTEN",
         f"Java {java.runtime_version} ({java.image_type}) entspricht der lokalen Freigabe",
+    )
+    tesseract = validate_tesseract_runtime(project_root)
+    reporter.set_detail("tesseract", {
+        "version": tesseract.version,
+        "installer": tesseract.installer_filename,
+        "installer_sha256": tesseract.installer_sha256,
+        "runtime_sha256": tesseract.runtime_sha256,
+        "languages": list(tesseract.languages),
+    })
+    reporter.ok(
+        "KOMPONENTEN",
+        f"Tesseract {tesseract.version} entspricht der lokalen Hash-Freigabe",
     )
     current = installed_version(project_root)
     release = fetch_latest_release()
@@ -377,9 +400,17 @@ def _verify_artifacts(project_root: Path, version: Version, channel: str) -> dic
         raise BuilderError("Anwendungsmanifest stimmt nicht mit dem Release-ZIP ueberein.")
     with zipfile.ZipFile(archive) as package:
         names = {name.replace("\\", "/") for name in package.namelist()}
-    if "Rechnungshelfer.exe" not in names or "_internal/Updater.exe" not in names:
+    required_members = {
+        "Rechnungshelfer.exe",
+        "_internal/Updater.exe",
+        "_internal/external/tesseract/tesseract.exe",
+        "_internal/external/tesseract/tessdata/deu.traineddata",
+        "_internal/external/tesseract/tessdata/configs/tsv",
+    }
+    missing_members = sorted(required_members - names)
+    if missing_members:
         raise BuilderError(
-            "Release-ZIP enthaelt Rechnungshelfer.exe oder den internen Updater nicht."
+            "Release-ZIP ist unvollstaendig; es fehlen: " + ", ".join(missing_members)
         )
     forbidden = [name for name in names if name.casefold().startswith("data/") or name.casefold().endswith(
         (".db", ".sqlite", ".sqlite3", "-report.xml", "-report.html")
