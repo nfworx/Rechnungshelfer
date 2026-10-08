@@ -18,6 +18,7 @@ from rechnungshelfer.gui.grain_form_mapper import (
     missing_required_analyses,
     parse_parameters,
     parse_tiers,
+    parse_vat_rate,
     serialize_rule_set,
 )
 from rechnungshelfer.gui.main_window import InvoiceGUI
@@ -162,6 +163,14 @@ class GrainFormMapperTests(unittest.TestCase):
             parse_parameters("factor=1,1; result_kind=fixed_quantity_kg"),
             {"factor": "1.1", "result_kind": "fixed_quantity_kg"},
         )
+
+    def test_vat_rate_requires_explicit_supported_selection(self):
+        self.assertEqual(parse_vat_rate("7,8 %"), Decimal("7.8"))
+        self.assertEqual(parse_vat_rate("0 %"), Decimal("0"))
+        with self.assertRaisesRegex(GrainValidationError, "Steuersatz"):
+            parse_vat_rate("— auswählen —")
+        with self.assertRaisesRegex(GrainValidationError, "nicht unterstützt"):
+            parse_vat_rate("10 %")
 
     def test_parameter_parser_rejects_duplicate_or_malformed_values(self):
         with self.assertRaisesRegex(GrainValidationError, "doppelt"):
@@ -567,6 +576,38 @@ class GrainRuleSetSelectionTests(unittest.TestCase):
         view.status_label.configure.assert_called_once_with(
             text="2 Lieferungen berechnet"
         )
+
+    def test_vat_selection_updates_tax_and_gross_payout(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view._last_result = Mock(net_amount=Decimal("1000.00"))
+        view.vat_variable = Mock(get=Mock(return_value="7,8 %"))
+        view.total_rows = {
+            "tax_amount": Mock(),
+            "payable_amount": Mock(),
+        }
+
+        view._refresh_tax_totals()
+
+        view.total_rows["tax_amount"].configure.assert_called_once_with(
+            text="78,00 EUR"
+        )
+        view.total_rows["payable_amount"].configure.assert_called_once_with(
+            text="1.078,00 EUR"
+        )
+
+    def test_missing_vat_selection_hides_tax_and_gross_payout(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view._last_result = Mock(net_amount=Decimal("1000.00"))
+        view.vat_variable = Mock(get=Mock(return_value="— auswählen —"))
+        view.total_rows = {
+            "tax_amount": Mock(),
+            "payable_amount": Mock(),
+        }
+
+        view._refresh_tax_totals()
+
+        view.total_rows["tax_amount"].configure.assert_called_once_with(text="—")
+        view.total_rows["payable_amount"].configure.assert_called_once_with(text="—")
 
     def test_current_delivery_selects_its_own_rule_set(self):
         view = GrainSettlementView.__new__(GrainSettlementView)

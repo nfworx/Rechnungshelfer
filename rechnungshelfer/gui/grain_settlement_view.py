@@ -29,6 +29,7 @@ from .grain_form_mapper import (
     calculate_settlement_preview,
     deserialize_rule_set,
     missing_required_analyses,
+    parse_vat_rate,
     serialize_rule_set,
 )
 from .grain_settlement_dialogs import (
@@ -75,6 +76,7 @@ class GrainSettlementView(ctk.CTkFrame):
         self.field_entries = {}
         self._next_delivery_number = 1
         self._last_result: SettlementBatchResult | None = None
+        self.vat_variable = ctk.StringVar(master=self, value="— auswählen —")
 
         self.grid_columnconfigure(0, weight=4)
         self.grid_columnconfigure(1, weight=1)
@@ -240,7 +242,7 @@ class GrainSettlementView(ctk.CTkFrame):
             ("settlement", "Abrechnungsmenge"),
             ("base_amount", "Basiswarenwert"),
             ("money_deduction", "Preis-/Kostenabzug"),
-            ("net_amount", "Auszahlungsbetrag"),
+            ("net_amount", "Nettoabrechnungsbetrag"),
         )
         for row, (key, label) in enumerate(definitions, start=1):
             is_total = key == "net_amount"
@@ -264,6 +266,43 @@ class GrainSettlementView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             totals,
+            text="Umsatzsteuer",
+            font=FONT_SMALL,
+            text_color=TEXT,
+            anchor="w",
+        ).grid(row=7, column=0, sticky="w", padx=14, pady=(14, 3))
+        ctk.CTkOptionMenu(
+            totals,
+            values=["— auswählen —", "0 %", "7 %", "7,8 %", "19 %"],
+            variable=self.vat_variable,
+            command=lambda _value: self._refresh_tax_totals(),
+            width=115,
+        ).grid(row=7, column=1, sticky="e", padx=14, pady=(14, 3))
+
+        for row, key, label, is_total in (
+            (8, "tax_amount", "Umsatzsteuer", False),
+            (9, "payable_amount", "Auszahlungsbetrag", True),
+        ):
+            font = FONT_SECTION if is_total else FONT_SMALL
+            ctk.CTkLabel(
+                totals,
+                text=label,
+                font=font,
+                text_color=TEXT,
+                anchor="w",
+            ).grid(row=row, column=0, sticky="w", padx=14, pady=(8, 3))
+            value = ctk.CTkLabel(
+                totals,
+                text="—",
+                font=font,
+                text_color=TEXT,
+                anchor="e",
+            )
+            value.grid(row=row, column=1, sticky="e", padx=14, pady=(8, 3))
+            self.total_rows[key] = value
+
+        ctk.CTkLabel(
+            totals,
             text=(
                 "Beim Preis-/Kostenabzug bedeutet ein negativer Wert "
                 "einen Zuschlag."
@@ -272,12 +311,12 @@ class GrainSettlementView(ctk.CTkFrame):
             text_color=TEXT_MUTED,
             wraplength=270,
             justify="left",
-        ).grid(row=7, column=0, columnspan=2, sticky="w", padx=14, pady=12)
+        ).grid(row=10, column=0, columnspan=2, sticky="w", padx=14, pady=12)
 
         output_buttons = (
-            ("Getreideabrechnung speichern", 8),
-            ("PDF erstellen", 9),
-            ("HTML erstellen", 10),
+            ("Getreideabrechnung speichern", 11),
+            ("PDF erstellen", 12),
+            ("HTML erstellen", 13),
         )
         for label, row in output_buttons:
             output_button = button(totals, label, lambda: None)
@@ -287,7 +326,7 @@ class GrainSettlementView(ctk.CTkFrame):
                 columnspan=2,
                 sticky="ew",
                 padx=14,
-                pady=(0, 8 if row < 10 else 14),
+                pady=(0, 8 if row < 13 else 14),
             )
             set_button_enabled(output_button, False)
 
@@ -484,6 +523,7 @@ class GrainSettlementView(ctk.CTkFrame):
             features=features,
             rules=rules,
             deliveries=tuple(self.deliveries),
+            vat_rate=self.vat_variable.get(),
         )
 
     def _render_deliveries(self, batch: SettlementBatchResult | None = None):
@@ -781,6 +821,27 @@ class GrainSettlementView(ctk.CTkFrame):
         )
         self.total_rows["net_amount"].configure(
             text=f"{format_de(result.net_amount)} EUR"
+        )
+        self._refresh_tax_totals()
+
+    def _refresh_tax_totals(self):
+        if self._last_result is None:
+            return
+        try:
+            vat_rate = parse_vat_rate(self.vat_variable.get())
+        except GrainValidationError:
+            self.total_rows["tax_amount"].configure(text="—")
+            self.total_rows["payable_amount"].configure(text="—")
+            return
+        tax_amount = (
+            self._last_result.net_amount * vat_rate / Decimal("100")
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        payable_amount = self._last_result.net_amount + tax_amount
+        self.total_rows["tax_amount"].configure(
+            text=f"{format_de(tax_amount)} EUR"
+        )
+        self.total_rows["payable_amount"].configure(
+            text=f"{format_de(payable_amount)} EUR"
         )
 
     def _clear_totals(self):

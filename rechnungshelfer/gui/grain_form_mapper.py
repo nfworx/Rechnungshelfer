@@ -73,6 +73,19 @@ class GrainSettlementForm:
     features: tuple[FeatureFormValue, ...]
     rules: tuple[RuleFormValue, ...]
     deliveries: tuple[DeliveryFormValue, ...]
+    vat_rate: str = ""
+
+
+def parse_vat_rate(value: str) -> Decimal:
+    """Validiert den bewusst gewählten Steuersatz für die spätere Gutschrift."""
+
+    normalized = str(value or "").replace("%", "").strip()
+    if not normalized or normalized.startswith("—"):
+        raise GrainValidationError("Bitte wählen Sie einen Steuersatz aus.")
+    rate = _required_decimal(normalized, "Steuersatz")
+    if rate not in {Decimal("0"), Decimal("7"), Decimal("7.8"), Decimal("19")}:
+        raise GrainValidationError("Der gewählte Steuersatz wird nicht unterstützt.")
+    return rate
 
 
 def serialize_rule_set(
