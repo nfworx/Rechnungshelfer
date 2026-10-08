@@ -5,7 +5,11 @@ from unittest.mock import MagicMock, patch
 
 from rechnungshelfer.gui.main_window import InvoiceGUI
 from rechnungshelfer.gui.pdf_import_dialog import PdfImportDialog, format_detected_fields
-from rechnungshelfer.services.pdf_invoice_parser import DetectedInvoiceField
+from rechnungshelfer.domain.models import DocumentType
+from rechnungshelfer.services.pdf_invoice_parser import (
+    BUSINESS_PARTNER_NUMBER_PATH,
+    DetectedInvoiceField,
+)
 
 
 class PdfImportGuiTests(unittest.TestCase):
@@ -23,6 +27,32 @@ class PdfImportGuiTests(unittest.TestCase):
         )
 
         self.assertEqual(lines, ["Belegnummer: RE-101 (Seite 2, 98%)"])
+
+    def test_business_partner_number_label_follows_document_type(self):
+        field = DetectedInvoiceField(
+            path=BUSINESS_PARTNER_NUMBER_PATH,
+            value="GP-100",
+            confidence=0.95,
+            page_number=1,
+            source="Geschäftspartnernummer: GP-100",
+        )
+
+        invoice_lines = format_detected_fields([field], DocumentType.INVOICE)
+        credit_note_lines = format_detected_fields(
+            [field], DocumentType.SELF_BILLED_INVOICE
+        )
+
+        self.assertEqual(
+            invoice_lines,
+            ["Geschäftspartnernummer (Kunde): GP-100 (Seite 1, 95%)"],
+        )
+        self.assertEqual(
+            credit_note_lines,
+            [
+                "Geschäftspartnernummer (Lieferant/Kreditor): GP-100 "
+                "(Seite 1, 95%)"
+            ],
+        )
 
     def test_file_selection_opens_pdf_dialog(self):
         gui = InvoiceGUI.__new__(InvoiceGUI)

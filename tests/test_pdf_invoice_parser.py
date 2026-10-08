@@ -9,8 +9,12 @@ from rechnungshelfer.services.pdf_import_service import (
     ExtractionMethod,
     PdfImportResult,
     PdfPageResult,
+    PdfTextBlock,
 )
-from rechnungshelfer.services.pdf_invoice_parser import PdfInvoiceParser
+from rechnungshelfer.services.pdf_invoice_parser import (
+    BUSINESS_PARTNER_NUMBER_PATH,
+    PdfInvoiceParser,
+)
 
 
 def extraction_with(*page_texts):
@@ -30,6 +34,58 @@ def extraction_with(*page_texts):
 
 
 class PdfInvoiceParserTests(unittest.TestCase):
+    def test_uses_word_coordinates_to_join_label_and_value(self):
+        blocks = (
+            PdfTextBlock("Kreditor-Nr.:", 40, 700, 130, 715, ExtractionMethod.OCR),
+            PdfTextBlock("51285", 145, 700, 190, 715, ExtractionMethod.OCR),
+        )
+        extraction = PdfImportResult(
+            source_file=Path("gutschrift.pdf"),
+            page_count=1,
+            pages=(PdfPageResult(
+                page_number=1,
+                text="Gutschrift",
+                method=ExtractionMethod.OCR,
+                blocks=blocks,
+            ),),
+        )
+
+        draft = PdfInvoiceParser().parse(extraction)
+
+        self.assertEqual(draft.get(BUSINESS_PARTNER_NUMBER_PATH).value, "51285")
+        self.assertEqual(draft.get(BUSINESS_PARTNER_NUMBER_PATH).confidence, 0.95)
+
+    def test_recovers_fields_from_noisy_self_billed_ocr(self):
+        draft = PdfInvoiceParser().parse(
+            extraction_with(
+                """MUSTERFIRMA
+Herr Kuulitse-Njr: 51285
+Luisa Lieferantin Steuer-Nr : 123123123123123
+SAMMEL - FINAL - GUTSCHRIFT
+Nr.:40130 vom 30.11.2025
+Lieferschein-Nr.: 3076/RW vom 14.08.2025
+Lieferschein-Nr.: 3078/RW vom 15.08.2025
+BIC: GENODESISHA
+"""
+            )
+        )
+
+        self.assertEqual(draft.document_type, DocumentType.SELF_BILLED_INVOICE)
+        self.assertEqual(draft.get("info.invoice_number").value, "40130")
+        self.assertEqual(draft.get("info.invoice_date").value, "30.11.2025")
+        self.assertEqual(draft.get(BUSINESS_PARTNER_NUMBER_PATH).value, "51285")
+        self.assertLess(draft.get(BUSINESS_PARTNER_NUMBER_PATH).confidence, 0.80)
+        self.assertEqual(draft.get("seller.tax_number").value, "123123123123123")
+        self.assertEqual(draft.get("info.delivery_note").value, "3076/RW")
+        self.assertIsNone(draft.get("payment.bic"))
+        self.assertTrue(any("stark fehlerhaften" in warning for warning in draft.warnings))
+        self.assertTrue(any("Mehrere Lieferscheine" in warning for warning in draft.warnings))
+
+        invoice = InvoiceFactory().create(DocumentType.SELF_BILLED_INVOICE)
+        PdfInvoiceParser.apply(draft, invoice)
+        self.assertEqual(invoice.seller.supplier_number, "51285")
+        self.assertEqual(invoice.seller.tax_number, "123123123123123")
+
     def test_detects_only_explicitly_labeled_invoice_fields(self):
         extraction = extraction_with(
             """Rechnung
@@ -53,6 +109,7 @@ Lieferschein: LS-88
         self.assertEqual(draft.get("info.invoice_date").value, "08.10.2026")
         self.assertEqual(draft.get("info.payment_due_date").value, "22.10.2026")
         self.assertEqual(draft.get("buyer.name").value, "Beispielkunde GmbH")
+        self.assertEqual(draft.get(BUSINESS_PARTNER_NUMBER_PATH).value, "K-100")
         self.assertEqual(draft.get("payment.iban").value, "DE89370400440532013000")
         self.assertEqual(draft.get("payment.bic").value, "COBADEFFXXX")
         self.assertEqual(draft.get("info.delivery_note").value, "LS-88")
@@ -68,6 +125,25 @@ Lieferschein: LS-88
         self.assertEqual(draft.document_type, DocumentType.SELF_BILLED_INVOICE)
         self.assertEqual(draft.get("seller.name").value, "Hof Beispiel")
         self.assertTrue(any("muss geprueft" in warning for warning in draft.warnings))
+
+    def test_applies_business_partner_number_by_document_role(self):
+        parser = PdfInvoiceParser()
+        invoice_draft = parser.parse(
+            extraction_with("Rechnung\nGeschäftspartnernummer: GP-100")
+        )
+        credit_note_draft = parser.parse(
+            extraction_with("Gutschrift\nGeschäftspartnernummer: GP-100")
+        )
+        invoice = InvoiceFactory().create(DocumentType.INVOICE)
+        credit_note = InvoiceFactory().create(DocumentType.SELF_BILLED_INVOICE)
+
+        parser.apply(invoice_draft, invoice)
+        parser.apply(credit_note_draft, credit_note)
+
+        self.assertEqual(invoice.buyer.customer_number, "GP-100")
+        self.assertEqual(invoice.seller.supplier_number, "")
+        self.assertEqual(credit_note.seller.supplier_number, "GP-100")
+        self.assertEqual(credit_note.buyer.customer_number, "")
 
     def test_does_not_accept_invalid_iban_or_unlabeled_party_names(self):
         draft = PdfInvoiceParser().parse(

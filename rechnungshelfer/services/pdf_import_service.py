@@ -261,7 +261,7 @@ class PdfImportService:
                 errors=(f"OCR fuer Seite {page_number} ist fehlgeschlagen: {exc}",),
             )
 
-        ocr_text = self._normalize_text(ocr_data.text)
+        ocr_text = normalize_ocr_text(ocr_data.text)
         ocr_quality = assess_text_quality(ocr_text)
         if not ocr_quality.usable:
             reasons = ", ".join(ocr_quality.reasons) or "kein verwertbares Ergebnis"
@@ -331,6 +331,74 @@ class PdfImportService:
         return value.strip()
 
 
+_MOJIBAKE_REPLACEMENTS = {
+    "\u00c3\u201e": "\u00c4", "\u00c3\u2013": "\u00d6", "\u00c3\u0153": "\u00dc",
+    "\u00c3\u00a4": "\u00e4", "\u00c3\u00b6": "\u00f6", "\u00c3\u00bc": "\u00fc",
+    "\u00c3\u0178": "\u00df",
+    "\u00e2\u20ac\u201c": "\u2013", "\u00e2\u20ac\u201d": "\u2014",
+    "\u00e2\u20ac\u017e": "\u201e", "\u00e2\u20ac\u0153": "\u201c",
+    "\u00e2\u20ac\u2122": "\u2019",
+}
+
+
+def normalize_ocr_text(value: str) -> str:
+    """Entfernt eingebettete TSV-Struktur und repariert eindeutiges Mojibake."""
+
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    for broken, repaired in _MOJIBAKE_REPLACEMENTS.items():
+        value = value.replace(broken, repaired)
+
+    output: list[str] = []
+    line_key: tuple[str, ...] | None = None
+    line_words: list[str] = []
+
+    def flush_words() -> None:
+        nonlocal line_key, line_words
+        if line_words:
+            output.append(" ".join(line_words))
+        line_key = None
+        line_words = []
+
+    for original_line in value.split("\n"):
+        # Manche OCR-Ausgaben enthalten nach normalem Text noch einen ganzen
+        # TSV-Datensatz auf derselben physischen Zeile. Der Praefix bleibt.
+        embedded = re.search(r"[ \t](?=[1-5]\t\d+\t\d+\t\d+\t\d+\t\d+\t)", original_line)
+        first_column = original_line.split("\t", 1)[0].strip()
+        if embedded and first_column not in {"1", "2", "3", "4", "5"}:
+            prefix = original_line[:embedded.start()].rstrip()
+            if prefix:
+                flush_words()
+                output.append(prefix)
+            original_line = original_line[embedded.start() + 1:]
+
+        columns = original_line.split("\t")
+        is_tsv = (
+            len(columns) >= 11
+            and columns[0] in {"1", "2", "3", "4", "5"}
+            and all(
+                column.strip().lstrip("-").replace(".", "", 1).isdigit()
+                for column in columns[1:11]
+            )
+        )
+        if not is_tsv:
+            flush_words()
+            output.append(original_line.rstrip())
+            continue
+        if columns[0] != "5":
+            continue
+        word = "\t".join(columns[11:]).strip() if len(columns) >= 12 else ""
+        if not word:
+            continue
+        current_key = tuple(columns[1:5])
+        if line_key is not None and current_key != line_key:
+            flush_words()
+        line_key = current_key
+        line_words.append(word)
+
+    flush_words()
+    return "\n".join(line for line in output if line.strip()).strip()
+
+
 def assess_text_quality(text: str) -> TextQuality:
     """Bewertet Textstruktur; eine reine Zeichenanzahl reicht bewusst nicht aus."""
 
@@ -374,4 +442,5 @@ __all__ = [
     "PdfTextBlock",
     "TextQuality",
     "assess_text_quality",
+    "normalize_ocr_text",
 ]

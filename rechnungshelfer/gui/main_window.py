@@ -250,6 +250,9 @@ class InvoiceGUI:
                 on_change=self._on_field_change,
                 field_entries=self.field_entries,
                 exclude_fields=["country", "buyer_reference"],
+                label_overrides={
+                    "supplier_number": "Geschäftspartnernummer (Lieferant/Kreditor)"
+                },
                 extra_fields=[
                     (
                         self.invoice.payment,
@@ -267,7 +270,10 @@ class InvoiceGUI:
                 delivery_checked=self.invoice.buyer.use_invoice_address_as_delivery,
                 field_entries=self.field_entries,
                 exclude_fields=["country", "phone", "vat", "tax_number", "registry_number"],
-                label_overrides={"leitweg_id": "Leitweg-ID"},
+                label_overrides={
+                    "leitweg_id": "Leitweg-ID",
+                    "customer_number": "Geschäftspartnernummer (Kunde)",
+                },
                 controller=self.controller,
                 on_customer_select=self._on_customer_selected,
             ).render().pack(fill="both", expand=True)

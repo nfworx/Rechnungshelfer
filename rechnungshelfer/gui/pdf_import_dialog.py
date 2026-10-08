@@ -10,6 +10,8 @@ import customtkinter as ctk
 
 from .components import button
 from .styles import FONT_NORMAL, FONT_SECTION, FONT_SMALL, TEXT, TEXT_MUTED
+from rechnungshelfer.domain.models import DocumentType
+from rechnungshelfer.services.pdf_invoice_parser import BUSINESS_PARTNER_NUMBER_PATH
 
 
 FIELD_LABELS = {
@@ -19,18 +21,23 @@ FIELD_LABELS = {
     "info.delivery_date": "Liefer-/Leistungsdatum",
     "info.delivery_note": "Lieferschein",
     "buyer.name": "Kunde/Käufer",
-    "buyer.customer_number": "Kundennummer",
     "seller.name": "Lieferant/Verkäufer",
-    "seller.supplier_number": "Lieferantennummer",
+    "seller.tax_number": "Steuernummer des Lieferanten",
     "payment.iban": "IBAN",
     "payment.bic": "BIC",
     "payment.payment_terms": "Zahlungsbedingungen",
 }
 
 
-def format_detected_fields(fields) -> list[str]:
+def format_detected_fields(fields, document_type=DocumentType.INVOICE) -> list[str]:
+    number_label = (
+        "Geschäftspartnernummer (Lieferant/Kreditor)"
+        if document_type is DocumentType.SELF_BILLED_INVOICE
+        else "Geschäftspartnernummer (Kunde)"
+    )
     return [
-        f"{FIELD_LABELS.get(field.path, field.path)}: {field.value} "
+        f"{number_label if field.path == BUSINESS_PARTNER_NUMBER_PATH else FIELD_LABELS.get(field.path, field.path)}: "
+        f"{field.value} "
         f"(Seite {field.page_number}, {field.confidence:.0%})"
         for field in fields
     ]
@@ -167,7 +174,12 @@ class PdfImportDialog:
         ]
         detected = len(imported.draft.fields)
         status = [f"Erkannte Formularfelder: {detected}"]
-        status.extend(format_detected_fields(imported.draft.fields))
+        status.extend(
+            format_detected_fields(
+                imported.draft.fields,
+                imported.draft.document_type,
+            )
+        )
         status.extend(f"• {message}" for message in status_messages)
         status_box = ctk.CTkTextbox(
             self.window,

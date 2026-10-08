@@ -11,10 +11,27 @@ from rechnungshelfer.services.pdf_import_service import (
     PdfImportService,
     PdfPasswordError,
     assess_text_quality,
+    normalize_ocr_text,
 )
 
 
 class PdfImportServiceTests(unittest.TestCase):
+    def test_normalizes_embedded_tsv_rows_to_plain_ocr_lines(self):
+        raw = (
+            "MusterstraÃŸe 32\n"
+            "5\t1\t17\t1\t6\t1\t421\t2013\t332\t46\t89.8\tLieferschein-Nr.:\n"
+            "5\t1\t17\t1\t6\t2\t789\t1999\t194\t53\t89.2\t3076/RW\n"
+            "5\t1\t17\t1\t6\t3\t1011\t2023\t87\t27\t92.6\tvom\n"
+            "5\t1\t17\t1\t6\t4\t1138\t2014\t227\t36\t90.4\t14.08.2025\n"
+            "4\t1\t17\t1\t7\t0\t459\t2063\t1680\t106\t-1\t\n"
+        )
+
+        normalized = normalize_ocr_text(raw)
+
+        self.assertIn("Musterstraße 32", normalized)
+        self.assertIn("Lieferschein-Nr.: 3076/RW vom 14.08.2025", normalized)
+        self.assertNotIn("\t17\t", normalized)
+
     def _create_pdf(self, path: Path, page_texts, *, encrypt=None):
         document = canvas.Canvas(str(path), encrypt=encrypt)
         for text in page_texts:
