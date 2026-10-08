@@ -151,8 +151,9 @@ Rechnungshelfer unterscheidet klar zwischen:
 - **Programmupdate:** aktualisiert Rechnungshelfer selbst, beispielsweise von
   Version `1.0.0` auf `1.0.1`.
 - **Komponentenpflege des Herausgebers:** aktualisiert vor einem neuen Release
-  kontrolliert externe Bestandteile im Quellprojekt. Aktuell besitzt nur KoSIT
-  einen automatischen Quellenadapter.
+  kontrolliert externe Bestandteile im Quellprojekt. KoSIT besitzt einen
+  automatischen Downloadadapter; Tesseract besitzt eine rein lesende
+  Versionspruefung mit weiterhin manuellem Download.
 
 Endnutzer sehen und verwenden nur den Programm-Updater. Die Komponentenpflege
 ist ein separates Wartungsskript unter `build_support/` und wird nicht in der
@@ -187,8 +188,14 @@ Dokumentation zurueckgerollt. Die aktualisierte KoSIT-Version wird erst mit dem
 naechsten vollstaendigen Rechnungshelfer-Release an Benutzer verteilt; der
 Endnutzer-Updater laedt KoSIT niemals direkt herunter.
 
+Tesseract wird ebenfalls gegen das offizielle GitHub-Repository geprueft. Eine
+neuere Version wird mit Release-Seite und Installerdatei gemeldet, jedoch nie
+automatisch heruntergeladen oder freigegeben. Installer- und Laufzeithashes
+stehen in `build_support/tesseract_trusted_releases.json`; die vollstaendige
+manuelle Aktualisierungsfolge ist in `build_support/README.md` dokumentiert.
+
 Java ist mit offizieller Quelle und SHA-256 festgelegt, besitzt aber wie die
-XRechnung-Konfiguration noch keinen automatischen Quellenadapter. Die lokale
+XRechnung-Konfiguration keinen Downloadadapter. Die lokale
 XSD-Pruefung verwendet dieselben UBL-2.1-Schemata wie KoSIT. Das
 interne Release-Werkzeug trennt die rein lesende Pruefung, Komponentenpflege,
 Releasevorbereitung und den eigentlichen Build in eigene Befehle. Ein Build

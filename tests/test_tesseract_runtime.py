@@ -34,6 +34,7 @@ class TesseractRuntimeTests(unittest.TestCase):
                     "releases": [
                         {
                             "version": "5.5.3.20260724",
+                            "release_tag": "5.5.3",
                             "installer_filename": "tesseract-installer.exe",
                             "installer_sha256": "a" * 64,
                             "runtime_sha256": digest,
@@ -72,6 +73,7 @@ class TesseractRuntimeTests(unittest.TestCase):
                 info = validate_installed_runtime(root, trusted_releases=metadata)
 
         self.assertEqual(info.version, "5.5.3.20260724")
+        self.assertEqual(info.release_tag, "5.5.3")
         self.assertEqual(info.languages, ("deu", "eng"))
 
     def test_tampered_runtime_is_rejected(self):

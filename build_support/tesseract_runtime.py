@@ -20,6 +20,7 @@ class TesseractRuntimeError(RuntimeError):
 @dataclass(frozen=True)
 class TesseractRuntimeInfo:
     version: str
+    release_tag: str
     installer_filename: str
     installer_sha256: str
     runtime_sha256: str
@@ -133,6 +134,7 @@ def validate_installed_runtime(
 
     return TesseractRuntimeInfo(
         version=version,
+        release_tag=str(release["release_tag"]),
         installer_filename=str(release["installer_filename"]),
         installer_sha256=str(release["installer_sha256"]).lower(),
         runtime_sha256=digest,

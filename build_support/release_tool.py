@@ -31,6 +31,10 @@ from build_support.tesseract_runtime import (
     TesseractRuntimeError,
     validate_installed_runtime as validate_tesseract_runtime,
 )
+from build_support.tesseract_release import (
+    TesseractReleaseError,
+    fetch_latest_release as fetch_latest_tesseract_release,
+)
 from updater.core import ApplicationManifest, UpdateError, load_manifest
 
 
@@ -308,6 +312,56 @@ def _report_component_status(reporter: Reporter, project_root: Path):
         "KOMPONENTEN",
         f"Tesseract {tesseract.version} entspricht der lokalen Hash-Freigabe",
     )
+    tesseract_release = fetch_latest_tesseract_release()
+    reporter.set_detail("tesseract_release", {
+        "installed_release": tesseract.release_tag,
+        "available_release": str(tesseract_release.version),
+        "available_package": str(tesseract_release.package_version),
+        "release": tesseract_release.page_url,
+        "installer": tesseract_release.installer_name,
+        "github_sha256": tesseract_release.github_sha256,
+        "immutable": tesseract_release.immutable,
+    })
+    installed_tesseract_release = Version(tesseract.release_tag)
+    installed_tesseract_package = Version(tesseract.version)
+    same_package = (
+        tesseract_release.version == installed_tesseract_release
+        and tesseract_release.package_version == installed_tesseract_package
+    )
+    if (
+        same_package
+        and tesseract_release.github_sha256 is not None
+        and tesseract_release.github_sha256 != tesseract.installer_sha256
+    ):
+        raise BuilderError(
+            "GitHub-SHA-256 des installierten Tesseract-Pakets weicht von der lokalen Freigabe ab."
+        )
+    if same_package and tesseract_release.github_sha256 is not None:
+        reporter.ok(
+            "KOMPONENTEN",
+            "Tesseract-Installerhash stimmt zusaetzlich mit GitHub ueberein",
+        )
+    has_tesseract_update = (
+        tesseract_release.version > installed_tesseract_release
+        or (
+            tesseract_release.version == installed_tesseract_release
+            and tesseract_release.package_version > installed_tesseract_package
+        )
+    )
+    if has_tesseract_update:
+        reporter.warning(
+            "KOMPONENTEN",
+            "Tesseract-Update verfuegbar: "
+            f"{installed_tesseract_package} -> {tesseract_release.package_version}; "
+            "Download und Hash-Freigabe bleiben manuell",
+        )
+        reporter.warning(
+            "KOMPONENTEN",
+            f"Manuell herunterladen: {tesseract_release.installer_name} von "
+            f"{tesseract_release.page_url}",
+        )
+    else:
+        reporter.ok("KOMPONENTEN", f"Tesseract {installed_tesseract_package} ist aktuell")
     current = installed_version(project_root)
     release = fetch_latest_release()
     reporter.set_detail("kosit", {
@@ -579,7 +633,7 @@ def run_command(args, *, input_fn: Callable[[str], str] = input) -> int:
         reporter.warning("ABBRUCH", str(exc) or "Durch Benutzer abgebrochen")
         reporter.finish("cancelled")
         return 0
-    except (BuilderError, KositBuilderError, UpdateError, InvalidVersion, OSError, ValueError,
+    except (BuilderError, KositBuilderError, TesseractReleaseError, UpdateError, InvalidVersion, OSError, ValueError,
             EOFError, json.JSONDecodeError, zipfile.BadZipFile) as exc:
         reporter.error("ABBRUCH", str(exc))
         reporter.finish("failed")

@@ -13,10 +13,16 @@ Der Befehl ist read-only gegenueber den Quelldateien und prueft:
 
 - Projektvoraussetzungen und vorhandenen Changelogabschnitt
 - neuestes stabiles KoSIT-Release
+- neuestes stabiles Tesseract-Release und dessen offiziellen Windows-Installer
 - generierte Komponentenabschnitte in README und Drittanbieterhinweisen
 - Python-Abhaengigkeiten mit `pip-audit`
 
 Mit `--with-tests` wird zusaetzlich die komplette Testsuite ausgefuehrt.
+
+Die Tesseract-Pruefung liest nur die Release-Metadaten aus dem offiziellen
+GitHub-Repository. Sie laedt den Installer nicht herunter und aendert keine
+Datei. Ist eine neuere Version vorhanden, nennt der Bericht Release-Seite und
+Installerdatei. Der Installer wird weiterhin bewusst manuell heruntergeladen.
 
 ## 2. Externe Komponenten aktualisieren
 
@@ -48,6 +54,24 @@ mit dieser Freigabe ab und verlangt alle vom KoSIT-Validator statisch
 referenzierten Java-Module. Das Java-Paket wird derzeit bewusst manuell
 heruntergeladen, gegen den freigegebenen SHA-256 geprueft und so nach
 `external/java/` entpackt, dass `external/java/bin/java.exe` existiert.
+
+Tesseract ist entsprechend in
+`build_support/tesseract_trusted_releases.json` festgelegt. Fuer ein spaeteres
+Update gilt dieser bewusste Ablauf:
+
+1. `release_tool.py check` ausfuehren und die gemeldete offizielle Release-Seite oeffnen.
+2. Den genannten Windows-Installer selbst herunterladen und dessen SHA-256 bilden.
+3. Release-Tag, Paketversion, Quelle und kontrollierten Hash bewusst in der
+   Tesseract-Vertrauensdatei freigeben.
+4. Die portable Laufzeit unter `external/tesseract/` manuell ersetzen.
+5. Erneut `release_tool.py check --with-tests` ausfuehren. Dabei werden Version,
+   Sprachdaten und der Hash aller ausgelieferten Laufzeitdateien kontrolliert.
+
+Es gibt absichtlich keinen automatischen Tesseract-Download. Meldet GitHub
+einen Asset-Digest, muss er fuer die installierte Version mit der lokalen
+Freigabe uebereinstimmen; er ersetzt aber keine unabhaengige Kontrolle. Erst
+die naechste kontrollierte Ausbaustufe soll aus einem bereits manuell
+bereitgestellten Verzeichnis ein atomar rueckrollbares Komponentenpaket bauen.
 
 `version.py`, Changelog und frei geschriebene README-Texte bleiben unveraendert.
 Die erzeugten Aenderungen werden danach bewusst als eigener Git-Commit

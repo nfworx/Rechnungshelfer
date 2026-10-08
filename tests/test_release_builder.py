@@ -16,6 +16,7 @@ from packaging.version import Version
 from build_support.component_docs import BEGIN, update_component_documentation
 from build_support.kosit_builder import KositRelease, ReleaseAsset
 from build_support.release_tool import Reporter, _run_tests, _verify_artifacts, run_command
+from build_support.tesseract_release import TesseractRelease
 
 
 class ReleaseToolTests(unittest.TestCase):
@@ -24,6 +25,7 @@ class ReleaseToolTests(unittest.TestCase):
             "build_support.release_tool.validate_tesseract_runtime",
             return_value=SimpleNamespace(
                 version="5.5.3.20260724",
+                release_tag="5.5.3",
                 installer_filename="tesseract-installer.exe",
                 installer_sha256="c" * 64,
                 runtime_sha256="d" * 64,
@@ -32,6 +34,23 @@ class ReleaseToolTests(unittest.TestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+        release_patcher = patch(
+            "build_support.release_tool.fetch_latest_tesseract_release",
+            return_value=TesseractRelease(
+                version=Version("5.5.3"),
+                package_version=Version("5.5.3.20260724"),
+                page_url="https://github.com/tesseract-ocr/tesseract/releases/tag/5.5.3",
+                installer_name="tesseract-ocr-w64-setup-5.5.3.20260724.exe",
+                installer_url=(
+                    "https://github.com/tesseract-ocr/tesseract/releases/download/5.5.3/"
+                    "tesseract-ocr-w64-setup-5.5.3.20260724.exe"
+                ),
+                installer_size=100,
+                github_sha256="c" * 64,
+            ),
+        )
+        release_patcher.start()
+        self.addCleanup(release_patcher.stop)
 
     def _project(self, root: Path) -> Path:
         (root / "external" / "java" / "bin").mkdir(parents=True)
@@ -122,6 +141,7 @@ class ReleaseToolTests(unittest.TestCase):
         (root / "build_support" / "tesseract_trusted_releases.json").write_text(
             json.dumps({"schema_version": 1, "releases": [{
                 "version": "5.5.3.20260724",
+                "release_tag": "5.5.3",
                 "installer_filename": "tesseract-installer.exe",
                 "installer_sha256": "c" * 64,
                 "runtime_sha256": "d" * 64,
@@ -262,6 +282,33 @@ class ReleaseToolTests(unittest.TestCase):
             self.assertEqual(result, 0)
             for path, content in before.items():
                 self.assertEqual(path.read_bytes(), content)
+
+    def test_check_rejects_changed_tesseract_installer_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = self._project(Path(directory))
+            changed_release = TesseractRelease(
+                version=Version("5.5.3"),
+                package_version=Version("5.5.3.20260724"),
+                page_url="https://github.com/tesseract-ocr/tesseract/releases/tag/5.5.3",
+                installer_name="tesseract-ocr-w64-setup-5.5.3.20260724.exe",
+                installer_url=(
+                    "https://github.com/tesseract-ocr/tesseract/releases/download/5.5.3/"
+                    "tesseract-ocr-w64-setup-5.5.3.20260724.exe"
+                ),
+                installer_size=100,
+                github_sha256="e" * 64,
+            )
+
+            with (
+                patch("build_support.release_tool.fetch_latest_release", return_value=self._release()),
+                patch(
+                    "build_support.release_tool.fetch_latest_tesseract_release",
+                    return_value=changed_release,
+                ),
+            ):
+                result = run_command(self._args(project, "check"))
+
+            self.assertEqual(result, 1)
 
     def test_component_update_does_not_change_program_version_or_changelog(self):
         with tempfile.TemporaryDirectory() as directory:

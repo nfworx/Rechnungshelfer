@@ -76,8 +76,10 @@ Komponentenpflege im Quellprojekt:
 .\.venv\Scripts\python.exe build_support\release_tool.py update-components
 ```
 
-`check` veraendert keine Quelldateien. `update-components` fragt das neueste
-stabile KoSIT-Release beim offiziellen `itplr-kosit/validator`-Repository ab
+`check` veraendert keine Quelldateien und fragt das neueste Tesseract-Release
+bei GitHub nur lesend ab; Download und Freigabe bleiben manuell.
+`update-components` fragt das neueste stabile KoSIT-Release beim offiziellen
+`itplr-kosit/validator`-Repository ab
 und aktualisiert erst nach ausdruecklicher Bestaetigung. Groesse und
 SHA-256-Digest muessen zu den Release-Metadaten passen.
 
