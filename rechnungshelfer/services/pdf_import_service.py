@@ -13,6 +13,7 @@ from pypdfium2 import PdfiumError
 
 DEFAULT_MAX_FILE_SIZE = 50 * 1024 * 1024
 DEFAULT_MAX_PAGES = 200
+_AUTO_OCR = object()
 
 
 class PdfImportError(ValueError):
@@ -96,11 +97,17 @@ class PdfImportService:
         *,
         max_file_size: int = DEFAULT_MAX_FILE_SIZE,
         max_pages: int = DEFAULT_MAX_PAGES,
+        ocr_engine=_AUTO_OCR,
     ):
         if max_file_size <= 0 or max_pages <= 0:
             raise ValueError("PDF-Grenzwerte muessen groesser als null sein.")
         self.max_file_size = max_file_size
         self.max_pages = max_pages
+        if ocr_engine is _AUTO_OCR:
+            from .tesseract_ocr_service import TesseractOcrEngine
+
+            ocr_engine = TesseractOcrEngine()
+        self.ocr_engine = ocr_engine
 
     def extract(self, filepath: str | Path, *, password: str | None = None) -> PdfImportResult:
         source = self._validate_source(filepath)
@@ -189,6 +196,25 @@ class PdfImportService:
                     blocks = self._extract_blocks(text_page)
                 finally:
                     text_page.close()
+
+                quality = assess_text_quality(text)
+                if quality.usable:
+                    return PdfPageResult(
+                        page_number=page_number,
+                        text=text,
+                        method=ExtractionMethod.DIGITAL,
+                        blocks=blocks,
+                    )
+
+                reasons = ", ".join(quality.reasons) or "keine verwertbare Textstruktur"
+                warning = f"Seite {page_number} benoetigt OCR: {reasons}."
+                return self._extract_page_with_ocr(
+                    page,
+                    page_number=page_number,
+                    digital_text=text,
+                    digital_blocks=blocks,
+                    initial_warning=warning,
+                )
             finally:
                 page.close()
         except Exception as exc:
@@ -200,23 +226,68 @@ class PdfImportService:
                 errors=(f"Seite {page_number} konnte nicht gelesen werden: {type(exc).__name__}.",),
             )
 
-        quality = assess_text_quality(text)
-        if quality.usable:
+    def _extract_page_with_ocr(
+        self,
+        page,
+        *,
+        page_number: int,
+        digital_text: str,
+        digital_blocks: tuple[PdfTextBlock, ...],
+        initial_warning: str,
+    ) -> PdfPageResult:
+        if self.ocr_engine is None or not self.ocr_engine.is_available:
             return PdfPageResult(
                 page_number=page_number,
-                text=text,
-                method=ExtractionMethod.DIGITAL,
-                blocks=blocks,
+                text=digital_text,
+                method=ExtractionMethod.NONE,
+                blocks=digital_blocks,
+                needs_ocr=True,
+                warnings=(
+                    initial_warning,
+                    f"Seite {page_number}: Tesseract oder deutsche Sprachdaten fehlen.",
+                ),
             )
 
-        reasons = ", ".join(quality.reasons) or "keine verwertbare Textstruktur"
+        try:
+            ocr_data = self.ocr_engine.extract_page(page)
+        except RuntimeError as exc:
+            return PdfPageResult(
+                page_number=page_number,
+                text=digital_text,
+                method=ExtractionMethod.NONE,
+                blocks=digital_blocks,
+                needs_ocr=True,
+                warnings=(initial_warning,),
+                errors=(f"OCR fuer Seite {page_number} ist fehlgeschlagen: {exc}",),
+            )
+
+        ocr_text = self._normalize_text(ocr_data.text)
+        ocr_quality = assess_text_quality(ocr_text)
+        if not ocr_quality.usable:
+            reasons = ", ".join(ocr_quality.reasons) or "kein verwertbares Ergebnis"
+            return PdfPageResult(
+                page_number=page_number,
+                text=ocr_text or digital_text,
+                method=ExtractionMethod.NONE,
+                blocks=ocr_data.blocks or digital_blocks,
+                needs_ocr=False,
+                warnings=(
+                    initial_warning,
+                    f"OCR fuer Seite {page_number} blieb unbrauchbar: {reasons}.",
+                ),
+            )
+
+        method = (
+            ExtractionMethod.DIGITAL_AND_OCR
+            if digital_text
+            else ExtractionMethod.OCR
+        )
         return PdfPageResult(
             page_number=page_number,
-            text=text,
-            method=ExtractionMethod.NONE,
-            blocks=blocks,
-            needs_ocr=True,
-            warnings=(f"Seite {page_number} benoetigt OCR: {reasons}.",),
+            text=ocr_text,
+            method=method,
+            blocks=ocr_data.blocks,
+            warnings=(initial_warning,),
         )
 
     def _extract_blocks(self, text_page) -> tuple[PdfTextBlock, ...]:
