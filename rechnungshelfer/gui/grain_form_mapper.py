@@ -137,6 +137,28 @@ def calculate_settlement_preview(
     return calculate_settlement_quantities(deliveries, scheme)
 
 
+def missing_required_analyses(
+    deliveries: tuple[DeliveryFormValue, ...] | list[DeliveryFormValue],
+    features: tuple[FeatureFormValue, ...],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Liefert alle fehlenden Pflichtanalysen gruppiert nach Wiegeschein."""
+
+    required = {feature.code: feature.label for feature in features if feature.required}
+    missing_by_delivery = []
+    for delivery in deliveries:
+        available = {
+            analysis.feature_code
+            for analysis in delivery.analyses
+            if str(analysis.raw_value or "").strip()
+        }
+        missing = tuple(
+            label for code, label in required.items() if code not in available
+        )
+        if missing:
+            missing_by_delivery.append((delivery.ticket_number, missing))
+    return tuple(missing_by_delivery)
+
+
 def build_preview_scheme(
     grain_type_code: str,
     features: tuple[FeatureFormValue, ...],

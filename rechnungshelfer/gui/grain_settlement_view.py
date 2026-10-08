@@ -27,12 +27,14 @@ from .grain_form_mapper import (
     RuleFormValue,
     calculate_settlement_preview,
     deserialize_rule_set,
+    missing_required_analyses,
     serialize_rule_set,
 )
 from .grain_settlement_dialogs import (
     GRAIN_TYPE_LABELS,
     DeliveryDialog,
     RuleEditorDialog,
+    require_features_used_by_active_rules,
 )
 from .grain_rule_presets import grain_rule_preset
 from .party_card import PartyCard
@@ -368,6 +370,26 @@ class GrainSettlementView(ctk.CTkFrame):
         ],
         activated_grain_type: str | None,
     ) -> bool:
+        current_grain_type = self._default_grain_type_code()
+        if self.deliveries and current_grain_type in rule_sets:
+            missing = missing_required_analyses(
+                self.deliveries,
+                rule_sets[current_grain_type][0],
+            )
+            if missing:
+                details = "\n".join(
+                    f"• Wiegeschein {ticket or 'ohne Nummer'}: {', '.join(labels)}"
+                    for ticket, labels in missing
+                )
+                messagebox.showerror(
+                    "Analysewerte fehlen",
+                    "Durch die aktiven Regeln sind zusätzliche Analysewerte "
+                    "erforderlich:\n\n"
+                    + details
+                    + "\n\nBitte ergänze die Werte in den betroffenen Lieferungen.",
+                    parent=self,
+                )
+                return False
         payloads = {
             grain_type_code: serialize_rule_set(
                 f"{GRAIN_TYPE_LABELS[grain_type_code]} Standard",
@@ -747,8 +769,12 @@ class GrainSettlementView(ctk.CTkFrame):
             if draft.grain_type_code not in self.rule_sets:
                 continue
             try:
-                self.rule_sets[draft.grain_type_code] = deserialize_rule_set(
+                features, rules = deserialize_rule_set(
                     dict(draft.payload)
+                )
+                self.rule_sets[draft.grain_type_code] = (
+                    require_features_used_by_active_rules(features, rules),
+                    rules,
                 )
             except GrainValidationError:
                 invalid_drafts.append(draft.name)

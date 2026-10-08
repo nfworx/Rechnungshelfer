@@ -13,13 +13,17 @@ from rechnungshelfer.gui.grain_form_mapper import (
     build_preview_scheme,
     calculate_settlement_preview,
     deserialize_rule_set,
+    missing_required_analyses,
     parse_parameters,
     parse_tiers,
     serialize_rule_set,
 )
 from rechnungshelfer.gui.main_window import InvoiceGUI
 from rechnungshelfer.gui.grain_settlement_view import GrainSettlementView
-from rechnungshelfer.gui.grain_settlement_dialogs import delivery_input_errors
+from rechnungshelfer.gui.grain_settlement_dialogs import (
+    delivery_input_errors,
+    require_features_used_by_active_rules,
+)
 from rechnungshelfer.gui.grain_rule_presets import grain_rule_preset
 
 
@@ -322,6 +326,42 @@ class GrainFormMapperTests(unittest.TestCase):
 
         self.assertGreater(len(result.quantity_deductions), 0)
         self.assertEqual(view._adjustment_rows(result), ())
+
+    def test_active_rule_makes_its_analysis_feature_required(self):
+        features = (FeatureFormValue("protein", "Rohprotein", required=False),)
+        active_rule = RuleFormValue(
+            code="protein-price",
+            label="Proteinabschlag",
+            kind="tiered",
+            feature_code="protein",
+            quantity_reference="",
+            tiers="..12=1 | 12..=0",
+            phase="price_adjustment",
+            price_reference="base_price",
+            enabled=True,
+        )
+
+        normalized = require_features_used_by_active_rules(
+            features,
+            (active_rule,),
+        )
+
+        self.assertTrue(normalized[0].required)
+
+    def test_missing_required_analyses_are_grouped_by_ticket(self):
+        deliveries = (
+            self._delivery(ticket_number="WS-1", analyses=()),
+            self._delivery(
+                id="delivery-2",
+                ticket_number="WS-2",
+                analyses=(AnalysisFormValue("protein", "12,5"),),
+            ),
+        )
+        features = (FeatureFormValue("protein", "Rohprotein", required=True),)
+
+        missing = missing_required_analyses(deliveries, features)
+
+        self.assertEqual(missing, (("WS-1", ("Rohprotein",)),))
 
 
 class GrainWorkspaceNavigationTests(unittest.TestCase):

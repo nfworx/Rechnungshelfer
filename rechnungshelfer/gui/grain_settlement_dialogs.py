@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from tkinter import messagebox
 
 import customtkinter as ctk
@@ -201,6 +202,25 @@ def delivery_input_errors(
     return errors
 
 
+def require_features_used_by_active_rules(
+    features: tuple[FeatureFormValue, ...],
+    rules: tuple[RuleFormValue, ...],
+) -> tuple[FeatureFormValue, ...]:
+    """Macht Analysewerte aktiver Regeln automatisch verpflichtend."""
+
+    required_codes = {
+        rule.feature_code
+        for rule in rules
+        if rule.enabled and rule.feature_code
+    }
+    return tuple(
+        replace(feature, required=True)
+        if feature.code in required_codes and not feature.required
+        else feature
+        for feature in features
+    )
+
+
 def _validate_number(
     errors: dict[str, str],
     key: str,
@@ -313,23 +333,21 @@ class DeliveryDialog(ctk.CTkToplevel):
             ).grid(row=index, column=0, sticky="w", padx=(0, 10), pady=4)
             row = ctk.CTkFrame(content, fg_color="transparent")
             row.grid(row=index, column=1, sticky="ew", pady=4)
-            raw = form_entry(row, current.raw_value if current else "", 130)
-            raw.pack(side="left", padx=(0, 8))
-            corrected = form_entry(
-                row,
-                current.corrected_value if current else "",
-                130,
+            analysis_value = (
+                (current.corrected_value or current.raw_value)
+                if current
+                else ""
             )
-            corrected.pack(side="left")
+            raw = form_entry(row, analysis_value, 190)
+            raw.pack(side="left", padx=(0, 8))
             ctk.CTkLabel(
                 row,
-                text="Wert / Korrektur",
+                text="Analysewert",
                 font=FONT_SMALL,
                 text_color=TEXT_MUTED,
             ).pack(side="left", padx=8)
-            self.analysis_entries[feature.code] = (raw, corrected)
+            self.analysis_entries[feature.code] = raw
             self._entries[f"analysis:{feature.code}:raw"] = raw
-            self._entries[f"analysis:{feature.code}:corrected"] = corrected
 
         self._configure_validation()
 
@@ -375,8 +393,8 @@ class DeliveryDialog(ctk.CTkToplevel):
 
     def _analysis_values(self):
         return {
-            feature_code: (raw.get(), corrected.get())
-            for feature_code, (raw, corrected) in self.analysis_entries.items()
+            feature_code: (entry.get(), "")
+            for feature_code, entry in self.analysis_entries.items()
         }
 
     def _validation_errors(self):
@@ -458,8 +476,8 @@ class DeliveryDialog(ctk.CTkToplevel):
         analyses = tuple(
             AnalysisFormValue(
                 feature_code=feature.code,
-                raw_value=self.analysis_entries[feature.code][0].get(),
-                corrected_value=self.analysis_entries[feature.code][1].get(),
+                raw_value=self.analysis_entries[feature.code].get(),
+                corrected_value="",
             )
             for feature in self.features
         )
@@ -799,7 +817,10 @@ class RuleEditorDialog(ctk.CTkToplevel):
         button(content, "+ Merkmal", lambda: self._add_feature()).pack(anchor="w", pady=5)
         ctk.CTkLabel(
             content,
-            text="Bezeichnung | Einheit | Pflichtfeld  (interne Codes werden automatisch verwaltet)",
+            text=(
+                "Bezeichnung | Einheit | Pflichtfeld  · Merkmale aktiver Regeln "
+                "werden automatisch zu Pflichtfeldern"
+            ),
             font=FONT_SMALL,
             text_color=TEXT_MUTED,
         ).pack(anchor="w")
@@ -887,6 +908,11 @@ class RuleEditorDialog(ctk.CTkToplevel):
     def _current_values(self):
         features = tuple(row.value() for row in self.feature_rows)
         rules = tuple(row.value(index) for index, row in enumerate(self.rule_rows))
+        features = require_features_used_by_active_rules(features, rules)
+        required_codes = {feature.code for feature in features if feature.required}
+        for row in self.feature_rows:
+            if row.code in required_codes:
+                row.required.select()
         return features, rules
 
     def _show_rule_set(self, features, rules):
