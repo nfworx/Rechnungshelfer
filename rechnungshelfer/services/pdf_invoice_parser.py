@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 import re
@@ -10,6 +10,7 @@ import re
 from rechnungshelfer.domain.models import DocumentType, Invoice, InvoiceItem
 from .pdf_import_service import PdfImportResult, normalize_ocr_text
 from .pdf_invoice_metadata import decode_invoice_metadata
+from .settlement_credit_note_parser import SettlementCreditNoteDraft
 
 
 BUSINESS_PARTNER_NUMBER_PATH = "business_partner.number"
@@ -56,6 +57,10 @@ class PdfInvoiceDraft:
 class PdfInvoiceAnalysis:
     extraction: PdfImportResult
     draft: PdfInvoiceDraft
+    settlement_draft: SettlementCreditNoteDraft | None = field(
+        default=None,
+        kw_only=True,
+    )
 
 
 @dataclass(frozen=True)

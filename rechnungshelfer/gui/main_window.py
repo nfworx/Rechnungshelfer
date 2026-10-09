@@ -23,6 +23,10 @@ from .buffered_form import BufferedFormHost
 from .export_workflow import ExportWorkflow
 from .grain_settlement_view import GrainSettlementView
 from rechnungshelfer.services.update_service import check_for_application_update
+from rechnungshelfer.services.sample_settlement_pdf_service import (
+    create_temporary_test_settlement_pdf,
+    remove_temporary_test_settlement_pdf,
+)
 from rechnungshelfer.application.errors import CustomerDuplicateError
 from rechnungshelfer.domain.business_partner import BusinessPartnerRole
 from rechnungshelfer.domain.models import DocumentType
@@ -550,6 +554,7 @@ class InvoiceGUI:
         dialog = TestDocumentDialog(
             self.root,
             on_document_selected=self._on_test_document_selected,
+            on_ocr_test_selected=self._open_ocr_test_document,
         )
         dialog.open()
 
@@ -557,6 +562,24 @@ class InvoiceGUI:
         self.invoice = invoice
         self.invoice.calculate(force=True)
         self.show_form()
+
+    def _open_ocr_test_document(self):
+        try:
+            filepath = create_temporary_test_settlement_pdf()
+            self.pdf_import_dialog.open(
+                filepath,
+                source_cleanup=(
+                    lambda path=filepath: remove_temporary_test_settlement_pdf(path)
+                ),
+            )
+        except Exception as exc:
+            if "filepath" in locals():
+                remove_temporary_test_settlement_pdf(filepath)
+            messagebox.showerror(
+                "OCR-Testabrechnung",
+                f"Testabrechnung konnte nicht erstellt werden: {exc}",
+                parent=self.root,
+            )
 
     def load_invoice_from_list(self):
         dialog = InvoiceLoadDialog(

@@ -14,7 +14,9 @@ from rechnungshelfer.services.settlement_credit_note_parser import (
     SettlementCreditNoteParser,
 )
 from rechnungshelfer.services.tesseract_ocr_service import TesseractOcrEngine
-from tests.settlement_test_document import create_test_settlement_pdf
+from rechnungshelfer.services.sample_settlement_pdf_service import (
+    create_test_settlement_pdf,
+)
 
 
 SETTLEMENT_TEXT = """SAMMEL - FINAL - GUTSCHRIFT

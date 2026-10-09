@@ -54,6 +54,41 @@ def format_detected_fields(fields, document_type=DocumentType.INVOICE) -> list[s
     ]
 
 
+def format_settlement_draft(draft) -> list[str]:
+    """Kompakte, schreibgeschützte Übersicht einer erkannten Abrechnung."""
+
+    def value(detected, fallback="nicht erkannt"):
+        return str(detected.value) if detected is not None else fallback
+
+    lines = [
+        "Sammel-Final-Gutschrift erkannt – Übernahme erfordert Prüfung.",
+        f"Gutschriftnummer: {value(draft.credit_note_number)}",
+        f"Ausstellungsdatum: {value(draft.credit_note_date)}",
+        f"Erkannte Lieferungen: {len(draft.deliveries)}",
+    ]
+    for delivery in draft.deliveries:
+        amount = (
+            f"{delivery.net_amount.value:.2f} EUR"
+            if delivery.net_amount is not None
+            else "Betrag nicht erkannt"
+        )
+        lines.append(
+            f"• Lieferschein {delivery.ticket_number.value}: {amount} "
+            f"(Seite {delivery.ticket_number.page_number}, "
+            f"{delivery.ticket_number.confidence:.0%})"
+        )
+    lines.extend(
+        (
+            f"Nettosumme: {value(draft.net_amount)} EUR",
+            f"Umsatzsteuer: {value(draft.vat_rate)} % / "
+            f"{value(draft.vat_amount)} EUR",
+            f"Gutschriftbetrag: {value(draft.credit_amount)} EUR",
+        )
+    )
+    lines.extend(f"• {warning}" for warning in draft.warnings)
+    return lines
+
+
 class PdfImportDialog:
     def __init__(self, parent, controller, on_invoice_loaded):
         self.parent = parent
@@ -62,15 +97,18 @@ class PdfImportDialog:
         self.window = None
         self.progress = None
         self._results = queue.SimpleQueue()
+        self._analysis = None
         self._import = None
         self._filepath = None
         self._job_id = 0
 
-    def open(self, filepath):
+    def open(self, filepath, *, source_cleanup=None):
         self.close()
         self._job_id += 1
         job_id = self._job_id
         self._filepath = filepath
+        self._analysis = None
+        self._import = None
         self.window = ctk.CTkToplevel(self.parent)
         self.window.title("PDF einlesen")
         self.window.geometry("560x230")
@@ -100,18 +138,24 @@ class PdfImportDialog:
 
         threading.Thread(
             target=self._analyze,
-            args=(job_id, filepath),
+            args=(job_id, filepath, source_cleanup),
             name="Rechnungshelfer-PDF-Import",
             daemon=True,
         ).start()
         self.parent.after(100, self._poll_result)
 
-    def _analyze(self, job_id, filepath):
+    def _analyze(self, job_id, filepath, source_cleanup=None):
         try:
             analysis = self.controller.analyze_pdf(filepath)
             self._results.put((job_id, "result", analysis))
         except Exception as exc:
             self._results.put((job_id, "error", str(exc)))
+        finally:
+            if source_cleanup is not None:
+                try:
+                    source_cleanup()
+                except Exception:
+                    pass
 
     def _poll_result(self):
         if self.window is None or not self.window.winfo_exists():
@@ -130,12 +174,14 @@ class PdfImportDialog:
             messagebox.showerror("PDF-Import", value, parent=self.parent)
             return
 
-        try:
-            self._import = self.controller.create_invoice_from_pdf_analysis(value)
-        except Exception as exc:
-            self.close()
-            messagebox.showerror("PDF-Import", str(exc), parent=self.parent)
-            return
+        self._analysis = value
+        if value.settlement_draft is None:
+            try:
+                self._import = self.controller.create_invoice_from_pdf_analysis(value)
+            except Exception as exc:
+                self.close()
+                messagebox.showerror("PDF-Import", str(exc), parent=self.parent)
+                return
         self._show_result()
 
     def _show_result(self):
@@ -145,8 +191,8 @@ class PdfImportDialog:
         for widget in self.window.winfo_children():
             widget.destroy()
 
-        imported = self._import
-        extraction = imported.extraction
+        analysis = self._analysis
+        extraction = analysis.extraction
         self.window.title("PDF-Import prüfen")
         self.window.geometry("920x720")
         self.window.resizable(True, True)
@@ -178,24 +224,25 @@ class PdfImportDialog:
             anchor="w",
         ).grid(row=1, column=0, padx=24, pady=(0, 10), sticky="ew")
 
-        status_messages = [
-            *extraction.warnings,
-            *extraction.errors,
-            *imported.draft.warnings,
-        ]
-        detected = len(imported.draft.fields)
+        status_messages = [*extraction.warnings, *extraction.errors]
+        if analysis.settlement_draft is None:
+            status_messages.extend(analysis.draft.warnings)
+        detected = len(analysis.draft.fields)
         status = [f"Erkannte Formularfelder: {detected}"]
-        if imported.draft.embedded_invoice_data is not None:
-            item_count = len(imported.draft.embedded_invoice_data.get("items", []))
+        if analysis.settlement_draft is not None:
+            status = format_settlement_draft(analysis.settlement_draft)
+        elif analysis.draft.embedded_invoice_data is not None:
+            item_count = len(analysis.draft.embedded_invoice_data.get("items", []))
             status.append(f"Vollständig eingebettete Positionen: {item_count}")
-        elif imported.draft.items:
-            status.append(f"Erkannte Positionen: {len(imported.draft.items)}")
-        status.extend(
-            format_detected_fields(
-                imported.draft.fields,
-                imported.draft.document_type,
+        elif analysis.draft.items:
+            status.append(f"Erkannte Positionen: {len(analysis.draft.items)}")
+        if analysis.settlement_draft is None:
+            status.extend(
+                format_detected_fields(
+                    analysis.draft.fields,
+                    analysis.draft.document_type,
+                )
             )
-        )
         status.extend(f"• {message}" for message in status_messages)
         status_box = ctk.CTkTextbox(
             self.window,
@@ -231,9 +278,12 @@ class PdfImportDialog:
         )
         apply_button.grid(row=0, column=1, padx=8, sticky="ew")
         if (
-            not imported.draft.fields
-            and not imported.draft.items
-            and imported.draft.embedded_invoice_data is None
+            analysis.settlement_draft is not None
+            or (
+                not analysis.draft.fields
+                and not analysis.draft.items
+                and analysis.draft.embedded_invoice_data is None
+            )
         ):
             apply_button.configure(state="disabled")
         button(footer, "Schließen", self.close).grid(
@@ -246,7 +296,7 @@ class PdfImportDialog:
         widget.configure(state="disabled")
 
     def _copy_text(self):
-        text = self._import.extraction.full_text
+        text = self._analysis.extraction.full_text
         if not text:
             return
         try:
@@ -286,4 +336,8 @@ class PdfImportDialog:
                 self.progress = None
 
 
-__all__ = ["PdfImportDialog", "format_detected_fields"]
+__all__ = [
+    "PdfImportDialog",
+    "format_detected_fields",
+    "format_settlement_draft",
+]

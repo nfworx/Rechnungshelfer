@@ -18,6 +18,9 @@ from rechnungshelfer.services.pdf_invoice_parser import (
     PdfInvoiceImport,
     PdfInvoiceParser,
 )
+from rechnungshelfer.services.settlement_credit_note_parser import (
+    SettlementCreditNoteParser,
+)
 from rechnungshelfer.services.xml_reader import InvoiceParsingError, read_xml_file
 
 
@@ -32,6 +35,7 @@ class InvoiceApplicationService:
         invoice_factory: InvoiceFactory,
         pdf_import_service=None,
         pdf_invoice_parser=None,
+        settlement_credit_note_parser=None,
     ):
         self._database = database
         self._invoices = invoice_repository
@@ -40,6 +44,9 @@ class InvoiceApplicationService:
         self._factory = invoice_factory
         self._pdf_import = pdf_import_service or PdfImportService()
         self._pdf_parser = pdf_invoice_parser or PdfInvoiceParser()
+        self._settlement_parser = (
+            settlement_credit_note_parser or SettlementCreditNoteParser()
+        )
 
     def create_empty_invoice(
         self,
@@ -150,6 +157,7 @@ class InvoiceApplicationService:
         return PdfInvoiceAnalysis(
             extraction=extraction,
             draft=draft,
+            settlement_draft=self._settlement_parser.parse(extraction),
         )
 
     def create_invoice_from_pdf_analysis(
@@ -157,6 +165,11 @@ class InvoiceApplicationService:
         analysis: PdfInvoiceAnalysis,
     ) -> PdfInvoiceImport:
         """Erzeugt den Formularbeleg im aufrufenden (GUI-)Thread."""
+
+        if analysis.settlement_draft is not None:
+            raise ValueError(
+                "Die erkannte Testabrechnung muss vor der Übernahme geprüft werden."
+            )
 
         if analysis.draft.embedded_invoice_data is not None:
             invoice = Invoice.from_dict(analysis.draft.embedded_invoice_data)

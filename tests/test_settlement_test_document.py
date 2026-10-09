@@ -7,9 +7,11 @@ from rechnungshelfer.services.pdf_import_service import (
     ExtractionMethod,
     PdfImportService,
 )
-from tests.settlement_test_document import (
+from rechnungshelfer.services.sample_settlement_pdf_service import (
     EXPECTED_TEST_SETTLEMENT,
     create_test_settlement_pdf,
+    create_temporary_test_settlement_pdf,
+    remove_temporary_test_settlement_pdf,
 )
 
 
@@ -55,6 +57,21 @@ class TestSettlementDocumentTests(unittest.TestCase):
             self.assertEqual(result.full_text, "")
             self.assertEqual(result.pages[0].method, ExtractionMethod.NONE)
             self.assertTrue(result.pages[0].needs_ocr)
+
+    def test_temporary_pdf_is_only_removed_through_registered_cleanup(self):
+        path = create_temporary_test_settlement_pdf()
+        unrelated = path.with_name("nicht-registrierte-datei.pdf")
+        unrelated.write_bytes(b"user file")
+
+        try:
+            self.assertTrue(path.is_file())
+            self.assertFalse(remove_temporary_test_settlement_pdf(unrelated))
+            self.assertTrue(unrelated.is_file())
+            self.assertTrue(remove_temporary_test_settlement_pdf(path))
+            self.assertFalse(path.exists())
+        finally:
+            unrelated.unlink(missing_ok=True)
+            remove_temporary_test_settlement_pdf(path)
 
 
 if __name__ == "__main__":

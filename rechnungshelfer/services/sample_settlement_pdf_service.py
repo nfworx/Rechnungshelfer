@@ -8,18 +8,23 @@ durchlaufen.
 
 from __future__ import annotations
 
+import atexit
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
+import os
 from pathlib import Path
+import sys
+import tempfile
+import threading
 
 from PIL import Image, ImageDraw, ImageFont
 
 
 _CENT = Decimal("0.01")
-_PROJECT_ROOT = Path(__file__).resolve().parents[1]
-_FONT_REGULAR = _PROJECT_ROOT / "assets" / "fonts" / "LMRoman10-Regular.ttf"
-_FONT_BOLD = _PROJECT_ROOT / "assets" / "fonts" / "LMRoman10-Bold.ttf"
+_TEMP_PREFIX = "rechnungshelfer-testabrechnung-"
+_temporary_files: set[Path] = set()
+_temporary_files_lock = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -108,7 +113,13 @@ EXPECTED_TEST_SETTLEMENT = TestSettlementDocument(
 
 
 def _font(size: int, *, bold: bool = False):
-    font_path = _FONT_BOLD if bold else _FONT_REGULAR
+    root = (
+        Path(sys._MEIPASS)
+        if getattr(sys, "frozen", False)
+        else Path(__file__).resolve().parents[2]
+    )
+    filename = "LMRoman10-Bold.ttf" if bold else "LMRoman10-Regular.ttf"
+    font_path = root / "assets" / "fonts" / filename
     return ImageFont.truetype(str(font_path), size=size)
 
 
@@ -245,9 +256,56 @@ def create_test_settlement_pdf(
     return path
 
 
+def create_temporary_test_settlement_pdf() -> Path:
+    """Erzeugt eine registrierte Testabrechnung im System-Temp-Verzeichnis."""
+
+    descriptor, filename = tempfile.mkstemp(prefix=_TEMP_PREFIX, suffix=".pdf")
+    os.close(descriptor)
+    path = Path(filename).resolve()
+    try:
+        create_test_settlement_pdf(path)
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    with _temporary_files_lock:
+        _temporary_files.add(path)
+    return path
+
+
+def remove_temporary_test_settlement_pdf(path: str | Path) -> bool:
+    """Entfernt ausschließlich eine in dieser Sitzung registrierte Test-PDF."""
+
+    candidate = Path(path).resolve()
+    with _temporary_files_lock:
+        if candidate not in _temporary_files:
+            return False
+        _temporary_files.remove(candidate)
+    try:
+        candidate.unlink(missing_ok=True)
+    except OSError:
+        with _temporary_files_lock:
+            _temporary_files.add(candidate)
+        return False
+    return True
+
+
+def cleanup_temporary_test_settlement_pdfs() -> int:
+    """Bereinigt noch registrierte Test-PDFs beim normalen Programmende."""
+
+    with _temporary_files_lock:
+        paths = tuple(_temporary_files)
+    return sum(remove_temporary_test_settlement_pdf(path) for path in paths)
+
+
+atexit.register(cleanup_temporary_test_settlement_pdfs)
+
+
 __all__ = [
     "EXPECTED_TEST_SETTLEMENT",
     "TestSettlementDelivery",
     "TestSettlementDocument",
+    "cleanup_temporary_test_settlement_pdfs",
     "create_test_settlement_pdf",
+    "create_temporary_test_settlement_pdf",
+    "remove_temporary_test_settlement_pdf",
 ]

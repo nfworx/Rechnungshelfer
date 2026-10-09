@@ -11,15 +11,21 @@ from rechnungshelfer.services.sample_document_service import (
 class TestDocumentDialog:
     """Laedt Beispieldaten ins Formular, ohne die Datenbank zu veraendern."""
 
-    def __init__(self, parent, on_document_selected):
+    def __init__(
+        self,
+        parent,
+        on_document_selected,
+        on_ocr_test_selected=None,
+    ):
         self.parent = parent
         self.on_document_selected = on_document_selected
+        self.on_ocr_test_selected = on_ocr_test_selected
         self.window = None
 
     def open(self):
         self.window = ctk.CTkToplevel(self.parent)
         self.window.title("Testbeleg laden")
-        self.window.geometry("540x250")
+        self.window.geometry("540x315")
         self.window.resizable(False, False)
         self.window.transient(self.parent)
         self.window.grab_set()
@@ -57,8 +63,23 @@ class TestDocumentDialog:
             primary=True,
         ).grid(row=2, column=1, padx=(8, 24), sticky="ew")
 
+        if self.on_ocr_test_selected is not None:
+            button(
+                self.window,
+                "OCR-Testabrechnung prüfen",
+                self._select_ocr_test,
+                primary=True,
+            ).grid(
+                row=3,
+                column=0,
+                columnspan=2,
+                padx=24,
+                pady=(14, 0),
+                sticky="ew",
+            )
+
         button(self.window, "Abbrechen", self.close).grid(
-            row=3,
+            row=4,
             column=0,
             columnspan=2,
             pady=(18, 0),
@@ -67,6 +88,10 @@ class TestDocumentDialog:
     def _select(self, invoice):
         self.close()
         self.on_document_selected(invoice)
+
+    def _select_ocr_test(self):
+        self.close()
+        self.on_ocr_test_selected()
 
     def close(self):
         if self.window is not None:

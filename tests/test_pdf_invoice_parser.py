@@ -214,6 +214,35 @@ class PdfInvoiceApplicationServiceTests(unittest.TestCase):
         partners.save_supplier.assert_not_called()
         database.transaction.assert_not_called()
 
+    def test_background_analysis_includes_structured_settlement_draft(self):
+        extraction = extraction_with(
+            """SAMMEL - FINAL - GUTSCHRIFT
+Nr.: 91001 vom 30.11.2025
+Analysewerte Bezeichnung Menge Preis Betrag
+Lieferschein-Nr.: T1001 vom 09.08.2025
+Hafer lose 2.815 160,00
+Hafer lose 2.787 144,50 402,72
+402,72
+7,8 % Mehrwertsteuer EUR 31,41
+Gesamtbetrag 434,13
+Gutschriftbetrag in EUR 434,13
+"""
+        )
+        service, database, invoices, partners, master_data = self._service(
+            extraction
+        )
+
+        analysis = service.analyze_pdf("testabrechnung.pdf")
+
+        self.assertIsNotNone(analysis.settlement_draft)
+        self.assertEqual(analysis.settlement_draft.credit_note_number.value, "91001")
+        self.assertEqual(len(analysis.settlement_draft.deliveries), 1)
+        master_data.load_into.assert_not_called()
+        invoices.save.assert_not_called()
+        partners.save_customer.assert_not_called()
+        partners.save_supplier.assert_not_called()
+        database.transaction.assert_not_called()
+
     def test_pdf_import_creates_in_memory_invoice_without_repository_writes(self):
         extraction = extraction_with(
             "Rechnungsnummer: PDF-101\nRechnungsdatum: 08.10.2026\n"
