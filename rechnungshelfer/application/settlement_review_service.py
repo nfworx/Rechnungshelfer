@@ -47,6 +47,7 @@ class SettlementReviewDelivery:
     settlement_price_per_tonne: ReviewField
     net_amount: ReviewField
     details: tuple[SettlementReviewDetail, ...] = ()
+    grain_type_code: str = ""
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,7 @@ class SettlementReviewService:
                         )
                         for detail in delivery.details
                     ),
+                    grain_type_code=getattr(delivery, "grain_type_code", ""),
                 )
                 for delivery in draft.deliveries
             ),
@@ -191,6 +193,7 @@ class SettlementReviewService:
                         )
                         for detail in delivery.details
                     ),
+                    grain_type_code=delivery.grain_type_code,
                 )
                 for delivery in credit_note.deliveries
             ),
@@ -518,6 +521,52 @@ class SettlementReviewService:
                 )
         return SettlementReviewResult(tuple(issues))
 
+    def recalculate_financials(self, review: SettlementReview) -> SettlementReview:
+        """Berechnet Lieferbetraege und Belegsummen aus den editierbaren Werten."""
+
+        deliveries = []
+        delivery_amounts = []
+        for delivery in review.deliveries:
+            quantity = parse_de(delivery.settlement_quantity_kg.value)
+            price = parse_de(delivery.settlement_price_per_tonne.value)
+            amount_changes = sum(
+                (
+                    parse_de(detail.amount_change.value)
+                    for detail in delivery.details
+                    if detail.amount_change.value.strip()
+                ),
+                Decimal("0"),
+            )
+            amount = self._money(
+                quantity * price / Decimal("1000") + amount_changes
+            )
+            delivery_amounts.append(amount)
+            deliveries.append(
+                replace(
+                    delivery,
+                    net_amount=delivery.net_amount.with_value(
+                        self._decimal_text(amount)
+                    ),
+                )
+            )
+
+        net = self._money(sum(delivery_amounts, Decimal("0")))
+        vat_rate = parse_de(review.vat_rate.value)
+        vat = self._money(net * vat_rate / Decimal("100"))
+        total = self._money(net + vat)
+        advance = parse_de(review.advance_payment.value)
+        credit = self._money(total - advance)
+        return replace(
+            review,
+            deliveries=tuple(deliveries),
+            net_amount=review.net_amount.with_value(self._decimal_text(net)),
+            vat_amount=review.vat_amount.with_value(self._decimal_text(vat)),
+            total_amount=review.total_amount.with_value(self._decimal_text(total)),
+            credit_amount=review.credit_amount.with_value(
+                self._decimal_text(credit)
+            ),
+        )
+
     def create_credit_note(self, review: SettlementReview):
         result = self.validate(review)
         errors = [issue.message for issue in result.issues if issue.severity == "error"]
@@ -603,6 +652,10 @@ class SettlementReviewService:
     @staticmethod
     def _money(value: Decimal) -> Decimal:
         return value.quantize(_CENT, rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _decimal_text(value: Decimal) -> str:
+        return format(value, "f").replace(".", ",")
 
 
 __all__ = [

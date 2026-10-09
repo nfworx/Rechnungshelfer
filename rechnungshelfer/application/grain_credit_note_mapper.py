@@ -64,6 +64,7 @@ def grain_credit_note_from_review(review) -> GrainCreditNote:
                     )
                     for detail in delivery.details
                 ),
+                grain_type_code=delivery.grain_type_code,
             )
             for delivery in review.deliveries
         ),

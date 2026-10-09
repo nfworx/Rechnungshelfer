@@ -158,6 +158,27 @@ class SettlementReviewServiceTests(unittest.TestCase):
         self.assertEqual(credit_note.advance_payment, Decimal("100.00"))
         self.assertEqual(credit_note.credit_amount, Decimal("2150.36"))
 
+    def test_recalculates_delivery_amount_and_document_totals_after_edit(self):
+        first = self.review.deliveries[0]
+        changed_first = replace(
+            first,
+            settlement_price_per_tonne=(
+                first.settlement_price_per_tonne.with_value("145,00")
+            ),
+        )
+        changed_review = replace(
+            self.review,
+            deliveries=(changed_first, *self.review.deliveries[1:]),
+        )
+
+        recalculated = self.service.recalculate_financials(changed_review)
+
+        self.assertEqual(recalculated.deliveries[0].net_amount.value, "404,12")
+        self.assertEqual(recalculated.net_amount.value, "2088,93")
+        self.assertEqual(recalculated.vat_amount.value, "162,94")
+        self.assertEqual(recalculated.total_amount.value, "2251,87")
+        self.assertEqual(recalculated.credit_amount.value, "2251,87")
+
     def test_creates_structured_credit_note_without_flattening_deliveries(self):
         credit_note = self.service.create_credit_note(self.review)
 
@@ -192,15 +213,25 @@ class SettlementReviewServiceTests(unittest.TestCase):
 
     def test_structured_credit_note_can_be_edited_through_review_model(self):
         credit_note = self.service.create_credit_note(self.review)
+        credit_note = replace(
+            credit_note,
+            deliveries=(
+                replace(credit_note.deliveries[0], grain_type_code="oats"),
+                *credit_note.deliveries[1:],
+            ),
+        )
 
         restored_review = self.service.create_review_from_credit_note(credit_note)
 
         self.assertEqual(restored_review.credit_note_number.value, "91001")
         self.assertEqual(restored_review.credit_note_date.value, "30.11.2025")
         self.assertEqual(restored_review.deliveries[0].details[0].label.value, "Besatz")
+        self.assertEqual(restored_review.deliveries[0].grain_type_code, "oats")
         self.assertEqual(restored_review.supplier_name.value, "Musterhof Testlieferant")
         self.assertEqual(restored_review.payment_terms.value, "Auszahlung innerhalb von 14 Tagen.")
         self.assertTrue(self.service.validate(restored_review).is_valid)
+        restored_note = self.service.create_credit_note(restored_review)
+        self.assertEqual(restored_note.deliveries[0].grain_type_code, "oats")
 
 
 if __name__ == "__main__":

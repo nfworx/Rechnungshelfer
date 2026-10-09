@@ -14,6 +14,10 @@ from rechnungshelfer.application.grain_credit_note_mapper import (
     grain_credit_note_creation_issues,
     grain_credit_note_from_calculation,
 )
+from rechnungshelfer.application.settlement_review_service import (
+    ReviewField,
+    SettlementReviewDelivery,
+)
 from rechnungshelfer.domain.grain_models import (
     GrainValidationError,
     SettlementBatchResult,
@@ -50,7 +54,7 @@ from .grain_settlement_dialogs import (
     RuleEditorDialog,
     require_features_used_by_active_rules,
 )
-from .settlement_review_dialog import SettlementReviewDialog
+from .grain_credit_note_delivery_dialog import GrainCreditNoteDeliveryDialog
 from .grain_credit_note_load_dialog import GrainCreditNoteLoadDialog
 from .grain_rule_presets import grain_rule_preset
 from .business_partner_dialog import BusinessPartnerListDialog
@@ -242,12 +246,6 @@ class GrainSettlementView(ctk.CTkFrame):
             side="left",
             padx=8,
         )
-        self.edit_credit_note_button = button(
-            actions,
-            "Getreidegutschrift bearbeiten",
-            self.edit_credit_note,
-            primary=True,
-        )
         self.status_label = ctk.CTkLabel(
             actions,
             text="",
@@ -411,27 +409,6 @@ class GrainSettlementView(ctk.CTkFrame):
             text=f"{len(credit_note.deliveries)} Lieferungen · Getreidegutschrift"
         )
 
-    def edit_credit_note(self):
-        if self.credit_note is None:
-            return
-        try:
-            current = self._current_credit_note()
-        except ValueError:
-            messagebox.showerror(
-                "Getreidegutschrift bearbeiten",
-                "Gutschriftnummer oder Ausstellungsdatum ist ungültig.",
-                parent=self,
-            )
-            return
-        review = self.controller.create_settlement_review_from_credit_note(current)
-        SettlementReviewDialog(
-            self,
-            self.controller,
-            None,
-            lambda note: self.load_credit_note(note, preserve_document=True),
-            review=review,
-        ).open()
-
     def _current_credit_note(self):
         if self.credit_note is None:
             raise ValueError("Es wurde noch keine Getreidegutschrift erstellt.")
@@ -474,7 +451,7 @@ class GrainSettlementView(ctk.CTkFrame):
         )
 
     def _credit_note_for_save(self):
-        if self.credit_note is not None:
+        if getattr(self, "credit_note", None) is not None:
             return self._current_credit_note()
         if not self.calculate():
             raise ValueError("Die Getreideabrechnung konnte nicht berechnet werden.")
@@ -538,17 +515,18 @@ class GrainSettlementView(ctk.CTkFrame):
         ).open()
 
     def _set_credit_note_mode(self, enabled):
+        self.add_button.configure(
+            command=(
+                self.add_credit_note_delivery if enabled else self.add_delivery
+            )
+        )
+        set_button_enabled(self.add_button, True, primary=True)
         for control in (
-            self.add_button,
             self.calculate_button,
             self.rule_button,
             self.example_button,
         ):
             set_button_enabled(control, not enabled)
-        if enabled:
-            self.edit_credit_note_button.pack(side="left", padx=(0, 8))
-        else:
-            self.edit_credit_note_button.pack_forget()
         self._refresh_save_button()
 
     def _render_credit_note_deliveries(self, credit_note):
@@ -562,6 +540,7 @@ class GrainSettlementView(ctk.CTkFrame):
             "Δ Menge kg",
             "Δ Wert EUR",
             "Betrag EUR",
+            "",
         )
         for column, title in enumerate(headers):
             self.delivery_host.grid_columnconfigure(
@@ -576,7 +555,7 @@ class GrainSettlementView(ctk.CTkFrame):
             ).grid(row=0, column=column, sticky="w", padx=5, pady=4)
 
         row = 1
-        for delivery in credit_note.deliveries:
+        for index, delivery in enumerate(credit_note.deliveries):
             base_amount = (
                 delivery.gross_quantity_kg
                 * delivery.base_price_per_tonne
@@ -598,6 +577,18 @@ class GrainSettlementView(ctk.CTkFrame):
                 font=("Segoe UI", 12, "bold"),
                 text_color=TEXT,
             )
+            actions = ctk.CTkFrame(self.delivery_host, fg_color="transparent")
+            actions.grid(row=row, column=8, sticky="e", padx=3, pady=3)
+            small_button(
+                actions,
+                "✎",
+                lambda item=index: self.edit_credit_note_delivery(item),
+            ).pack(side="left")
+            small_button(
+                actions,
+                "×",
+                lambda item=index: self.remove_credit_note_delivery(item),
+            ).pack(side="left", padx=(4, 0))
             row += 1
             for detail in delivery.details:
                 label = f"↳ {detail.label}: {format_de(detail.analysis_value)}"
@@ -685,6 +676,135 @@ class GrainSettlementView(ctk.CTkFrame):
         self.document.buyer = self.controller.load_own_company_buyer()
         self.document.buyer.use_invoice_address_as_delivery = True
         self._render_top_cards()
+
+    def _current_credit_note_review(self):
+        review = self.controller.create_settlement_review_from_credit_note(
+            self._current_credit_note()
+        )
+        vat_value = self.vat_variable.get().replace("%", "").strip()
+        return replace(
+            review,
+            vat_rate=review.vat_rate.with_value(vat_value),
+        )
+
+    def _credit_note_review_or_error(self):
+        try:
+            return self._current_credit_note_review()
+        except ValueError as exc:
+            messagebox.showerror(
+                "Getreidegutschrift bearbeiten",
+                str(exc),
+                parent=self,
+            )
+            return None
+
+    def _apply_credit_note_review(self, review):
+        try:
+            recalculated = self.controller.recalculate_settlement_review(review)
+            result = self.controller.validate_settlement_review(recalculated)
+            errors = [
+                issue.message
+                for issue in result.issues
+                if issue.severity == "error"
+            ]
+            if errors:
+                raise ValueError(
+                    "Die Änderungen sind noch nicht konsistent:\n- "
+                    + "\n- ".join(errors)
+                )
+            note = self.controller.create_grain_credit_note_from_review(
+                recalculated
+            )
+        except (ValueError, ArithmeticError) as exc:
+            messagebox.showerror(
+                "Getreidegutschrift bearbeiten",
+                str(exc),
+                parent=self,
+            )
+            return False
+        self.load_credit_note(note, preserve_document=True)
+        return True
+
+    def add_credit_note_delivery(self):
+        if self.credit_note is None:
+            return
+        empty = SettlementReviewDelivery(
+            ticket_number=ReviewField(""),
+            delivery_date=ReviewField(date.today().strftime("%d.%m.%Y")),
+            grain_name=ReviewField("Weizen"),
+            gross_quantity_kg=ReviewField(""),
+            base_price_per_tonne=ReviewField(""),
+            settlement_quantity_kg=ReviewField(""),
+            settlement_price_per_tonne=ReviewField(""),
+            net_amount=ReviewField("0"),
+            grain_type_code="wheat",
+        )
+        GrainCreditNoteDeliveryDialog(
+            self,
+            empty,
+            self._append_credit_note_delivery,
+        )
+
+    def _append_credit_note_delivery(self, delivery):
+        review = self._credit_note_review_or_error()
+        if review is None:
+            return False
+        return self._apply_credit_note_review(
+            replace(review, deliveries=(*review.deliveries, delivery))
+        )
+
+    def edit_credit_note_delivery(self, index):
+        if self.credit_note is None:
+            return
+        review = self._credit_note_review_or_error()
+        if review is None:
+            return
+        GrainCreditNoteDeliveryDialog(
+            self,
+            review.deliveries[index],
+            lambda delivery: self._replace_credit_note_delivery(index, delivery),
+        )
+
+    def _replace_credit_note_delivery(self, index, delivery):
+        review = self._credit_note_review_or_error()
+        if review is None:
+            return False
+        deliveries = list(review.deliveries)
+        deliveries[index] = delivery
+        return self._apply_credit_note_review(
+            replace(review, deliveries=tuple(deliveries))
+        )
+
+    def remove_credit_note_delivery(self, index):
+        if self.credit_note is None:
+            return False
+        if len(self.credit_note.deliveries) == 1:
+            messagebox.showerror(
+                "Lieferung entfernen",
+                "Eine Getreidegutschrift benötigt mindestens eine Lieferung.",
+                parent=self,
+            )
+            return False
+        delivery = self.credit_note.deliveries[index]
+        if not messagebox.askyesno(
+            "Lieferung entfernen",
+            f"Soll die Lieferung {delivery.ticket_number} entfernt werden?",
+            parent=self,
+        ):
+            return False
+        review = self._credit_note_review_or_error()
+        if review is None:
+            return False
+        return self._apply_credit_note_review(
+            replace(
+                review,
+                deliveries=tuple(
+                    item
+                    for item_index, item in enumerate(review.deliveries)
+                    if item_index != index
+                ),
+            )
+        )
 
     def add_delivery(self):
         delivery_id = f"delivery-{self._next_delivery_number}"
@@ -1143,6 +1263,11 @@ class GrainSettlementView(ctk.CTkFrame):
         self._refresh_tax_totals()
 
     def _refresh_tax_totals(self):
+        if getattr(self, "credit_note", None) is not None:
+            review = self._credit_note_review_or_error()
+            if review is not None:
+                self._apply_credit_note_review(review)
+            return
         if self._last_result is None:
             self._refresh_save_button()
             return

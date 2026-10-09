@@ -634,21 +634,19 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
             persisted=True,
         )
 
-    def test_saved_credit_note_uses_active_edit_action(self):
+    def test_saved_credit_note_uses_delivery_actions_in_main_view(self):
         view = GrainSettlementView.__new__(GrainSettlementView)
         view.add_button = Mock()
         view.calculate_button = Mock()
         view.rule_button = Mock()
         view.example_button = Mock()
         view.save_credit_note_button = Mock()
-        view.edit_credit_note_button = Mock()
         view.credit_note = object()
 
         view._set_credit_note_mode(True)
 
-        view.edit_credit_note_button.pack.assert_called_once_with(
-            side="left",
-            padx=(0, 8),
+        view.add_button.configure.assert_any_call(
+            command=view.add_credit_note_delivery,
         )
         self.assertTrue(
             any(
@@ -758,6 +756,58 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
                 for call in view.save_credit_note_button.configure.call_args_list
             )
         )
+
+    def test_credit_note_delivery_is_edited_from_main_workspace(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.credit_note = object()
+        delivery = object()
+        review = Mock(deliveries=(delivery,))
+        view._current_credit_note_review = Mock(return_value=review)
+        view._replace_credit_note_delivery = Mock()
+
+        with patch(
+            "rechnungshelfer.gui.grain_settlement_view."
+            "GrainCreditNoteDeliveryDialog"
+        ) as dialog:
+            view.edit_credit_note_delivery(0)
+
+        dialog.assert_called_once()
+        self.assertIs(dialog.call_args.args[1], delivery)
+
+    def test_credit_note_edit_recalculates_and_validates_before_loading(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        review = object()
+        recalculated = object()
+        note = object()
+        view.controller = Mock()
+        view.controller.recalculate_settlement_review.return_value = recalculated
+        view.controller.validate_settlement_review.return_value = Mock(issues=())
+        view.controller.create_grain_credit_note_from_review.return_value = note
+        view.load_credit_note = Mock()
+
+        applied = view._apply_credit_note_review(review)
+
+        self.assertTrue(applied)
+        view.controller.recalculate_settlement_review.assert_called_once_with(review)
+        view.controller.validate_settlement_review.assert_called_once_with(
+            recalculated
+        )
+        view.load_credit_note.assert_called_once_with(
+            note,
+            preserve_document=True,
+        )
+
+    def test_last_credit_note_delivery_cannot_be_removed(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.credit_note = Mock(deliveries=(object(),))
+
+        with patch(
+            "rechnungshelfer.gui.grain_settlement_view.messagebox.showerror"
+        ) as showerror:
+            removed = view.remove_credit_note_delivery(0)
+
+        self.assertFalse(removed)
+        showerror.assert_called_once()
 
 
 class GrainRuleSetSelectionTests(unittest.TestCase):

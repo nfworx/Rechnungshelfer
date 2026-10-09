@@ -280,6 +280,7 @@ class SettlementReviewDialog:
                     settlement_price_per_tonne=updated(f"{prefix}.settlement_price_per_tonne", delivery.settlement_price_per_tonne),
                     net_amount=updated(f"{prefix}.net_amount", delivery.net_amount),
                     details=tuple(details),
+                    grain_type_code=delivery.grain_type_code,
                 )
             )
         return SettlementReview(

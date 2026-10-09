@@ -152,6 +152,9 @@ class InvoiceController:
     def validate_settlement_review(self, review):
         return self.settlement_review_service.validate(review)
 
+    def recalculate_settlement_review(self, review):
+        return self.settlement_review_service.recalculate_financials(review)
+
     def create_grain_credit_note_from_review(self, review):
         return self.settlement_review_service.create_credit_note(review)
 

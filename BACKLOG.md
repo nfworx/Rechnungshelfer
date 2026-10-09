@@ -192,6 +192,9 @@
 
 ## P2 – Technische Verbesserungen
 
+- Das vorhandene `assets/Rechnungshelfer.ico` als Anwendungssymbol für die
+  Windows-EXE sowie für Fenster-, Titelleisten- und Taskleistendarstellung
+  einbinden und die Übernahme in den PyInstaller-Build prüfen.
 - GitHub Actions für automatische Tests bei Pushes einrichten.
 - Testdaten und Beispiellieferungen klar vom Produktivbetrieb trennen.
 - Große GUI-Module bei Bedarf aufteilen und vereinfachen.
