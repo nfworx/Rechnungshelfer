@@ -12,6 +12,7 @@ from rechnungshelfer.gui.grain_form_mapper import (
     FeatureFormValue,
     GrainSettlementForm,
     RuleFormValue,
+    build_preview_inputs,
     build_preview_scheme,
     calculate_settlement_preview,
     deserialize_rule_set,
@@ -82,6 +83,20 @@ class GrainFormMapperTests(unittest.TestCase):
         self.assertEqual(result.deducted_quantity_kg, Decimal("506.000"))
         self.assertEqual(result.settlement_quantity_kg, Decimal("17494.000"))
         self.assertEqual(result.base_amount, Decimal("3498.80"))
+
+    def test_preview_inputs_reuse_the_deliveries_used_by_the_calculation(self):
+        form = self._form(vat_rate="7 %")
+
+        deliveries, scheme = build_preview_inputs(form)
+        result = calculate_settlement_preview(form)
+
+        self.assertEqual(tuple(value.id for value in deliveries), ("delivery-1",))
+        self.assertEqual(deliveries[0].supplier_number, "0001")
+        self.assertEqual(scheme.id, result.scheme_version_id)
+        self.assertEqual(
+            deliveries[0].gross_quantity_kg,
+            result.delivery_results[0].gross_quantity_kg,
+        )
 
     def test_corrected_gui_value_is_used(self):
         delivery = self._delivery(
@@ -407,6 +422,17 @@ class GrainWorkspaceNavigationTests(unittest.TestCase):
         gui.form_host.grid.assert_called_once_with()
         gui._refresh_application_menu.assert_called_once_with()
 
+    def test_generated_grain_credit_note_is_opened_in_document_form(self):
+        gui = self._gui()
+        gui.invoice = Mock()
+        gui.show_form = Mock()
+        generated = InvoiceFactory().create(DocumentType.SELF_BILLED_INVOICE)
+
+        gui._open_grain_credit_note(generated)
+
+        self.assertIs(gui.invoice, generated)
+        gui.show_form.assert_called_once_with()
+
     def test_same_document_workspace_does_not_create_a_new_document(self):
         gui = self._gui()
         gui.invoice = Mock(
@@ -475,6 +501,67 @@ class GrainWorkspaceNavigationTests(unittest.TestCase):
         self.assertEqual(view.document.buyer.leitweg_id, "3000")
         view._render_top_cards.assert_called_once_with()
         view.calculate.assert_called_once_with()
+
+
+class GrainCreditNoteTransferTests(unittest.TestCase):
+    def test_calculated_settlement_is_transferred_after_confirmation(self):
+        form = GrainFormMapperTests._form(vat_rate="7 %")
+        settlement = calculate_settlement_preview(form)
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.document = InvoiceFactory().create(
+            DocumentType.SELF_BILLED_INVOICE,
+            supplier_number="0001",
+        )
+        view._form_value = Mock(return_value=form)
+        view._last_result = settlement
+        view.calculate = Mock(return_value=True)
+        view.on_invoice_created = Mock()
+
+        with patch(
+            "rechnungshelfer.gui.grain_settlement_view.messagebox.askyesno",
+            return_value=True,
+        ):
+            transferred = view.create_credit_note()
+
+        self.assertTrue(transferred)
+        view.calculate.assert_called_once_with()
+        view.on_invoice_created.assert_called_once_with(unittest.mock.ANY)
+        invoice = view.on_invoice_created.call_args.args[0]
+        self.assertTrue(invoice.is_self_billed)
+        self.assertEqual(invoice.monetarytotal.tax_exclusive_amount, settlement.net_amount)
+        self.assertEqual(invoice.items[0].vat, Decimal("7"))
+
+    def test_failed_calculation_does_not_replace_document(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.calculate = Mock(return_value=False)
+        view.on_invoice_created = Mock()
+
+        transferred = view.create_credit_note()
+
+        self.assertFalse(transferred)
+        view.on_invoice_created.assert_not_called()
+
+    def test_cancelled_confirmation_keeps_current_document(self):
+        form = GrainFormMapperTests._form(vat_rate="7 %")
+        settlement = calculate_settlement_preview(form)
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.document = InvoiceFactory().create(
+            DocumentType.SELF_BILLED_INVOICE,
+            supplier_number="0001",
+        )
+        view._form_value = Mock(return_value=form)
+        view._last_result = settlement
+        view.calculate = Mock(return_value=True)
+        view.on_invoice_created = Mock()
+
+        with patch(
+            "rechnungshelfer.gui.grain_settlement_view.messagebox.askyesno",
+            return_value=False,
+        ):
+            transferred = view.create_credit_note()
+
+        self.assertFalse(transferred)
+        view.on_invoice_created.assert_not_called()
 
 
 class GrainRuleSetSelectionTests(unittest.TestCase):

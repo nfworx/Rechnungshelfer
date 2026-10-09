@@ -7,16 +7,20 @@ from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 import sqlite3
 from tkinter import messagebox
+from typing import Callable
 
 import customtkinter as ctk
 
+from rechnungshelfer.application.grain_invoice_mapper import (
+    create_grain_settlement_invoice,
+)
 from rechnungshelfer.domain.grain_models import (
     GrainValidationError,
     SettlementBatchResult,
     SettlementResult,
 )
 from rechnungshelfer.domain.business_partner import BusinessPartnerRole
-from rechnungshelfer.domain.models import DocumentType
+from rechnungshelfer.domain.models import DocumentType, Invoice
 from rechnungshelfer.services.format_service import format_de
 
 from .components import button, card, clear_frame, set_button_enabled, small_button
@@ -26,6 +30,7 @@ from .grain_form_mapper import (
     FeatureFormValue,
     GrainSettlementForm,
     RuleFormValue,
+    build_preview_inputs,
     calculate_settlement_preview,
     deserialize_rule_set,
     missing_required_analyses,
@@ -59,9 +64,15 @@ _EXAMPLE_ANALYSIS_VALUES = {
 class GrainSettlementView(ctk.CTkFrame):
     """Ordnet Kopfdaten, Lieferungen und Summen wie die Belegmasken an."""
 
-    def __init__(self, parent, controller):
+    def __init__(
+        self,
+        parent,
+        controller,
+        on_invoice_created: Callable[[Invoice], None] | None = None,
+    ):
         super().__init__(parent, fg_color=APP_BG, corner_radius=0)
         self.controller = controller
+        self.on_invoice_created = on_invoice_created
         self.document = controller.create_empty_invoice(
             DocumentType.SELF_BILLED_INVOICE
         )
@@ -313,8 +324,22 @@ class GrainSettlementView(ctk.CTkFrame):
             justify="left",
         ).grid(row=10, column=0, columnspan=2, sticky="w", padx=14, pady=12)
 
+        create_button = button(
+            totals,
+            "Gutschrift aus Abrechnung erstellen",
+            self.create_credit_note,
+            primary=True,
+        )
+        create_button.grid(
+            row=11,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=14,
+            pady=(0, 8),
+        )
+
         output_buttons = (
-            ("Getreideabrechnung speichern", 11),
             ("PDF erstellen", 12),
             ("HTML erstellen", 13),
         )
@@ -329,6 +354,50 @@ class GrainSettlementView(ctk.CTkFrame):
                 pady=(0, 8 if row < 13 else 14),
             )
             set_button_enabled(output_button, False)
+
+    def create_credit_note(self) -> bool:
+        """Erzeugt aus der geprüften Abrechnung eine bearbeitbare Gutschrift."""
+
+        if not self.calculate():
+            return False
+
+        try:
+            form = self._form_value()
+            deliveries, _scheme = build_preview_inputs(form)
+            vat_rate = parse_vat_rate(form.vat_rate)
+            invoice = create_grain_settlement_invoice(
+                self.document,
+                deliveries,
+                self._last_result,
+                vat_rate,
+            )
+        except (GrainValidationError, ValueError, ArithmeticError) as exc:
+            messagebox.showerror(
+                "Gutschrift erstellen",
+                str(exc),
+                parent=self,
+            )
+            return False
+
+        if self.on_invoice_created is None:
+            messagebox.showerror(
+                "Gutschrift erstellen",
+                "Die Gutschriftenmaske ist nicht verfügbar.",
+                parent=self,
+            )
+            return False
+
+        if not messagebox.askyesno(
+            "Gutschrift erstellen",
+            "Die berechnete Getreideabrechnung wird in die Gutschriftenmaske "
+            "übernommen.\n\nNicht gespeicherte Eingaben in der dort aktuell "
+            "geöffneten Rechnung oder Gutschrift werden ersetzt. Fortfahren?",
+            parent=self,
+        ):
+            return False
+
+        self.on_invoice_created(invoice)
+        return True
 
     def open_supplier_list(self):
         BusinessPartnerListDialog(

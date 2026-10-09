@@ -140,6 +140,15 @@ def calculate_settlement_preview(
 ) -> SettlementBatchResult:
     """Berechnet eine fluechtige Mehrlieferungs-Abrechnung ohne Speicherung."""
 
+    deliveries, scheme = build_preview_inputs(form)
+    return calculate_settlement_quantities(deliveries, scheme)
+
+
+def build_preview_inputs(
+    form: GrainSettlementForm,
+) -> tuple[tuple[GrainDelivery, ...], SettlementSchemeVersion]:
+    """Erzeugt die validierten Domain-Eingaben der aktuellen Vorschau."""
+
     grain_type_code = _settlement_grain_type(form.deliveries)
     scheme = build_preview_scheme(grain_type_code, form.features, form.rules)
     supplier_number = _required_text(form.supplier_number, "Lieferantennummer")
@@ -147,7 +156,7 @@ def calculate_settlement_preview(
         _map_delivery(value, supplier_number, scheme)
         for value in form.deliveries
     )
-    return calculate_settlement_quantities(deliveries, scheme)
+    return deliveries, scheme
 
 
 def missing_required_analyses(

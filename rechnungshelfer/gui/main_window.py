@@ -187,7 +187,11 @@ class InvoiceGUI:
             column=0,
             sticky="nsew",
         )
-        self.grain_view = GrainSettlementView(self.body, self.controller)
+        self.grain_view = GrainSettlementView(
+            self.body,
+            self.controller,
+            on_invoice_created=self._open_grain_credit_note,
+        )
         self.grain_view.grid(
             row=0,
             column=0,
@@ -387,6 +391,10 @@ class InvoiceGUI:
         self.grain_view.grid()
         self.root.title(f"{APP_NAME} {APP_VERSION} - Getreideabrechnung")
         self._refresh_application_menu()
+
+    def _open_grain_credit_note(self, invoice):
+        self.invoice = invoice
+        self.show_form()
 
     def _activate_invoice_workspace(self):
         self.active_workspace = (
