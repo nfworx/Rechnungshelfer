@@ -65,6 +65,10 @@
   Getreide-Mapping- und Berechnungslogik soweit sinnvoll wiederverwenden.
 - Erkannte Abzüge und Analysewerte nachvollziehbar in die Positionsdarstellung
   übernehmen, ohne Beträge ein zweites Mal zu berechnen.
+- Abschlagszahlungen fachlich und technisch im strukturierten Beleg abbilden. Bis
+  das Belegmodell einen Abschlagsbetrag separat und konsistent in PDF und XML
+  darstellen kann, Abrechnungen mit einer Abschlagszahlung ungleich `0,00 EUR`
+  nicht übernehmen und stattdessen einen verständlichen Hinweis anzeigen.
 - Den übernommenen Beleg in der bestehenden Gutschriftenmaske vollständig
   bearbeitbar machen.
 

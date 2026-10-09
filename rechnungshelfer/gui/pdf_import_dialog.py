@@ -340,8 +340,13 @@ class PdfImportDialog:
             self.window,
             self.controller,
             self._analysis.settlement_draft,
+            self._apply_settlement_to_form,
         )
         self._settlement_review_dialog.open()
+
+    def _apply_settlement_to_form(self, invoice):
+        self.close()
+        self.on_invoice_loaded(invoice)
 
     def close(self):
         if self.window is not None:

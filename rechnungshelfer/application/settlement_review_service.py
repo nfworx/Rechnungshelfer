@@ -6,6 +6,9 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
+from rechnungshelfer.application.settlement_invoice_mapper import (
+    create_settlement_invoice,
+)
 from rechnungshelfer.services.format_service import parse_de
 
 
@@ -349,6 +352,14 @@ class SettlementReviewService:
             issues,
             non_negative=True,
         )
+        if advance is not None and advance != 0:
+            issues.append(
+                SettlementReviewIssue(
+                    "advance_payment",
+                    "Abschlagszahlungen können noch nicht in das "
+                    "Gutschriftformular übernommen werden.",
+                )
+            )
         credit = self._number(
             review.credit_amount,
             "credit_amount",
@@ -394,6 +405,16 @@ class SettlementReviewService:
                     )
                 )
         return SettlementReviewResult(tuple(issues))
+
+    def create_invoice(self, review: SettlementReview, template):
+        result = self.validate(review)
+        errors = [issue.message for issue in result.issues if issue.severity == "error"]
+        if errors:
+            raise ValueError(
+                "Die Abrechnung kann noch nicht übernommen werden:\n- "
+                + "\n- ".join(errors)
+            )
+        return create_settlement_invoice(template, review)
 
     @staticmethod
     def _field(detected, *, date_value=False, default="") -> ReviewField:

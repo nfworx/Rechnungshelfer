@@ -1,9 +1,15 @@
 import unittest
 from dataclasses import replace
+from decimal import Decimal
 
+from rechnungshelfer.application.settlement_invoice_mapper import (
+    create_settlement_invoice,
+)
 from rechnungshelfer.application.settlement_review_service import (
     SettlementReviewService,
 )
+from rechnungshelfer.domain.invoice_factory import InvoiceFactory
+from rechnungshelfer.domain.models import DocumentType, Seller
 from rechnungshelfer.services.settlement_credit_note_parser import (
     SettlementCreditNoteParser,
 )
@@ -139,6 +145,72 @@ class SettlementReviewServiceTests(unittest.TestCase):
         self.assertFalse(result.is_valid)
         self.assertIn("credit_note_number", paths)
         self.assertIn("credit_note_date", paths)
+
+    def test_nonzero_advance_payment_blocks_takeover(self):
+        wrong_review = replace(
+            self.review,
+            advance_payment=self.review.advance_payment.with_value("100,00"),
+            credit_amount=self.review.credit_amount.with_value("2150,36"),
+        )
+
+        result = self.service.validate(wrong_review)
+
+        self.assertFalse(result.is_valid)
+        self.assertIn(
+            "advance_payment",
+            {issue.field_path for issue in result.issues},
+        )
+
+    def test_creates_editable_credit_note_with_one_exact_item_per_delivery(self):
+        own_company = Seller(
+            name="Testhandel GmbH",
+            street="Handelsweg 1",
+            postcode="12345",
+            city="Teststadt",
+            country="DE",
+            email="rechnung@example.de",
+            buyer_reference="BUYER-1",
+        )
+        template = InvoiceFactory().create(
+            DocumentType.SELF_BILLED_INVOICE,
+            own_company=own_company,
+        )
+
+        invoice = self.service.create_invoice(self.review, template)
+
+        self.assertTrue(invoice.is_self_billed)
+        self.assertEqual(invoice.info.invoice_type_code, "389")
+        self.assertEqual(invoice.info.invoice_number, "91001")
+        self.assertEqual(invoice.info.invoice_date, "30.11.2025")
+        self.assertEqual(invoice.info.payment_due_date, "")
+        self.assertEqual(invoice.buyer.name, "Testhandel GmbH")
+        self.assertEqual(len(invoice.items), 4)
+        self.assertEqual(
+            [item.net for item in invoice.items],
+            [
+                Decimal("402.72"),
+                Decimal("538.70"),
+                Decimal("908.76"),
+                Decimal("237.35"),
+            ],
+        )
+        self.assertEqual(
+            invoice.monetarytotal.tax_exclusive_amount,
+            Decimal("2087.53"),
+        )
+        self.assertEqual(
+            invoice.monetarytotal.payable_amount,
+            Decimal("2250.36"),
+        )
+        self.assertIn("Lieferschein: T1001", invoice.items[0].description)
+        self.assertIn("Mengenänderung -28 kg", invoice.items[0].description)
+        self.assertIn("Preisänderung -15,50 EUR/t", invoice.items[0].description)
+
+    def test_mapper_rejects_regular_invoice_template(self):
+        template = InvoiceFactory().create(DocumentType.INVOICE)
+
+        with self.assertRaisesRegex(ValueError, "nur in eine Gutschrift"):
+            create_settlement_invoice(template, self.review)
 
 
 if __name__ == "__main__":

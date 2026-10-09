@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tkinter import messagebox
+
 import customtkinter as ctk
 
 from rechnungshelfer.application.settlement_review_service import (
@@ -15,14 +17,16 @@ from .styles import APP_BG, BORDER, FONT_NORMAL, FONT_SECTION, FONT_SMALL, TEXT,
 
 
 class SettlementReviewDialog:
-    def __init__(self, parent, controller, draft):
+    def __init__(self, parent, controller, draft, on_invoice_loaded):
         self.parent = parent
         self.controller = controller
         self.draft = draft
+        self.on_invoice_loaded = on_invoice_loaded
         self.review = controller.create_settlement_review(draft)
         self.window = None
         self.entries = {}
         self.status_box = None
+        self.transfer_button = None
 
     def open(self):
         self.window = ctk.CTkToplevel(self.parent)
@@ -114,15 +118,22 @@ class SettlementReviewDialog:
             font=FONT_SMALL,
             wrap="word",
         )
-        self.status_box.grid(row=0, column=0, columnspan=3, pady=(0, 10), sticky="ew")
+        self.status_box.grid(row=0, column=0, columnspan=4, pady=(0, 10), sticky="ew")
         self._set_status(
             "Werte mit niedriger Erkennungssicherheit sind orange markiert. "
             "Korrekturen gelten nur in dieser Prüfansicht."
         )
-        button(footer, "Erneut prüfen", self.validate, primary=True).grid(
-            row=1, column=1, padx=8
+        self.transfer_button = button(
+            footer,
+            "Geprüfte Daten in Formular übernehmen",
+            self.apply_to_form,
+            primary=True,
         )
-        button(footer, "Schließen", self.close).grid(row=1, column=2, padx=(8, 0))
+        self.transfer_button.grid(row=1, column=1, padx=8)
+        button(footer, "Erneut prüfen", self.validate).grid(
+            row=1, column=2, padx=8
+        )
+        button(footer, "Schließen", self.close).grid(row=1, column=3, padx=(8, 0))
         self.validate()
 
     def _section(self, parent, row, title, fields):
@@ -251,9 +262,40 @@ class SettlementReviewDialog:
         else:
             self._set_status(
                 "Alle Pflichtwerte und Summen sind rechnerisch schlüssig. "
-                "Die Formularübernahme folgt im nächsten Entwicklungsschritt."
+                "Die Abrechnung kann in das Gutschriftformular übernommen werden."
+            )
+        if self.transfer_button is not None:
+            self.transfer_button.configure(
+                state="normal" if result.is_valid else "disabled"
             )
         return result
+
+    def apply_to_form(self):
+        result = self.validate()
+        if not result.is_valid:
+            return False
+        if not messagebox.askyesno(
+            "Abrechnung übernehmen",
+            "Die geprüfte Abrechnung wird in die Gutschriftenmaske übernommen.\n\n"
+            "Nicht gespeicherte Eingaben im aktuell geöffneten Formular werden "
+            "ersetzt. Die Gutschrift wird nicht automatisch gespeichert. Fortfahren?",
+            parent=self.window,
+        ):
+            return False
+        try:
+            invoice = self.controller.create_invoice_from_settlement_review(
+                self.review
+            )
+        except (ValueError, ArithmeticError) as exc:
+            messagebox.showerror(
+                "Abrechnung übernehmen",
+                str(exc),
+                parent=self.window,
+            )
+            return False
+        self.close()
+        self.on_invoice_loaded(invoice)
+        return True
 
     def _field_by_path(self, path):
         current = self.review

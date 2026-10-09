@@ -181,12 +181,24 @@ class PdfImportGuiTests(unittest.TestCase):
             dialog.window,
             controller,
             draft,
+            dialog._apply_settlement_to_form,
         )
         review_dialog_class.return_value.open.assert_called_once_with()
         self.assertIs(
             dialog._settlement_review_dialog,
             review_dialog_class.return_value,
         )
+
+    def test_settlement_takeover_closes_import_and_loads_invoice(self):
+        callback = MagicMock()
+        invoice = object()
+        dialog = PdfImportDialog(MagicMock(), MagicMock(), callback)
+        dialog.close = MagicMock()
+
+        dialog._apply_settlement_to_form(invoice)
+
+        dialog.close.assert_called_once_with()
+        callback.assert_called_once_with(invoice)
 
     def test_test_document_dialog_forwards_ocr_selection(self):
         callback = MagicMock()
