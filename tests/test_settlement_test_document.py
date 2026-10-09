@@ -7,15 +7,15 @@ from rechnungshelfer.services.pdf_import_service import (
     ExtractionMethod,
     PdfImportService,
 )
-from tests.amic_test_document import (
-    AMIC_EXPECTED_DOCUMENT,
-    create_amic_test_pdf,
+from tests.settlement_test_document import (
+    EXPECTED_TEST_SETTLEMENT,
+    create_test_settlement_pdf,
 )
 
 
-class AmicTestDocumentTests(unittest.TestCase):
+class TestSettlementDocumentTests(unittest.TestCase):
     def test_expected_values_are_internally_consistent(self):
-        document = AMIC_EXPECTED_DOCUMENT
+        document = EXPECTED_TEST_SETTLEMENT
 
         self.assertEqual(len(document.deliveries), 4)
         self.assertEqual(
@@ -42,8 +42,8 @@ class AmicTestDocumentTests(unittest.TestCase):
 
     def test_generated_pdf_is_raster_only_and_uses_ocr_path(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "amic-sammel-final-gutschrift.pdf"
-            create_amic_test_pdf(path)
+            path = Path(tmp) / "testabrechnung.pdf"
+            create_test_settlement_pdf(path)
 
             original_bytes = path.read_bytes()
             result = PdfImportService(ocr_engine=None).extract(path)

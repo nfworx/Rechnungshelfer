@@ -1,7 +1,7 @@
-"""Deterministisches, synthetisches AMIC-Testdokument.
+"""Deterministische, synthetische Testabrechnung.
 
 Der Generator bildet nur die fuer den spaeteren Import relevante Struktur einer
-AMIC-Sammel-Final-Gutschrift nach. Die PDF besteht aus einem Rasterbild und hat
+Sammel-Final-Gutschrift nach. Die PDF besteht aus einem Rasterbild und hat
 bewusst keine auslesbare Textschicht, damit Integrationstests den OCR-Pfad
 durchlaufen.
 """
@@ -23,7 +23,7 @@ _FONT_BOLD = _PROJECT_ROOT / "assets" / "fonts" / "LMRoman10-Bold.ttf"
 
 
 @dataclass(frozen=True)
-class AmicTestDelivery:
+class TestSettlementDelivery:
     ticket_number: str
     delivery_date: date
     grain_name: str
@@ -39,10 +39,10 @@ class AmicTestDelivery:
 
 
 @dataclass(frozen=True)
-class AmicTestDocument:
+class TestSettlementDocument:
     credit_note_number: str
     credit_note_date: date
-    deliveries: tuple[AmicTestDelivery, ...]
+    deliveries: tuple[TestSettlementDelivery, ...]
     vat_rate: Decimal
     net_amount: Decimal
     vat_amount: Decimal
@@ -61,7 +61,7 @@ def _delivery(
     quantity_deduction_kg: str,
     hectolitre_weight: str,
     price_deduction_per_tonne: str,
-) -> AmicTestDelivery:
+) -> TestSettlementDelivery:
     gross = Decimal(gross_quantity_kg)
     quantity_deduction = Decimal(quantity_deduction_kg)
     base_price = Decimal("160.00")
@@ -69,7 +69,7 @@ def _delivery(
     settlement_quantity = gross - quantity_deduction
     settlement_price = base_price - price_deduction
     net_amount = _money(settlement_quantity * settlement_price / Decimal("1000"))
-    return AmicTestDelivery(
+    return TestSettlementDelivery(
         ticket_number=ticket_number,
         delivery_date=delivery_date,
         grain_name="Hafer lose",
@@ -95,7 +95,7 @@ _NET_AMOUNT = sum((delivery.net_amount for delivery in _DELIVERIES), Decimal("0"
 _VAT_RATE = Decimal("7.8")
 _VAT_AMOUNT = _money(_NET_AMOUNT * _VAT_RATE / Decimal("100"))
 
-AMIC_EXPECTED_DOCUMENT = AmicTestDocument(
+EXPECTED_TEST_SETTLEMENT = TestSettlementDocument(
     credit_note_number="91001",
     credit_note_date=date(2025, 11, 30),
     deliveries=_DELIVERIES,
@@ -126,11 +126,11 @@ def _right(draw: ImageDraw.ImageDraw, x: int, y: int, text: str, font) -> None:
     draw.text((x - (right - left), y), text, font=font, fill="black")
 
 
-def create_amic_test_pdf(
+def create_test_settlement_pdf(
     output_path: str | Path,
-    document: AmicTestDocument = AMIC_EXPECTED_DOCUMENT,
+    document: TestSettlementDocument = EXPECTED_TEST_SETTLEMENT,
 ) -> Path:
-    """Erzeugt eine einseitige, bildbasierte AMIC-aehnliche Test-PDF."""
+    """Erzeugt eine einseitige, bildbasierte Testabrechnung als PDF."""
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -246,9 +246,8 @@ def create_amic_test_pdf(
 
 
 __all__ = [
-    "AMIC_EXPECTED_DOCUMENT",
-    "AmicTestDelivery",
-    "AmicTestDocument",
-    "create_amic_test_pdf",
+    "EXPECTED_TEST_SETTLEMENT",
+    "TestSettlementDelivery",
+    "TestSettlementDocument",
+    "create_test_settlement_pdf",
 ]
-
