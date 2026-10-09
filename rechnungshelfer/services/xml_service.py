@@ -36,6 +36,12 @@ def format_iso(value) -> str:
     return f"{Decimal(str(value)):.2f}"
 
 
+def format_quantity(value) -> str:
+    decimal_value = Decimal(str(value))
+    decimal_places = max(2, -decimal_value.as_tuple().exponent)
+    return f"{decimal_value:.{decimal_places}f}"
+
+
 def format_percent(value) -> str:
     decimal_value = Decimal(str(value))
     text = format(decimal_value.normalize(), "f")
@@ -267,13 +273,29 @@ def build_invoice_lines(root, invoice):
             line,
             _cbc("InvoicedQuantity"),
             unitCode=item.unit or "C62"
-        ).text = format_iso(item.qty)
+        ).text = format_quantity(item.qty)
 
         etree.SubElement(
             line,
             _cbc("LineExtensionAmount"),
             currencyID=invoice.info.currency
         ).text = format_iso(item.net)
+
+        for adjustment in item.line_adjustments:
+            allowance_charge = etree.SubElement(line, _cac("AllowanceCharge"))
+            etree.SubElement(
+                allowance_charge,
+                _cbc("ChargeIndicator"),
+            ).text = "true" if adjustment.is_charge else "false"
+            etree.SubElement(
+                allowance_charge,
+                _cbc("AllowanceChargeReason"),
+            ).text = adjustment.reason or "Positionsanpassung"
+            etree.SubElement(
+                allowance_charge,
+                _cbc("Amount"),
+                currencyID=invoice.info.currency,
+            ).text = format_iso(adjustment.amount)
 
         item_el = etree.SubElement(line, _cac("Item"))
 
@@ -294,12 +316,24 @@ def build_invoice_lines(root, invoice):
         scheme = etree.SubElement(tax, _cac("TaxScheme"))
         etree.SubElement(scheme, _cbc("ID")).text = "VAT"
 
+        for item_property in item.item_properties:
+            property_el = etree.SubElement(item_el, _cac("AdditionalItemProperty"))
+            etree.SubElement(property_el, _cbc("Name")).text = item_property.name
+            etree.SubElement(property_el, _cbc("Value")).text = item_property.value
+
         price = etree.SubElement(line, _cac("Price"))
         etree.SubElement(
             price,
             _cbc("PriceAmount"),
             currencyID=invoice.info.currency
         ).text = format_iso(item.price)
+
+        if item.price_base_quantity != Decimal("1"):
+            etree.SubElement(
+                price,
+                _cbc("BaseQuantity"),
+                unitCode=item.price_base_unit or item.unit or "C62",
+            ).text = format_quantity(item.price_base_quantity)
 
 # ==========================================================
 # Tax Total
@@ -360,6 +394,13 @@ def build_legal_monetary_total(root, invoice):
         _cbc("TaxInclusiveAmount"),
         currencyID=invoice.info.currency
     ).text = format_iso(mt.tax_inclusive_amount)
+
+    if mt.prepaid_amount > 0:
+        etree.SubElement(
+            total,
+            _cbc("PrepaidAmount"),
+            currencyID=invoice.info.currency,
+        ).text = format_iso(mt.prepaid_amount)
 
     etree.SubElement(
         total,

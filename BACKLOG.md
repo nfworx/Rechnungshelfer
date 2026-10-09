@@ -97,14 +97,44 @@
 - Für die XRechnung den vorhandenen Gutschriftprozess mit Typcode `389` verwenden
   und die Ausgabe mit XSD und KoSIT validieren.
 - In der XRechnung jede Lieferung als eigene Position mit Abrechnungsmenge in
-  Tonnen, Abrechnungspreis und bestätigtem Lieferbetrag abbilden. Analysewerte,
+  Kilogramm, Abrechnungspreis je Tonne über die Preisbasis 1.000 Kilogramm und
+  bestätigtem Lieferbetrag abbilden. Analysewerte,
   Ursprungsmenge, Basispreis sowie Mengen- und Preisänderungen als stabile
   Artikelmerkmale (BG-32/BT-160/BT-161) und zusätzlich lesbar ausgeben.
 - Abschlagszahlungen als bezahlten Betrag (BT-113 beziehungsweise
   `PrepaidAmount`) ausgeben und den Auszahlungsbetrag konsistent berechnen.
 - Die ursprüngliche AMIC-PDF weder einbetten noch als Anlage referenzieren.
 
-### 6. Fachlicher End-to-End-Abnahmetest
+### 6. Belegworkflow, Summenfeld und Menüführung vereinheitlichen
+
+- Rechnung, Gutschrift und Getreideabrechnung trotz ihrer unterschiedlichen
+  Fachmodelle nach demselben verständlichen Bedienmuster erstellen, bearbeiten,
+  speichern, leeren und wieder öffnen können.
+- Eine manuell erstellte Getreideabrechnung beim Speichern validieren, intern als
+  strukturierte Getreidegutschrift übernehmen und direkt in der Datenbank sichern;
+  den zusätzlichen Bedienschritt „Getreidegutschrift erstellen“ dafür entfernen.
+- Gespeicherte Getreidegutschriften im Getreide-Arbeitsbereich laden und dort
+  unmittelbar weiterbearbeiten. Das separate Prüffenster nur für den
+  bestätigungspflichtigen PDF-/OCR-Import verwenden.
+- Für alle drei Belegarten das Summenfeld einheitlich und kompakt aufbauen. Dort
+  ausschließlich die Nettosumme gesamt, die jeweils anwendbare Umsatzsteuer und
+  den finalen Gesamt- beziehungsweise Auszahlungsbetrag anzeigen.
+- Im Summenfeld aller Belegarten in derselben Reihenfolge die Schaltflächen
+  „PDF erstellen“, „XML erstellen“ und „Speichern“ anbieten. Fachliche Detailwerte
+  der Getreideabrechnung weiterhin ausschließlich im Lieferungsbereich anzeigen.
+- Im Menü „Datei“ nur die vorhandenen Importfunktionen für XML und PDF anbieten.
+- Im Menü „Beleg“ die Aktionen „Speichern“, „Formular leeren“ und „Gespeicherten
+  Beleg laden“ sowie „Neuer Beleg“ mit Auswahl zwischen Rechnung, Gutschrift und
+  Getreideabrechnung bündeln.
+- „Formular leeren“ und „Neuer Beleg“ auch im Getreide-Arbeitsbereich vollständig
+  unterstützen. Vor dem Verwerfen ungespeicherter Änderungen eine Bestätigung
+  verlangen.
+- Das Menü „Stammdaten“ unverändert lassen und „Werkzeuge“ in „Hilfe“ umbenennen.
+- Nach der Umstellung alte, deaktivierte oder doppelte Bedienelemente entfernen
+  und den vollständigen Workflow für jede Belegart mit GUI-Regressionstests
+  absichern.
+
+### 7. Fachlicher End-to-End-Abnahmetest
 
 - Eine reale AMIC-Sammel-Final-Gutschrift mit mehreren Lieferungen und 7,8 Prozent
   Umsatzsteuer von der PDF-Auswahl bis zum bestätigten Beleg durchspielen.

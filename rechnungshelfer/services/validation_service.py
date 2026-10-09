@@ -267,11 +267,19 @@ def validate_totals(invoice: Invoice) -> ValidationResult:
     tax_total_calc = round2(sum(t.amount for t in getattr(invoice, "taxtotal", [])))
     gross_calc = round2(net_calc + tax_total_calc)
 
+    xml_gross = round2(invoice.monetarytotal.tax_inclusive_amount)
+    prepaid_amount = round2(invoice.monetarytotal.prepaid_amount)
     xml_payable = round2(invoice.monetarytotal.payable_amount)
 
-    if gross_calc != xml_payable:
+    if gross_calc != xml_gross:
         result.add_warning(
-            f"Bruttobetrag inkonsistent: berechnet={gross_calc}, XML={xml_payable}"
+            f"Bruttobetrag inkonsistent: berechnet={gross_calc}, XML={xml_gross}"
+        )
+
+    payable_calc = round2(gross_calc - prepaid_amount)
+    if payable_calc != xml_payable:
+        result.add_warning(
+            f"Zahlbetrag inkonsistent: berechnet={payable_calc}, XML={xml_payable}"
         )
 
     return result

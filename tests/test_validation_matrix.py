@@ -359,7 +359,7 @@ class ValidationDocumentTests(unittest.TestCase):
         invoice = create_validator_invoice()
         invoice.monetarytotal.payable_amount += Decimal("0.01")
         self.assertTrue(
-            any("Bruttobetrag" in warning for warning in validate_totals(invoice).warnings)
+            any("Zahlbetrag" in warning for warning in validate_totals(invoice).warnings)
         )
 
     def test_xsd_rejects_malformed_and_incomplete_xml(self):
