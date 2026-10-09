@@ -195,7 +195,6 @@ class InvoiceGUI:
         self.grain_view = GrainSettlementView(
             self.body,
             self.controller,
-            on_credit_note_created=None,
         )
         self.grain_view.grid(
             row=0,

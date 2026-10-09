@@ -535,21 +535,32 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
         view.credit_note = note
         view._persisted_credit_note_number = None
         view._current_credit_note = Mock(return_value=note)
+        view.load_credit_note = Mock()
         view.controller = Mock()
         view.controller.grain_credit_note_exists.return_value = False
 
-        with patch(
-            "rechnungshelfer.gui.grain_settlement_view.messagebox.showinfo"
+        with (
+            patch(
+                "rechnungshelfer.gui.grain_settlement_view.messagebox.showinfo"
+            ),
+            patch(
+                "rechnungshelfer.gui.grain_settlement_view.messagebox.askyesno"
+            ) as askyesno,
         ):
             saved = view.save_credit_note()
 
         self.assertTrue(saved)
+        askyesno.assert_not_called()
         view.controller.save_grain_credit_note.assert_called_once_with(
             note,
             overwrite=False,
             previous_number=None,
         )
-        self.assertEqual(view._persisted_credit_note_number, "91001")
+        view.load_credit_note.assert_called_once_with(
+            note,
+            preserve_document=True,
+            persisted=True,
+        )
 
     def test_existing_imported_number_requires_overwrite_confirmation(self):
         view = GrainSettlementView.__new__(GrainSettlementView)
@@ -575,6 +586,7 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
         view.credit_note = note
         view._persisted_credit_note_number = "91001"
         view._current_credit_note = Mock(return_value=note)
+        view.load_credit_note = Mock()
         view.controller = Mock()
         view.controller.grain_credit_note_exists.return_value = True
 
@@ -594,6 +606,7 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
         view.credit_note = note
         view._persisted_credit_note_number = "91001"
         view._current_credit_note = Mock(return_value=note)
+        view.load_credit_note = Mock()
         view.controller = Mock()
         view.controller.grain_credit_note_exists.return_value = True
 
@@ -615,33 +628,36 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
             overwrite=True,
             previous_number="91001",
         )
+        view.load_credit_note.assert_called_once_with(
+            note,
+            preserve_document=True,
+            persisted=True,
+        )
 
-    def test_created_credit_note_uses_active_edit_action(self):
+    def test_saved_credit_note_uses_active_edit_action(self):
         view = GrainSettlementView.__new__(GrainSettlementView)
         view.add_button = Mock()
         view.calculate_button = Mock()
         view.rule_button = Mock()
         view.example_button = Mock()
-        view.create_button = Mock()
         view.save_credit_note_button = Mock()
         view.edit_credit_note_button = Mock()
         view.credit_note = object()
 
         view._set_credit_note_mode(True)
 
-        view.create_button.configure.assert_any_call(
-            text="Getreidegutschrift bearbeiten",
-            command=view.edit_credit_note,
+        view.edit_credit_note_button.pack.assert_called_once_with(
+            side="left",
+            padx=(0, 8),
         )
         self.assertTrue(
             any(
                 call.kwargs.get("state") == "normal"
-                for call in view.create_button.configure.call_args_list
+                for call in view.save_credit_note_button.configure.call_args_list
             )
         )
-        view.edit_credit_note_button.pack_forget.assert_called_once_with()
 
-    def test_calculated_settlement_is_transferred_after_confirmation(self):
+    def test_calculated_settlement_is_mapped_and_saved_directly(self):
         form = GrainFormMapperTests._form(vat_rate="7 %")
         settlement = calculate_settlement_preview(form)
         view = GrainSettlementView.__new__(GrainSettlementView)
@@ -670,20 +686,28 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
         view._form_value = Mock(return_value=form)
         view._last_result = settlement
         view.calculate = Mock(return_value=True)
+        view.credit_note = None
+        view._persisted_credit_note_number = None
+        view.controller = Mock()
+        view.controller.grain_credit_note_exists.return_value = False
         view.load_credit_note = Mock()
-        view.on_credit_note_created = Mock()
 
         with patch(
-            "rechnungshelfer.gui.grain_settlement_view.messagebox.askyesno",
-            return_value=True,
+            "rechnungshelfer.gui.grain_settlement_view.messagebox.showinfo"
         ):
-            transferred = view.create_credit_note()
+            saved = view.save_credit_note()
 
-        self.assertTrue(transferred)
+        self.assertTrue(saved)
         view.calculate.assert_called_once_with()
+        view.controller.save_grain_credit_note.assert_called_once_with(
+            unittest.mock.ANY,
+            overwrite=False,
+            previous_number=None,
+        )
         view.load_credit_note.assert_called_once_with(
             unittest.mock.ANY,
             preserve_document=True,
+            persisted=True,
         )
         credit_note = view.load_credit_note.call_args.args[0]
         self.assertEqual(credit_note.credit_note_number, "GS-100")
@@ -695,41 +719,45 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
         )
         self.assertTrue(SettlementReviewService().validate(review).is_valid)
 
-    def test_failed_calculation_does_not_replace_document(self):
+    def test_failed_calculation_does_not_save_or_replace_document(self):
         view = GrainSettlementView.__new__(GrainSettlementView)
+        view.credit_note = None
         view.calculate = Mock(return_value=False)
-        view.on_credit_note_created = Mock()
-
-        transferred = view.create_credit_note()
-
-        self.assertFalse(transferred)
-        view.on_credit_note_created.assert_not_called()
-
-    def test_cancelled_confirmation_keeps_current_document(self):
-        form = GrainFormMapperTests._form(vat_rate="7 %")
-        settlement = calculate_settlement_preview(form)
-        view = GrainSettlementView.__new__(GrainSettlementView)
-        view.document = InvoiceFactory().create(
-            DocumentType.SELF_BILLED_INVOICE,
-            supplier_number="0001",
-        )
-        view.document.info.invoice_number = "GS-100"
-        view.document.info.invoice_date = "09.10.2026"
-        view._form_value = Mock(return_value=form)
-        view._last_result = settlement
-        view.calculate = Mock(return_value=True)
+        view.controller = Mock()
         view.load_credit_note = Mock()
-        view.on_credit_note_created = Mock()
 
         with patch(
-            "rechnungshelfer.gui.grain_settlement_view.messagebox.askyesno",
-            return_value=False,
+            "rechnungshelfer.gui.grain_settlement_view.messagebox.showerror"
         ):
-            transferred = view.create_credit_note()
+            saved = view.save_credit_note()
 
-        self.assertFalse(transferred)
+        self.assertFalse(saved)
+        view.controller.save_grain_credit_note.assert_not_called()
         view.load_credit_note.assert_not_called()
-        view.on_credit_note_created.assert_not_called()
+
+    def test_save_hint_lists_missing_fields_for_manual_settlement(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.credit_note = None
+        view._save_issues = Mock(return_value=("Gutschriftnummer fehlt.",))
+
+        self.assertEqual(
+            view._credit_note_save_hint(),
+            "Zum Speichern fehlt noch:\n- Gutschriftnummer fehlt.",
+        )
+
+    def test_save_button_is_disabled_while_required_fields_are_missing(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.save_credit_note_button = Mock()
+        view._save_issues = Mock(return_value=("Gutschriftnummer fehlt.",))
+
+        view._refresh_save_button()
+
+        self.assertTrue(
+            any(
+                call.kwargs.get("state") == "disabled"
+                for call in view.save_credit_note_button.configure.call_args_list
+            )
+        )
 
 
 class GrainRuleSetSelectionTests(unittest.TestCase):

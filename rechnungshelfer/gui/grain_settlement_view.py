@@ -8,8 +8,6 @@ from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 import sqlite3
 from tkinter import messagebox
-from typing import Callable
-
 import customtkinter as ctk
 
 from rechnungshelfer.application.grain_credit_note_mapper import (
@@ -79,11 +77,9 @@ class GrainSettlementView(ctk.CTkFrame):
         self,
         parent,
         controller,
-        on_credit_note_created: Callable | None = None,
     ):
         super().__init__(parent, fg_color=APP_BG, corner_radius=0)
         self.controller = controller
-        self.on_credit_note_created = on_credit_note_created
         self.document = controller.create_empty_invoice(
             DocumentType.SELF_BILLED_INVOICE
         )
@@ -315,13 +311,13 @@ class GrainSettlementView(ctk.CTkFrame):
             value.grid(row=row, column=1, sticky="e", padx=14, pady=(8, 3))
             self.total_rows[key] = value
 
-        self.create_button = button(
+        self.save_credit_note_button = button(
             totals,
-            "Getreidegutschrift erstellen",
-            self.create_credit_note,
+            "Getreidegutschrift speichern",
+            self.save_credit_note,
             primary=True,
         )
-        self.create_button.grid(
+        self.save_credit_note_button.grid(
             row=4,
             column=0,
             columnspan=2,
@@ -329,30 +325,15 @@ class GrainSettlementView(ctk.CTkFrame):
             padx=14,
             pady=(0, 8),
         )
-        HoverTooltip(self.create_button, self._credit_note_creation_hint)
-        self._refresh_create_button()
-
-        self.save_credit_note_button = button(
-            totals,
-            "Getreidegutschrift speichern",
-            self.save_credit_note,
-        )
-        self.save_credit_note_button.grid(
-            row=5,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-            padx=14,
-            pady=(0, 8),
-        )
-        set_button_enabled(self.save_credit_note_button, False)
+        HoverTooltip(self.save_credit_note_button, self._credit_note_save_hint)
+        self._refresh_save_button()
 
         button(
             totals,
             "Gespeicherte öffnen",
             self.open_saved_credit_notes,
         ).grid(
-            row=6,
+            row=5,
             column=0,
             columnspan=2,
             sticky="ew",
@@ -361,8 +342,8 @@ class GrainSettlementView(ctk.CTkFrame):
         )
 
         output_buttons = (
-            ("PDF erstellen", 7),
-            ("HTML erstellen", 8),
+            ("PDF erstellen", 6),
+            ("HTML erstellen", 7),
         )
         for label, row in output_buttons:
             output_button = button(totals, label, lambda: None)
@@ -372,46 +353,9 @@ class GrainSettlementView(ctk.CTkFrame):
                 columnspan=2,
                 sticky="ew",
                 padx=14,
-                pady=(0, 8 if row < 8 else 14),
+                pady=(0, 8 if row < 7 else 14),
             )
             set_button_enabled(output_button, False)
-
-    def create_credit_note(self) -> bool:
-        """Erzeugt aus der geprüften Abrechnung eine bearbeitbare Gutschrift."""
-
-        if not self.calculate():
-            return False
-
-        try:
-            form = self._form_value()
-            deliveries, scheme = build_preview_inputs(form)
-            vat_rate = parse_vat_rate(form.vat_rate)
-            credit_note = grain_credit_note_from_calculation(
-                self.document,
-                deliveries,
-                self._last_result,
-                vat_rate,
-                scheme,
-            )
-        except (GrainValidationError, ValueError, ArithmeticError) as exc:
-            messagebox.showerror(
-                "Gutschrift erstellen",
-                str(exc),
-                parent=self,
-            )
-            return False
-
-        if not messagebox.askyesno(
-            "Getreidegutschrift erstellen",
-            "Die berechneten Werte werden als strukturierte Getreidegutschrift "
-            "übernommen und nicht automatisch gespeichert. Fortfahren?",
-            parent=self,
-        ):
-            return False
-        self.load_credit_note(credit_note, preserve_document=True)
-        if self.on_credit_note_created is not None:
-            self.on_credit_note_created(credit_note)
-        return True
 
     def load_credit_note(
         self,
@@ -529,9 +473,25 @@ class GrainSettlementView(ctk.CTkFrame):
             ),
         )
 
+    def _credit_note_for_save(self):
+        if self.credit_note is not None:
+            return self._current_credit_note()
+        if not self.calculate():
+            raise ValueError("Die Getreideabrechnung konnte nicht berechnet werden.")
+        form = self._form_value()
+        deliveries, scheme = build_preview_inputs(form)
+        vat_rate = parse_vat_rate(form.vat_rate)
+        return grain_credit_note_from_calculation(
+            self.document,
+            deliveries,
+            self._last_result,
+            vat_rate,
+            scheme,
+        )
+
     def save_credit_note(self):
         try:
-            current = self._current_credit_note()
+            current = self._credit_note_for_save()
             previous = self._persisted_credit_note_number
             target_exists = self.controller.grain_credit_note_exists(
                 current.credit_note_number
@@ -558,8 +518,11 @@ class GrainSettlementView(ctk.CTkFrame):
                 parent=self,
             )
             return False
-        self.credit_note = current
-        self._persisted_credit_note_number = current.credit_note_number
+        self.load_credit_note(
+            current,
+            preserve_document=True,
+            persisted=True,
+        )
         messagebox.showinfo(
             "Gespeichert",
             f"Getreidegutschrift {current.credit_note_number} wurde gespeichert.",
@@ -582,17 +545,11 @@ class GrainSettlementView(ctk.CTkFrame):
             self.example_button,
         ):
             set_button_enabled(control, not enabled)
-        self.create_button.configure(
-            text=(
-                "Getreidegutschrift bearbeiten"
-                if enabled
-                else "Getreidegutschrift erstellen"
-            ),
-            command=self.edit_credit_note if enabled else self.create_credit_note,
-        )
-        self._refresh_create_button()
-        set_button_enabled(self.save_credit_note_button, enabled)
-        self.edit_credit_note_button.pack_forget()
+        if enabled:
+            self.edit_credit_note_button.pack(side="left", padx=(0, 8))
+        else:
+            self.edit_credit_note_button.pack_forget()
+        self._refresh_save_button()
 
     def _render_credit_note_deliveries(self, credit_note):
         clear_frame(self.delivery_host)
@@ -722,7 +679,7 @@ class GrainSettlementView(ctk.CTkFrame):
         self.calculate()
 
     def _on_document_field_change(self, _model, _field, _value):
-        self._refresh_create_button()
+        self._refresh_save_button()
 
     def reload_own_company(self):
         self.document.buyer = self.controller.load_own_company_buyer()
@@ -778,7 +735,7 @@ class GrainSettlementView(ctk.CTkFrame):
             self._render_deliveries()
             self._clear_totals()
             self.status_label.configure(text="")
-            self._refresh_create_button()
+            self._refresh_save_button()
 
     def edit_rules(self):
         RuleEditorDialog(
@@ -866,7 +823,7 @@ class GrainSettlementView(ctk.CTkFrame):
             self.status_label.configure(text="Eingaben prüfen")
             if show_error:
                 messagebox.showerror("Getreideabrechnung", str(exc), parent=self)
-            self._refresh_create_button()
+            self._refresh_save_button()
             return False
         self._last_result = result
         self._render_deliveries(result)
@@ -874,7 +831,7 @@ class GrainSettlementView(ctk.CTkFrame):
         self.status_label.configure(
             text=f"{len(result.delivery_results)} Lieferungen berechnet"
         )
-        self._refresh_create_button()
+        self._refresh_save_button()
         return True
 
     def _restore_calculation(
@@ -886,13 +843,13 @@ class GrainSettlementView(ctk.CTkFrame):
         if result is None:
             self._clear_totals()
             self.status_label.configure(text="")
-            self._refresh_create_button()
+            self._refresh_save_button()
             return
         self._show_totals(result)
         self.status_label.configure(
             text=f"{len(result.delivery_results)} Lieferungen berechnet"
         )
-        self._refresh_create_button()
+        self._refresh_save_button()
 
     def _form_value(self) -> GrainSettlementForm:
         features, rules = self._current_rule_set()
@@ -1187,14 +1144,14 @@ class GrainSettlementView(ctk.CTkFrame):
 
     def _refresh_tax_totals(self):
         if self._last_result is None:
-            self._refresh_create_button()
+            self._refresh_save_button()
             return
         try:
             vat_rate = parse_vat_rate(self.vat_variable.get())
         except GrainValidationError:
             self.total_rows["tax_amount"].configure(text="—")
             self.total_rows["payable_amount"].configure(text="—")
-            self._refresh_create_button()
+            self._refresh_save_button()
             return
         tax_amount = (
             self._last_result.net_amount * vat_rate / Decimal("100")
@@ -1206,14 +1163,11 @@ class GrainSettlementView(ctk.CTkFrame):
         self.total_rows["payable_amount"].configure(
             text=f"{format_de(payable_amount)} EUR"
         )
-        self._refresh_create_button()
+        self._refresh_save_button()
 
-    def _creation_issues(self):
+    def _save_issues(self):
         if self.credit_note is not None:
-            return (
-                "Die Getreidegutschrift wurde bereits erstellt. "
-                "Änderungen sind über 'Getreidegutschrift bearbeiten' möglich.",
-            )
+            return ()
         return grain_credit_note_creation_issues(
             self.document,
             self.deliveries,
@@ -1221,18 +1175,18 @@ class GrainSettlementView(ctk.CTkFrame):
             self.vat_variable.get(),
         )
 
-    def _credit_note_creation_hint(self):
-        issues = self._creation_issues()
+    def _credit_note_save_hint(self):
+        issues = self._save_issues()
         if not issues:
             return ""
-        return "Zum Erstellen fehlt noch:\n- " + "\n- ".join(issues)
+        return "Zum Speichern fehlt noch:\n- " + "\n- ".join(issues)
 
-    def _refresh_create_button(self):
-        if not hasattr(self, "create_button"):
+    def _refresh_save_button(self):
+        if not hasattr(self, "save_credit_note_button"):
             return
         set_button_enabled(
-            self.create_button,
-            self.credit_note is not None or not self._creation_issues(),
+            self.save_credit_note_button,
+            not self._save_issues(),
             primary=True,
         )
 
