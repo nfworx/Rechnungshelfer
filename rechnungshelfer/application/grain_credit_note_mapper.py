@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from rechnungshelfer.domain.grain_credit_note import (
     GrainCreditNote,
+    GrainCreditNoteBuyer,
     GrainCreditNoteDelivery,
     GrainCreditNoteDetail,
     GrainCreditNotePayment,
@@ -94,6 +95,7 @@ def grain_credit_note_from_review(review) -> GrainCreditNote:
             payment_means_code="58",
             payment_terms=review.payment_terms.value.strip(),
         ),
+        buyer=review.buyer,
     )
 
 
@@ -184,6 +186,7 @@ def grain_credit_note_from_calculation(
         credit_note_date=_date(document.info.invoice_date),
         supplier=_supplier_from_document(document),
         payment=_payment_from_document(document),
+        buyer=_buyer_from_document(document),
         deliveries=tuple(result_deliveries),
         vat_rate=rate,
         net_amount=net,
@@ -233,6 +236,25 @@ def _payment_from_document(document):
         account_holder=payment.account_holder.strip(),
         payment_means_code=payment.payment_means_code.strip(),
         payment_terms=payment.payment_terms.strip(),
+    )
+
+
+def _buyer_from_document(document):
+    buyer = document.buyer
+    return GrainCreditNoteBuyer(
+        name=buyer.name.strip(),
+        street=buyer.street.strip(),
+        postcode=buyer.postcode.strip(),
+        city=buyer.city.strip(),
+        country=buyer.country.strip(),
+        leitweg_id=buyer.leitweg_id.strip(),
+        email=buyer.email.strip(),
+        contact_name=buyer.contact_name.strip(),
+        customer_number=buyer.customer_number.strip(),
+        phone=buyer.phone.strip(),
+        vat=buyer.vat.strip(),
+        tax_number=buyer.tax_number.strip(),
+        registry_number=buyer.registry_number.strip(),
     )
 
 

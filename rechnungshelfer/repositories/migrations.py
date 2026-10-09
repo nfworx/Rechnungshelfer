@@ -11,7 +11,7 @@ from pathlib import Path
 from .invoice_record import invoice_summary_from_data
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 Migration = Callable[[sqlite3.Connection], None]
 
 
@@ -434,12 +434,37 @@ def _migration_4_to_5(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_5_to_6(connection: sqlite3.Connection) -> None:
+    """Speichert ausschließlich bestätigte strukturierte Getreidebelege."""
+
+    connection.execute(
+        """
+        CREATE TABLE grain_credit_notes (
+            credit_note_number TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            credit_note_date TEXT NOT NULL,
+            supplier_number TEXT NOT NULL DEFAULT '',
+            supplier_name TEXT NOT NULL DEFAULT '',
+            credit_amount TEXT NOT NULL DEFAULT '0.00',
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_grain_credit_notes_updated
+        ON grain_credit_notes (updated_at DESC)
+        """
+    )
+
+
 MIGRATIONS: dict[int, Migration] = {
     0: _migration_0_to_1,
     1: _migration_1_to_2,
     2: _migration_2_to_3,
     3: _migration_3_to_4,
     4: _migration_4_to_5,
+    5: _migration_5_to_6,
 }
 
 

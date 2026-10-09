@@ -9,6 +9,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from rechnungshelfer.application.grain_credit_note_mapper import (
     grain_credit_note_from_review,
 )
+from rechnungshelfer.domain.grain_credit_note import GrainCreditNoteBuyer
 from rechnungshelfer.services.format_service import parse_de
 
 
@@ -76,6 +77,7 @@ class SettlementReview:
     bic: ReviewField = ReviewField("")
     account_holder: ReviewField = ReviewField("")
     payment_terms: ReviewField = ReviewField("")
+    buyer: GrainCreditNoteBuyer = GrainCreditNoteBuyer()
 
 
 @dataclass(frozen=True)
@@ -153,6 +155,7 @@ class SettlementReviewService:
             bic=self._field(draft.bic),
             account_holder=self._field(draft.account_holder),
             payment_terms=self._field(draft.payment_terms),
+            buyer=GrainCreditNoteBuyer(),
         )
 
     def create_review_from_credit_note(self, credit_note) -> SettlementReview:
@@ -212,6 +215,7 @@ class SettlementReviewService:
             bic=field(credit_note.payment.bic),
             account_holder=field(credit_note.payment.account_holder),
             payment_terms=field(credit_note.payment.payment_terms),
+            buyer=credit_note.buyer,
         )
 
     def validate(self, review: SettlementReview) -> SettlementReviewResult:

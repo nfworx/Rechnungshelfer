@@ -417,12 +417,14 @@ class InvoiceGUI:
         is_grain = self.active_workspace == "grain"
         is_self_billed = self.active_workspace == "self_billed"
         document_state = "disabled" if is_grain else "normal"
-        for index in (0, 2, 3, 5):
+        self.file_menu.entryconfigure(0, state="normal")
+        for index in (2, 3):
             self.file_menu.entryconfigure(index, state=document_state)
+        self.file_menu.entryconfigure(5, state="normal")
         self.file_menu.entryconfigure(
             5,
             label=(
-                "Speichern"
+                "Getreidegutschrift speichern"
                 if is_grain
                 else f"{'Gutschrift' if is_self_billed else 'Rechnung'} speichern"
             ),
@@ -460,6 +462,9 @@ class InvoiceGUI:
         self.show_form()
 
     def save_invoice(self):
+        if getattr(self, "active_workspace", "invoice") == "grain":
+            self.grain_view.save_credit_note()
+            return
         invoice_number = self.invoice.info.invoice_number
 
         if not invoice_number or not str(invoice_number).strip():
@@ -583,6 +588,9 @@ class InvoiceGUI:
             )
 
     def load_invoice_from_list(self):
+        if getattr(self, "active_workspace", "invoice") == "grain":
+            self.grain_view.open_saved_credit_notes()
+            return
         dialog = InvoiceLoadDialog(
             self.root,
             self.controller,

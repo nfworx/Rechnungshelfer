@@ -91,6 +91,23 @@ class GrainCreditNotePayment:
 
 
 @dataclass(frozen=True)
+class GrainCreditNoteBuyer:
+    name: str = ""
+    street: str = ""
+    postcode: str = ""
+    city: str = ""
+    country: str = "DE"
+    leitweg_id: str = ""
+    email: str = ""
+    contact_name: str = ""
+    customer_number: str = ""
+    phone: str = ""
+    vat: str = ""
+    tax_number: str = ""
+    registry_number: str = ""
+
+
+@dataclass(frozen=True)
 class GrainCreditNote:
     credit_note_number: str
     credit_note_date: date
@@ -103,6 +120,7 @@ class GrainCreditNote:
     credit_amount: Decimal
     supplier: GrainCreditNoteSupplier = GrainCreditNoteSupplier()
     payment: GrainCreditNotePayment = GrainCreditNotePayment()
+    buyer: GrainCreditNoteBuyer = GrainCreditNoteBuyer()
 
     @property
     def supplier_number(self) -> str:
@@ -133,6 +151,7 @@ __all__ = [
     "GrainCreditNote",
     "GrainCreditNoteDelivery",
     "GrainCreditNoteDetail",
+    "GrainCreditNoteBuyer",
     "GrainCreditNotePayment",
     "GrainCreditNoteSupplier",
 ]

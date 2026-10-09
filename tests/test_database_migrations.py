@@ -69,6 +69,17 @@ class DatabaseMigrationTests(unittest.TestCase):
         finally:
             connection.close()
 
+    @staticmethod
+    def _create_version_five_database(path: Path) -> None:
+        connection = sqlite3.connect(path)
+        try:
+            for version in range(5):
+                MIGRATIONS[version](connection)
+            connection.execute("PRAGMA user_version=5")
+            connection.commit()
+        finally:
+            connection.close()
+
     def test_fresh_database_runs_all_migrations_without_backup(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "fresh.db"
@@ -94,6 +105,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                     "business_partner_roles",
                     "grain_scheme_drafts",
                     "grain_scheme_versions",
+                    "grain_credit_notes",
                 }
                 <= tables
             )
@@ -281,6 +293,92 @@ class DatabaseMigrationTests(unittest.TestCase):
         self.assertEqual(row[:3], (1, "3000", 1))
         self.assertEqual(json.loads(row[3])["buyer_reference"], "3000")
 
+    def test_version_six_adds_structured_grain_credit_notes_table(self):
+        connection = sqlite3.connect(":memory:")
+        try:
+            for version in range(5):
+                MIGRATIONS[version](connection)
+
+            MIGRATIONS[5](connection)
+
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(grain_credit_notes)"
+                ).fetchall()
+            }
+        finally:
+            connection.close()
+
+        self.assertEqual(
+            columns,
+            {
+                "credit_note_number",
+                "data",
+                "credit_note_date",
+                "supplier_number",
+                "supplier_name",
+                "credit_amount",
+                "updated_at",
+            },
+        )
+
+    def test_version_five_is_backed_up_before_grain_credit_note_migration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "version-five.db"
+            self._create_version_five_database(path)
+
+            database = Database(path)
+            try:
+                version = database.connection.execute(
+                    "PRAGMA user_version"
+                ).fetchone()[0]
+                table = database.connection.execute(
+                    """
+                    SELECT name FROM sqlite_master
+                    WHERE type = 'table' AND name = 'grain_credit_notes'
+                    """
+                ).fetchone()
+            finally:
+                database.close()
+
+            self.assertEqual(version, 6)
+            self.assertEqual(table, ("grain_credit_notes",))
+            self.assertEqual(
+                len(list(Path(tmp).glob("version-five.backup-v5-*.db"))),
+                1,
+            )
+
+    def test_failed_grain_credit_note_migration_rolls_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "broken-grain.db"
+            self._create_version_five_database(path)
+            connection = sqlite3.connect(path)
+
+            def failing_migration(active_connection):
+                active_connection.execute(
+                    "CREATE TABLE grain_credit_notes (id INTEGER)"
+                )
+                raise RuntimeError("simulierter Fehler")
+
+            try:
+                with self.assertRaises(DatabaseMigrationError):
+                    migrate_database(connection, migrations={5: failing_migration})
+                version = connection.execute(
+                    "PRAGMA user_version"
+                ).fetchone()[0]
+                table = connection.execute(
+                    """
+                    SELECT name FROM sqlite_master
+                    WHERE type = 'table' AND name = 'grain_credit_notes'
+                    """
+                ).fetchone()
+            finally:
+                connection.close()
+
+            self.assertEqual(version, 5)
+            self.assertIsNone(table)
+
     def test_unknown_prefix_aborts_migration_without_data_loss(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "unknown-prefix.db"
@@ -395,6 +493,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                             2: MIGRATIONS[2],
                             3: MIGRATIONS[3],
                             4: MIGRATIONS[4],
+                            5: MIGRATIONS[5],
                         },
                     )
 

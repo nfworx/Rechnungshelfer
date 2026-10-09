@@ -314,6 +314,7 @@ class SettlementReviewDialog:
             bic=updated("bic", self.review.bic),
             account_holder=updated("account_holder", self.review.account_holder),
             payment_terms=updated("payment_terms", self.review.payment_terms),
+            buyer=self.review.buyer,
         )
 
     def validate(self):

@@ -53,6 +53,7 @@ from .grain_settlement_dialogs import (
     require_features_used_by_active_rules,
 )
 from .settlement_review_dialog import SettlementReviewDialog
+from .grain_credit_note_load_dialog import GrainCreditNoteLoadDialog
 from .grain_rule_presets import grain_rule_preset
 from .business_partner_dialog import BusinessPartnerListDialog
 from .party_card import PartyCard
@@ -98,6 +99,7 @@ class GrainSettlementView(ctk.CTkFrame):
         self._next_delivery_number = 1
         self._last_result: SettlementBatchResult | None = None
         self.credit_note = None
+        self._persisted_credit_note_number = None
         self.vat_variable = ctk.StringVar(master=self, value="— auswählen —")
 
         self.grid_columnconfigure(0, weight=4)
@@ -330,9 +332,37 @@ class GrainSettlementView(ctk.CTkFrame):
         HoverTooltip(self.create_button, self._credit_note_creation_hint)
         self._refresh_create_button()
 
+        self.save_credit_note_button = button(
+            totals,
+            "Getreidegutschrift speichern",
+            self.save_credit_note,
+        )
+        self.save_credit_note_button.grid(
+            row=5,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=14,
+            pady=(0, 8),
+        )
+        set_button_enabled(self.save_credit_note_button, False)
+
+        button(
+            totals,
+            "Gespeicherte öffnen",
+            self.open_saved_credit_notes,
+        ).grid(
+            row=6,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=14,
+            pady=(0, 8),
+        )
+
         output_buttons = (
-            ("PDF erstellen", 5),
-            ("HTML erstellen", 6),
+            ("PDF erstellen", 7),
+            ("HTML erstellen", 8),
         )
         for label, row in output_buttons:
             output_button = button(totals, label, lambda: None)
@@ -342,7 +372,7 @@ class GrainSettlementView(ctk.CTkFrame):
                 columnspan=2,
                 sticky="ew",
                 padx=14,
-                pady=(0, 8 if row < 6 else 14),
+                pady=(0, 8 if row < 8 else 14),
             )
             set_button_enabled(output_button, False)
 
@@ -383,15 +413,36 @@ class GrainSettlementView(ctk.CTkFrame):
             self.on_credit_note_created(credit_note)
         return True
 
-    def load_credit_note(self, credit_note, *, preserve_document=False):
+    def load_credit_note(
+        self,
+        credit_note,
+        *,
+        preserve_document=False,
+        persisted=False,
+    ):
         """Öffnet einen bestätigten Endbeleg im Getreide-Arbeitsbereich."""
 
-        self.credit_note = credit_note
         self._last_result = None
         if not preserve_document:
             self.document = self.controller.create_empty_invoice(
                 DocumentType.SELF_BILLED_INVOICE
             )
+        if not credit_note.buyer.name.strip():
+            credit_note = replace(
+                credit_note,
+                buyer=replace(
+                    credit_note.buyer,
+                    **{
+                        field: str(getattr(self.document.buyer, field)).strip()
+                        for field in credit_note.buyer.__dataclass_fields__
+                    },
+                ),
+            )
+        self.credit_note = credit_note
+        if persisted:
+            self._persisted_credit_note_number = credit_note.credit_note_number
+        elif not preserve_document:
+            self._persisted_credit_note_number = None
         self.document.info.invoice_number = credit_note.credit_note_number
         self.document.info.invoice_date = credit_note.credit_note_date.strftime(
             "%d.%m.%Y"
@@ -400,6 +451,8 @@ class GrainSettlementView(ctk.CTkFrame):
             setattr(self.document.seller, field, getattr(credit_note.supplier, field))
         for field in credit_note.payment.__dataclass_fields__:
             setattr(self.document.payment, field, getattr(credit_note.payment, field))
+        for field in credit_note.buyer.__dataclass_fields__:
+            setattr(self.document.buyer, field, getattr(credit_note.buyer, field))
         self.vat_variable.set(f"{str(credit_note.vat_rate).replace('.', ',')} %")
         self._render_top_cards()
         self._set_credit_note_mode(True)
@@ -413,28 +466,7 @@ class GrainSettlementView(ctk.CTkFrame):
         if self.credit_note is None:
             return
         try:
-            current = replace(
-                self.credit_note,
-                credit_note_number=self.document.info.invoice_number.strip(),
-                credit_note_date=datetime.strptime(
-                    self.document.info.invoice_date.strip(),
-                    "%d.%m.%Y",
-                ).date(),
-                supplier=replace(
-                    self.credit_note.supplier,
-                    **{
-                        field: str(getattr(self.document.seller, field)).strip()
-                        for field in self.credit_note.supplier.__dataclass_fields__
-                    },
-                ),
-                payment=replace(
-                    self.credit_note.payment,
-                    **{
-                        field: str(getattr(self.document.payment, field)).strip()
-                        for field in self.credit_note.payment.__dataclass_fields__
-                    },
-                ),
-            )
+            current = self._current_credit_note()
         except ValueError:
             messagebox.showerror(
                 "Getreidegutschrift bearbeiten",
@@ -449,6 +481,85 @@ class GrainSettlementView(ctk.CTkFrame):
             None,
             lambda note: self.load_credit_note(note, preserve_document=True),
             review=review,
+        ).open()
+
+    def _current_credit_note(self):
+        if self.credit_note is None:
+            raise ValueError("Es wurde noch keine Getreidegutschrift erstellt.")
+        return replace(
+            self.credit_note,
+            credit_note_number=self.document.info.invoice_number.strip(),
+            credit_note_date=datetime.strptime(
+                self.document.info.invoice_date.strip(),
+                "%d.%m.%Y",
+            ).date(),
+            supplier=replace(
+                self.credit_note.supplier,
+                **{
+                    field: str(getattr(self.document.seller, field)).strip()
+                    for field in self.credit_note.supplier.__dataclass_fields__
+                },
+            ),
+            payment=replace(
+                self.credit_note.payment,
+                **{
+                    field: str(getattr(self.document.payment, field)).strip()
+                    for field in self.credit_note.payment.__dataclass_fields__
+                },
+            ),
+            buyer=replace(
+                self.credit_note.buyer,
+                **{
+                    field: str(getattr(self.document.buyer, field)).strip()
+                    for field in self.credit_note.buyer.__dataclass_fields__
+                },
+            ),
+        )
+
+    def save_credit_note(self):
+        try:
+            current = self._current_credit_note()
+            previous = self._persisted_credit_note_number
+            target_exists = self.controller.grain_credit_note_exists(
+                current.credit_note_number
+            )
+            same_record = previous == current.credit_note_number
+            overwrite = bool(same_record)
+            if target_exists and not same_record:
+                overwrite = messagebox.askyesno(
+                    "Getreidegutschrift überschreiben",
+                    f"Getreidegutschrift {current.credit_note_number} ist bereits "
+                    "gespeichert. Soll sie überschrieben werden?",
+                    parent=self,
+                )
+                if not overwrite:
+                    return False
+            self.controller.save_grain_credit_note(
+                current,
+                overwrite=overwrite,
+                previous_number=previous,
+            )
+        except (ValueError, ArithmeticError, sqlite3.Error) as exc:
+            messagebox.showerror(
+                "Getreidegutschrift speichern",
+                str(exc),
+                parent=self,
+            )
+            return False
+        self.credit_note = current
+        self._persisted_credit_note_number = current.credit_note_number
+        messagebox.showinfo(
+            "Gespeichert",
+            f"Getreidegutschrift {current.credit_note_number} wurde gespeichert.",
+            parent=self,
+        )
+        return True
+
+    def open_saved_credit_notes(self):
+        GrainCreditNoteLoadDialog(
+            self,
+            self.controller,
+            lambda note: self.load_credit_note(note, persisted=True),
         ).open()
 
     def _set_credit_note_mode(self, enabled):
@@ -468,6 +579,7 @@ class GrainSettlementView(ctk.CTkFrame):
             command=self.edit_credit_note if enabled else self.create_credit_note,
         )
         self._refresh_create_button()
+        set_button_enabled(self.save_credit_note_button, enabled)
         self.edit_credit_note_button.pack_forget()
 
     def _render_credit_note_deliveries(self, credit_note):
@@ -1126,6 +1238,7 @@ class GrainSettlementView(ctk.CTkFrame):
 
     def reset_example(self):
         self.credit_note = None
+        self._persisted_credit_note_number = None
         self._set_credit_note_mode(False)
         self.document = self.controller.create_empty_invoice(
             DocumentType.SELF_BILLED_INVOICE

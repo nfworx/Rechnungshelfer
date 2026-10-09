@@ -459,18 +459,41 @@ class GrainWorkspaceNavigationTests(unittest.TestCase):
 
         gui._refresh_application_menu()
 
-        for index in (0, 2, 3):
+        for index in (2, 3):
             gui.file_menu.entryconfigure.assert_any_call(
                 index,
                 state="disabled",
             )
         gui.file_menu.entryconfigure.assert_any_call(
-            5,
-            state="disabled",
+            0,
+            state="normal",
         )
-        gui.file_menu.entryconfigure.assert_any_call(5, label="Speichern")
+        gui.file_menu.entryconfigure.assert_any_call(
+            5,
+            state="normal",
+        )
+        gui.file_menu.entryconfigure.assert_any_call(
+            5,
+            label="Getreidegutschrift speichern",
+        )
         gui.master_data_menu.entryconfigure.assert_not_called()
         gui.workspace_variable.set.assert_called_once_with("grain")
+
+    def test_file_save_routes_to_grain_workspace(self):
+        gui = self._gui()
+        gui.active_workspace = "grain"
+
+        gui.save_invoice()
+
+        gui.grain_view.save_credit_note.assert_called_once_with()
+
+    def test_file_load_routes_to_grain_workspace(self):
+        gui = self._gui()
+        gui.active_workspace = "grain"
+
+        gui.load_invoice_from_list()
+
+        gui.grain_view.open_saved_credit_notes.assert_called_once_with()
 
     def test_supplier_reference_is_applied_to_self_billed_invoice(self):
         gui = InvoiceGUI.__new__(InvoiceGUI)
@@ -506,6 +529,46 @@ class GrainWorkspaceNavigationTests(unittest.TestCase):
 
 
 class GrainCreditNoteTransferTests(unittest.TestCase):
+    def test_new_structured_credit_note_is_saved_explicitly(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        note = Mock(credit_note_number="91001")
+        view.credit_note = note
+        view._persisted_credit_note_number = None
+        view._current_credit_note = Mock(return_value=note)
+        view.controller = Mock()
+        view.controller.grain_credit_note_exists.return_value = False
+
+        with patch(
+            "rechnungshelfer.gui.grain_settlement_view.messagebox.showinfo"
+        ):
+            saved = view.save_credit_note()
+
+        self.assertTrue(saved)
+        view.controller.save_grain_credit_note.assert_called_once_with(
+            note,
+            overwrite=False,
+            previous_number=None,
+        )
+        self.assertEqual(view._persisted_credit_note_number, "91001")
+
+    def test_existing_imported_number_requires_overwrite_confirmation(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        note = Mock(credit_note_number="91001")
+        view.credit_note = note
+        view._persisted_credit_note_number = None
+        view._current_credit_note = Mock(return_value=note)
+        view.controller = Mock()
+        view.controller.grain_credit_note_exists.return_value = True
+
+        with patch(
+            "rechnungshelfer.gui.grain_settlement_view.messagebox.askyesno",
+            return_value=False,
+        ):
+            saved = view.save_credit_note()
+
+        self.assertFalse(saved)
+        view.controller.save_grain_credit_note.assert_not_called()
+
     def test_created_credit_note_uses_active_edit_action(self):
         view = GrainSettlementView.__new__(GrainSettlementView)
         view.add_button = Mock()
@@ -513,6 +576,7 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
         view.rule_button = Mock()
         view.example_button = Mock()
         view.create_button = Mock()
+        view.save_credit_note_button = Mock()
         view.edit_credit_note_button = Mock()
         view.credit_note = object()
 

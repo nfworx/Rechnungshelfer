@@ -4,6 +4,9 @@ from rechnungshelfer.application.invoice_service import InvoiceApplicationServic
 from rechnungshelfer.application.grain_scheme_service import (
     GrainSchemeApplicationService,
 )
+from rechnungshelfer.application.grain_credit_note_service import (
+    GrainCreditNoteApplicationService,
+)
 from rechnungshelfer.application.party_service import PartyApplicationService
 from rechnungshelfer.application.settlement_review_service import (
     SettlementReviewService,
@@ -25,6 +28,9 @@ from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
 from rechnungshelfer.repositories.grain_scheme_repository import (
     GrainSchemeRepository,
 )
+from rechnungshelfer.repositories.grain_credit_note_repository import (
+    GrainCreditNoteRepository,
+)
 from rechnungshelfer.repositories.master_data_repository import MasterDataRepository
 from rechnungshelfer.services.export_service import InvoiceExportService
 from rechnungshelfer.services.kosit_validation_service import KositValidator
@@ -39,11 +45,19 @@ class InvoiceController:
         )
         self.master_data_repository = MasterDataRepository()
         self.grain_scheme_repo = GrainSchemeRepository(self.database.connection)
+        self.grain_credit_note_repo = GrainCreditNoteRepository(
+            self.database.connection
+        )
         self.invoice_factory = InvoiceFactory()
         self.invoice_service = self._create_invoice_service()
         self.party_service = self._create_party_service()
         self.export_service = self._create_export_service()
         self.settlement_review_service = SettlementReviewService()
+        self.grain_credit_note_service = GrainCreditNoteApplicationService(
+            database=self.database,
+            repository=self.grain_credit_note_repo,
+            review_service=self.settlement_review_service,
+        )
         self.grain_scheme_service = GrainSchemeApplicationService(
             database=self.database,
             repository=self.grain_scheme_repo,
@@ -140,6 +154,28 @@ class InvoiceController:
 
     def create_grain_credit_note_from_review(self, review):
         return self.settlement_review_service.create_credit_note(review)
+
+    def save_grain_credit_note(
+        self,
+        credit_note,
+        *,
+        overwrite=False,
+        previous_number=None,
+    ):
+        return self.grain_credit_note_service.save(
+            credit_note,
+            overwrite=overwrite,
+            previous_number=previous_number,
+        )
+
+    def grain_credit_note_exists(self, credit_note_number):
+        return self.grain_credit_note_service.exists(credit_note_number)
+
+    def load_grain_credit_note(self, credit_note_number):
+        return self.grain_credit_note_service.load(credit_note_number)
+
+    def list_grain_credit_note_summaries(self):
+        return self.grain_credit_note_service.list_summaries()
 
     # Getreide-Regelwerke
     def load_grain_scheme_drafts(self, harvest_year: int):
