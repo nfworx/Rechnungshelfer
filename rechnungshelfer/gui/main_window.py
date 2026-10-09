@@ -53,6 +53,7 @@ class InvoiceGUI:
             self.root,
             self.controller,
             on_invoice_loaded=self._on_invoice_loaded,
+            on_grain_credit_note_loaded=self._open_grain_credit_note,
         )
         self.export_workflow = ExportWorkflow(
             self.root,
@@ -194,7 +195,7 @@ class InvoiceGUI:
         self.grain_view = GrainSettlementView(
             self.body,
             self.controller,
-            on_invoice_created=self._open_grain_credit_note,
+            on_credit_note_created=None,
         )
         self.grain_view.grid(
             row=0,
@@ -396,9 +397,9 @@ class InvoiceGUI:
         self.root.title(f"{APP_NAME} {APP_VERSION} - Getreideabrechnung")
         self._refresh_application_menu()
 
-    def _open_grain_credit_note(self, invoice):
-        self.invoice = invoice
-        self.show_form()
+    def _open_grain_credit_note(self, credit_note):
+        self.grain_view.load_credit_note(credit_note)
+        self._open_grain_workspace()
 
     def _activate_invoice_workspace(self):
         self.active_workspace = (

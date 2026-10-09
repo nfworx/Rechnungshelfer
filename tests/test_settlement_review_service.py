@@ -2,14 +2,9 @@ import unittest
 from dataclasses import replace
 from decimal import Decimal
 
-from rechnungshelfer.application.settlement_invoice_mapper import (
-    create_settlement_invoice,
-)
 from rechnungshelfer.application.settlement_review_service import (
     SettlementReviewService,
 )
-from rechnungshelfer.domain.invoice_factory import InvoiceFactory
-from rechnungshelfer.domain.models import DocumentType, Seller
 from rechnungshelfer.services.settlement_credit_note_parser import (
     SettlementCreditNoteParser,
 )
@@ -31,6 +26,9 @@ class SettlementReviewServiceTests(unittest.TestCase):
         self.assertEqual(self.review.credit_note_date.value, "30.11.2025")
         self.assertEqual(self.review.deliveries[0].gross_quantity_kg.value, "2815")
         self.assertEqual(self.review.net_amount.value, "2087,53")
+        self.assertEqual(self.review.supplier_number.value, "1001")
+        self.assertEqual(self.review.supplier_name.value, "Musterhof Testlieferant")
+        self.assertEqual(self.review.iban.value, "DE89370400440532013000")
         self.assertEqual(
             self.review.credit_note_number.source,
             "Nr.: 91001 vom 30.11.2025",
@@ -146,47 +144,28 @@ class SettlementReviewServiceTests(unittest.TestCase):
         self.assertIn("credit_note_number", paths)
         self.assertIn("credit_note_date", paths)
 
-    def test_nonzero_advance_payment_blocks_takeover(self):
-        wrong_review = replace(
+    def test_nonzero_advance_payment_is_preserved_in_structured_document(self):
+        review = replace(
             self.review,
             advance_payment=self.review.advance_payment.with_value("100,00"),
             credit_amount=self.review.credit_amount.with_value("2150,36"),
         )
 
-        result = self.service.validate(wrong_review)
+        result = self.service.validate(review)
+        credit_note = self.service.create_credit_note(review)
 
-        self.assertFalse(result.is_valid)
-        self.assertIn(
-            "advance_payment",
-            {issue.field_path for issue in result.issues},
-        )
+        self.assertTrue(result.is_valid)
+        self.assertEqual(credit_note.advance_payment, Decimal("100.00"))
+        self.assertEqual(credit_note.credit_amount, Decimal("2150.36"))
 
-    def test_creates_editable_credit_note_with_one_exact_item_per_delivery(self):
-        own_company = Seller(
-            name="Testhandel GmbH",
-            street="Handelsweg 1",
-            postcode="12345",
-            city="Teststadt",
-            country="DE",
-            email="rechnung@example.de",
-            buyer_reference="BUYER-1",
-        )
-        template = InvoiceFactory().create(
-            DocumentType.SELF_BILLED_INVOICE,
-            own_company=own_company,
-        )
+    def test_creates_structured_credit_note_without_flattening_deliveries(self):
+        credit_note = self.service.create_credit_note(self.review)
 
-        invoice = self.service.create_invoice(self.review, template)
-
-        self.assertTrue(invoice.is_self_billed)
-        self.assertEqual(invoice.info.invoice_type_code, "389")
-        self.assertEqual(invoice.info.invoice_number, "91001")
-        self.assertEqual(invoice.info.invoice_date, "30.11.2025")
-        self.assertEqual(invoice.info.payment_due_date, "")
-        self.assertEqual(invoice.buyer.name, "Testhandel GmbH")
-        self.assertEqual(len(invoice.items), 4)
+        self.assertEqual(credit_note.credit_note_number, "91001")
+        self.assertEqual(credit_note.credit_note_date.isoformat(), "2025-11-30")
+        self.assertEqual(len(credit_note.deliveries), 4)
         self.assertEqual(
-            [item.net for item in invoice.items],
+            [delivery.net_amount for delivery in credit_note.deliveries],
             [
                 Decimal("402.72"),
                 Decimal("538.70"),
@@ -194,23 +173,34 @@ class SettlementReviewServiceTests(unittest.TestCase):
                 Decimal("237.35"),
             ],
         )
+        first = credit_note.deliveries[0]
+        self.assertEqual(first.ticket_number, "T1001")
+        self.assertEqual(first.gross_quantity_kg, Decimal("2815"))
+        self.assertEqual(first.settlement_quantity_kg, Decimal("2787"))
+        self.assertEqual(first.details[0].label, "Besatz")
+        self.assertEqual(first.details[0].analysis_value, Decimal("1.00"))
+        self.assertEqual(first.details[0].quantity_change_kg, Decimal("-28"))
         self.assertEqual(
-            invoice.monetarytotal.tax_exclusive_amount,
-            Decimal("2087.53"),
+            first.details[1].price_change_per_tonne,
+            Decimal("-15.50"),
         )
-        self.assertEqual(
-            invoice.monetarytotal.payable_amount,
-            Decimal("2250.36"),
-        )
-        self.assertIn("Lieferschein: T1001", invoice.items[0].description)
-        self.assertIn("Mengenänderung -28 kg", invoice.items[0].description)
-        self.assertIn("Preisänderung -15,50 EUR/t", invoice.items[0].description)
+        self.assertEqual(credit_note.net_amount, Decimal("2087.53"))
+        self.assertEqual(credit_note.credit_amount, Decimal("2250.36"))
+        self.assertEqual(credit_note.supplier.supplier_number, "1001")
+        self.assertEqual(credit_note.supplier.name, "Musterhof Testlieferant")
+        self.assertEqual(credit_note.payment.iban, "DE89370400440532013000")
 
-    def test_mapper_rejects_regular_invoice_template(self):
-        template = InvoiceFactory().create(DocumentType.INVOICE)
+    def test_structured_credit_note_can_be_edited_through_review_model(self):
+        credit_note = self.service.create_credit_note(self.review)
 
-        with self.assertRaisesRegex(ValueError, "nur in eine Gutschrift"):
-            create_settlement_invoice(template, self.review)
+        restored_review = self.service.create_review_from_credit_note(credit_note)
+
+        self.assertEqual(restored_review.credit_note_number.value, "91001")
+        self.assertEqual(restored_review.credit_note_date.value, "30.11.2025")
+        self.assertEqual(restored_review.deliveries[0].details[0].label.value, "Besatz")
+        self.assertEqual(restored_review.supplier_name.value, "Musterhof Testlieferant")
+        self.assertEqual(restored_review.payment_terms.value, "Auszahlung innerhalb von 14 Tagen.")
+        self.assertTrue(self.service.validate(restored_review).is_valid)
 
 
 if __name__ == "__main__":

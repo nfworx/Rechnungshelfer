@@ -181,7 +181,7 @@ class PdfImportGuiTests(unittest.TestCase):
             dialog.window,
             controller,
             draft,
-            dialog._apply_settlement_to_form,
+            dialog._open_grain_credit_note,
         )
         review_dialog_class.return_value.open.assert_called_once_with()
         self.assertIs(
@@ -189,16 +189,23 @@ class PdfImportGuiTests(unittest.TestCase):
             review_dialog_class.return_value,
         )
 
-    def test_settlement_takeover_closes_import_and_loads_invoice(self):
-        callback = MagicMock()
-        invoice = object()
-        dialog = PdfImportDialog(MagicMock(), MagicMock(), callback)
+    def test_settlement_takeover_opens_grain_credit_note_workspace(self):
+        invoice_callback = MagicMock()
+        grain_callback = MagicMock()
+        credit_note = object()
+        dialog = PdfImportDialog(
+            MagicMock(),
+            MagicMock(),
+            invoice_callback,
+            grain_callback,
+        )
         dialog.close = MagicMock()
 
-        dialog._apply_settlement_to_form(invoice)
+        dialog._open_grain_credit_note(credit_note)
 
         dialog.close.assert_called_once_with()
-        callback.assert_called_once_with(invoice)
+        grain_callback.assert_called_once_with(credit_note)
+        invoice_callback.assert_not_called()
 
     def test_test_document_dialog_forwards_ocr_selection(self):
         callback = MagicMock()

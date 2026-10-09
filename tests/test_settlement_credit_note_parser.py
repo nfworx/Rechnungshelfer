@@ -21,6 +21,22 @@ from rechnungshelfer.services.sample_settlement_pdf_service import (
 
 SETTLEMENT_TEXT = """SAMMEL - FINAL - GUTSCHRIFT
 Nr.: 91001 vom 30.11.2025
+Lieferantennummer: 1001
+Lieferant: Musterhof Testlieferant
+Strasse: Feldweg 12
+PLZ Ort: 54321 Musterdorf
+Land: DE
+Telefon: +49 9876 543210
+E-Mail: musterlieferant@example.de
+USt-IdNr.: DE987654321
+Steuernummer: 12/345/67890
+Handelsregister: HRA 12345
+Kontaktperson: Erika Muster
+Kaeuferreferenz: 1001
+IBAN: DE89370400440532013000
+BIC: TESTDEFFXXX
+Kontoinhaber: Musterhof Testlieferant
+Zahlungsbedingungen: Auszahlung innerhalb von 14 Tagen.
 Analysewerte Bezeichnung Menge Preis EUR je t Betrag EUR
 Lieferschein-Nr.: T1001 vom 09.08.2025
 Hafer lose 2.815 160,00
@@ -72,6 +88,14 @@ class SettlementCreditNoteParserTests(unittest.TestCase):
         self.assertEqual(draft.credit_note_number.value, "91001")
         self.assertEqual(draft.credit_note_date.value, date(2025, 11, 30))
         self.assertEqual(len(draft.deliveries), 4)
+        self.assertEqual(draft.supplier_number.value, "1001")
+        self.assertEqual(draft.supplier_name.value, "Musterhof Testlieferant")
+        self.assertEqual(draft.supplier_street.value, "Feldweg 12")
+        self.assertEqual(draft.supplier_postcode.value, "54321")
+        self.assertEqual(draft.supplier_city.value, "Musterdorf")
+        self.assertEqual(draft.supplier_email.value, "musterlieferant@example.de")
+        self.assertEqual(draft.iban.value, "DE89370400440532013000")
+        self.assertEqual(draft.bic.value, "TESTDEFFXXX")
         self.assertEqual(
             [delivery.ticket_number.value for delivery in draft.deliveries],
             ["T1001", "T1002", "T1003", "T1004"],
@@ -139,6 +163,26 @@ Lieferschein-Nr.: L-1 vom 31.01.2026
         self.assertIsNotNone(draft)
         self.assertEqual(draft.credit_note_number.value, "91001")
         self.assertEqual(len(draft.deliveries), 4)
+        self.assertEqual(draft.supplier_number.value, "1001")
+        self.assertEqual(draft.supplier_name.value, "Musterhof Testlieferant")
+        self.assertEqual(draft.supplier_street.value, "Feldweg 12")
+        self.assertEqual(draft.supplier_postcode.value, "54321")
+        self.assertEqual(draft.supplier_city.value, "Musterdorf")
+        self.assertEqual(draft.supplier_country.value, "DE")
+        self.assertEqual(draft.supplier_phone.value, "+49 9876 543210")
+        self.assertEqual(draft.supplier_email.value, "musterlieferant@example.de")
+        self.assertEqual(draft.supplier_vat.value, "DE987654321")
+        self.assertEqual(draft.supplier_tax_number.value, "12/345/67890")
+        self.assertEqual(draft.supplier_registry_number.value, "HRA 12345")
+        self.assertEqual(draft.supplier_contact_name.value, "Erika Muster")
+        self.assertEqual(draft.supplier_buyer_reference.value, "1001")
+        self.assertEqual(draft.iban.value, "DE89370400440532013000")
+        self.assertEqual(draft.bic.value, "TESTDEFFXXX")
+        self.assertEqual(draft.account_holder.value, "Musterhof Testlieferant")
+        self.assertEqual(
+            draft.payment_terms.value,
+            "Auszahlung innerhalb von 14 Tagen.",
+        )
         self.assertEqual(draft.vat_rate.value, Decimal("7.8"))
         self.assertEqual(draft.credit_amount.value, Decimal("2250.36"))
         self.assertIsNotNone(draft.credit_note_number.bounds)

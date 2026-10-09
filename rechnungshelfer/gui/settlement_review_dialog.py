@@ -17,12 +17,21 @@ from .styles import APP_BG, BORDER, FONT_NORMAL, FONT_SECTION, FONT_SMALL, TEXT,
 
 
 class SettlementReviewDialog:
-    def __init__(self, parent, controller, draft, on_invoice_loaded):
+    def __init__(
+        self,
+        parent,
+        controller,
+        draft,
+        on_credit_note_loaded,
+        *,
+        review=None,
+    ):
         self.parent = parent
         self.controller = controller
         self.draft = draft
-        self.on_invoice_loaded = on_invoice_loaded
-        self.review = controller.create_settlement_review(draft)
+        self.on_credit_note_loaded = on_credit_note_loaded
+        self.edit_mode = review is not None
+        self.review = review or controller.create_settlement_review(draft)
         self.window = None
         self.entries = {}
         self.status_box = None
@@ -30,7 +39,11 @@ class SettlementReviewDialog:
 
     def open(self):
         self.window = ctk.CTkToplevel(self.parent)
-        self.window.title("Abrechnung prüfen")
+        self.window.title(
+            "Getreidegutschrift bearbeiten"
+            if self.edit_mode
+            else "Abrechnung prüfen"
+        )
         self.window.geometry("1180x820")
         self.window.minsize(940, 650)
         self.window.configure(fg_color=APP_BG)
@@ -41,7 +54,11 @@ class SettlementReviewDialog:
 
         ctk.CTkLabel(
             self.window,
-            text="Erkannte Abrechnung prüfen und korrigieren",
+            text=(
+                "Getreidegutschrift bearbeiten"
+                if self.edit_mode
+                else "Erkannte Abrechnung prüfen und korrigieren"
+            ),
             font=FONT_SECTION,
             text_color="white",
         ).grid(row=0, column=0, padx=20, pady=(16, 10), sticky="w")
@@ -62,6 +79,37 @@ class SettlementReviewDialog:
             (
                 ("Gutschriftnummer", "credit_note_number", self.review.credit_note_number),
                 ("Ausstellungsdatum", "credit_note_date", self.review.credit_note_date),
+            ),
+        )
+        row = self._section(
+            body,
+            row,
+            "Musterlieferant / Lieferant",
+            (
+                ("Lieferantennummer", "supplier_number", self.review.supplier_number),
+                ("Name", "supplier_name", self.review.supplier_name),
+                ("Strasse", "supplier_street", self.review.supplier_street),
+                ("PLZ", "supplier_postcode", self.review.supplier_postcode),
+                ("Ort", "supplier_city", self.review.supplier_city),
+                ("Land", "supplier_country", self.review.supplier_country),
+                ("Telefon", "supplier_phone", self.review.supplier_phone),
+                ("E-Mail", "supplier_email", self.review.supplier_email),
+                ("USt-IdNr.", "supplier_vat", self.review.supplier_vat),
+                ("Steuernummer", "supplier_tax_number", self.review.supplier_tax_number),
+                ("Handelsregister", "supplier_registry_number", self.review.supplier_registry_number),
+                ("Kontaktperson", "supplier_contact_name", self.review.supplier_contact_name),
+                ("Kaeuferreferenz", "supplier_buyer_reference", self.review.supplier_buyer_reference),
+            ),
+        )
+        row = self._section(
+            body,
+            row,
+            "Zahlung",
+            (
+                ("IBAN", "iban", self.review.iban),
+                ("BIC", "bic", self.review.bic),
+                ("Kontoinhaber", "account_holder", self.review.account_holder),
+                ("Zahlungsbedingungen", "payment_terms", self.review.payment_terms),
             ),
         )
         for index, delivery in enumerate(self.review.deliveries):
@@ -92,6 +140,7 @@ class SettlementReviewDialog:
                         ("Analysewert", f"{detail_prefix}.analysis_value", detail.analysis_value),
                         ("Mengenänderung kg", f"{detail_prefix}.quantity_change_kg", detail.quantity_change_kg),
                         ("Preisänderung EUR/t", f"{detail_prefix}.price_change_per_tonne", detail.price_change_per_tonne),
+                        ("Betragsänderung EUR", f"{detail_prefix}.amount_change", detail.amount_change),
                     ),
                 )
 
@@ -125,7 +174,11 @@ class SettlementReviewDialog:
         )
         self.transfer_button = button(
             footer,
-            "Geprüfte Daten in Formular übernehmen",
+            (
+                "Änderungen übernehmen"
+                if self.edit_mode
+                else "Als Getreidegutschrift übernehmen"
+            ),
             self.apply_to_form,
             primary=True,
         )
@@ -209,6 +262,10 @@ class SettlementReviewDialog:
                             f"{detail_prefix}.price_change_per_tonne",
                             detail.price_change_per_tonne,
                         ),
+                        amount_change=updated(
+                            f"{detail_prefix}.amount_change",
+                            detail.amount_change,
+                        ),
                     )
                 )
             deliveries.append(
@@ -234,6 +291,29 @@ class SettlementReviewDialog:
             total_amount=updated("total_amount", self.review.total_amount),
             advance_payment=updated("advance_payment", self.review.advance_payment),
             credit_amount=updated("credit_amount", self.review.credit_amount),
+            supplier_number=updated("supplier_number", self.review.supplier_number),
+            supplier_name=updated("supplier_name", self.review.supplier_name),
+            supplier_street=updated("supplier_street", self.review.supplier_street),
+            supplier_postcode=updated("supplier_postcode", self.review.supplier_postcode),
+            supplier_city=updated("supplier_city", self.review.supplier_city),
+            supplier_country=updated("supplier_country", self.review.supplier_country),
+            supplier_phone=updated("supplier_phone", self.review.supplier_phone),
+            supplier_email=updated("supplier_email", self.review.supplier_email),
+            supplier_vat=updated("supplier_vat", self.review.supplier_vat),
+            supplier_tax_number=updated("supplier_tax_number", self.review.supplier_tax_number),
+            supplier_registry_number=updated(
+                "supplier_registry_number", self.review.supplier_registry_number
+            ),
+            supplier_contact_name=updated(
+                "supplier_contact_name", self.review.supplier_contact_name
+            ),
+            supplier_buyer_reference=updated(
+                "supplier_buyer_reference", self.review.supplier_buyer_reference
+            ),
+            iban=updated("iban", self.review.iban),
+            bic=updated("bic", self.review.bic),
+            account_holder=updated("account_holder", self.review.account_holder),
+            payment_terms=updated("payment_terms", self.review.payment_terms),
         )
 
     def validate(self):
@@ -262,7 +342,7 @@ class SettlementReviewDialog:
         else:
             self._set_status(
                 "Alle Pflichtwerte und Summen sind rechnerisch schlüssig. "
-                "Die Abrechnung kann in das Gutschriftformular übernommen werden."
+                "Die Abrechnung kann als Getreidegutschrift übernommen werden."
             )
         if self.transfer_button is not None:
             self.transfer_button.configure(
@@ -275,15 +355,26 @@ class SettlementReviewDialog:
         if not result.is_valid:
             return False
         if not messagebox.askyesno(
-            "Abrechnung übernehmen",
-            "Die geprüfte Abrechnung wird in die Gutschriftenmaske übernommen.\n\n"
-            "Nicht gespeicherte Eingaben im aktuell geöffneten Formular werden "
-            "ersetzt. Die Gutschrift wird nicht automatisch gespeichert. Fortfahren?",
+            (
+                "Änderungen übernehmen"
+                if self.edit_mode
+                else "Abrechnung übernehmen"
+            ),
+            (
+                "Die Änderungen werden in die geöffnete Getreidegutschrift "
+                "übernommen. Der Beleg wird nicht automatisch gespeichert. "
+                "Fortfahren?"
+                if self.edit_mode
+                else "Die geprüfte Abrechnung wird als strukturierte "
+                "Getreidegutschrift übernommen.\n\nNicht gespeicherte Eingaben "
+                "im aktuell geöffneten Formular werden ersetzt. Die "
+                "Gutschrift wird nicht automatisch gespeichert. Fortfahren?"
+            ),
             parent=self.window,
         ):
             return False
         try:
-            invoice = self.controller.create_invoice_from_settlement_review(
+            credit_note = self.controller.create_grain_credit_note_from_review(
                 self.review
             )
         except (ValueError, ArithmeticError) as exc:
@@ -294,7 +385,7 @@ class SettlementReviewDialog:
             )
             return False
         self.close()
-        self.on_invoice_loaded(invoice)
+        self.on_credit_note_loaded(credit_note)
         return True
 
     def _field_by_path(self, path):

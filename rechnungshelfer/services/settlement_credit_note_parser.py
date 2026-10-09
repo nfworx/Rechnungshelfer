@@ -51,6 +51,23 @@ class SettlementCreditNoteDraft:
     credit_note_number: DetectedValue[str] | None
     credit_note_date: DetectedValue[date] | None
     deliveries: tuple[SettlementDeliveryDraft, ...]
+    supplier_number: DetectedValue[str] | None = None
+    supplier_name: DetectedValue[str] | None = None
+    supplier_street: DetectedValue[str] | None = None
+    supplier_postcode: DetectedValue[str] | None = None
+    supplier_city: DetectedValue[str] | None = None
+    supplier_country: DetectedValue[str] | None = None
+    supplier_phone: DetectedValue[str] | None = None
+    supplier_email: DetectedValue[str] | None = None
+    supplier_vat: DetectedValue[str] | None = None
+    supplier_tax_number: DetectedValue[str] | None = None
+    supplier_registry_number: DetectedValue[str] | None = None
+    supplier_contact_name: DetectedValue[str] | None = None
+    supplier_buyer_reference: DetectedValue[str] | None = None
+    iban: DetectedValue[str] | None = None
+    bic: DetectedValue[str] | None = None
+    account_holder: DetectedValue[str] | None = None
+    payment_terms: DetectedValue[str] | None = None
     vat_rate: DetectedValue[Decimal] | None = None
     net_amount: DetectedValue[Decimal] | None = None
     vat_amount: DetectedValue[Decimal] | None = None
@@ -130,6 +147,27 @@ class SettlementCreditNoteParser:
         re.IGNORECASE,
     )
     _MONEY_ONLY_PATTERN = re.compile(rf"^(?P<amount>{_NUMBER})$")
+    _LABELED_FIELDS = {
+        "supplier_number": re.compile(r"^Lieferant(?:en)?nummer\s*:\s*(.+)$", re.I),
+        "supplier_name": re.compile(r"^Lieferant\s*:\s*(.+)$", re.I),
+        "supplier_street": re.compile(r"^Stra(?:ss|ß)e\s*:\s*(.+)$", re.I),
+        "supplier_country": re.compile(r"^Land\s*:\s*(.+)$", re.I),
+        "supplier_phone": re.compile(r"^Telefon\s*:\s*(.+)$", re.I),
+        "supplier_email": re.compile(r"^E-?Mail\s*:\s*(.+)$", re.I),
+        "supplier_vat": re.compile(r"^USt-?IdNr\.?\s*:\s*(.+)$", re.I),
+        "supplier_tax_number": re.compile(r"^Steuernummer\s*:\s*(.+)$", re.I),
+        "supplier_registry_number": re.compile(r"^Handelsregister\s*:\s*(.+)$", re.I),
+        "supplier_contact_name": re.compile(r"^Kontaktperson\s*:\s*(.+)$", re.I),
+        "supplier_buyer_reference": re.compile(r"^K(?:ae|ä)uferreferenz\s*:\s*(.+)$", re.I),
+        "iban": re.compile(r"^IBAN\s*:\s*(.+)$", re.I),
+        "bic": re.compile(r"^BIC\s*:\s*(.+)$", re.I),
+        "account_holder": re.compile(r"^Kontoinhaber\s*:\s*(.+)$", re.I),
+        "payment_terms": re.compile(r"^Zahlungsbedingungen\s*:\s*(.+)$", re.I),
+    }
+    _POSTCODE_CITY_PATTERN = re.compile(
+        r"^PLZ\s+Ort\s*:\s*(?P<postcode>\d{5})\s+(?P<city>.+)$",
+        re.I,
+    )
 
     def parse(
         self,
@@ -173,6 +211,7 @@ class SettlementCreditNoteParser:
 
         deliveries = self._parse_deliveries(lines, warnings)
         totals = self._parse_totals(lines, warnings)
+        party = self._parse_party_and_payment(lines)
         evidence = [title_line]
         if header_entry is not None:
             evidence.append(header_entry[0])
@@ -185,6 +224,7 @@ class SettlementCreditNoteParser:
             credit_note_number=number,
             credit_note_date=credit_date,
             deliveries=tuple(deliveries),
+            **party,
             vat_rate=totals["vat_rate"],
             net_amount=totals["net_amount"],
             vat_amount=totals["vat_amount"],
@@ -193,6 +233,27 @@ class SettlementCreditNoteParser:
             credit_amount=totals["credit_amount"],
             warnings=tuple(warnings),
         )
+
+    def _parse_party_and_payment(self, lines: list[_SourceLine]):
+        values = {name: None for name in self._LABELED_FIELDS}
+        values.update({"supplier_postcode": None, "supplier_city": None})
+        for line in lines:
+            if match := self._POSTCODE_CITY_PATTERN.match(line.text):
+                values["supplier_postcode"] = self._detected(
+                    line, match.group("postcode").strip()
+                )
+                values["supplier_city"] = self._detected(
+                    line, match.group("city").strip()
+                )
+                continue
+            for name, pattern in self._LABELED_FIELDS.items():
+                if match := pattern.match(line.text):
+                    value = match.group(1).strip()
+                    if name in {"iban", "bic"}:
+                        value = re.sub(r"\s+", "", value)
+                    values[name] = self._detected(line, value)
+                    break
+        return values
 
     def _parse_deliveries(
         self,
@@ -482,4 +543,3 @@ __all__ = [
     "SettlementDeliveryDraft",
     "SettlementDetailRowDraft",
 ]
-

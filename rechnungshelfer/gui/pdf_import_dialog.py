@@ -91,10 +91,19 @@ def format_settlement_draft(draft) -> list[str]:
 
 
 class PdfImportDialog:
-    def __init__(self, parent, controller, on_invoice_loaded):
+    def __init__(
+        self,
+        parent,
+        controller,
+        on_invoice_loaded,
+        on_grain_credit_note_loaded=None,
+    ):
         self.parent = parent
         self.controller = controller
         self.on_invoice_loaded = on_invoice_loaded
+        self.on_grain_credit_note_loaded = (
+            on_grain_credit_note_loaded or on_invoice_loaded
+        )
         self.window = None
         self.progress = None
         self._results = queue.SimpleQueue()
@@ -340,13 +349,13 @@ class PdfImportDialog:
             self.window,
             self.controller,
             self._analysis.settlement_draft,
-            self._apply_settlement_to_form,
+            self._open_grain_credit_note,
         )
         self._settlement_review_dialog.open()
 
-    def _apply_settlement_to_form(self, invoice):
+    def _open_grain_credit_note(self, credit_note):
         self.close()
-        self.on_invoice_loaded(invoice)
+        self.on_grain_credit_note_loaded(credit_note)
 
     def close(self):
         if self.window is not None:

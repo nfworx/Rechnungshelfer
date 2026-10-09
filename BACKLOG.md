@@ -10,6 +10,10 @@
 
 - Rechnung, Gutschrift und Getreideabrechnung bleiben getrennte Eingabemasken.
 - Der steuerlich führende Beleg einer Getreideabrechnung ist die **Gutschrift**.
+- Die Getreideabrechnung wird als strukturierte Sonderform der Gutschrift behandelt.
+  Lieferungen, Analysewerte sowie Mengen- und Preisänderungen bleiben im
+  Rechnungshelfer fachlich strukturiert und werden nicht dauerhaft auf freie
+  Beschreibungstexte reduziert.
 - Eine AMIC-Sammel-Final-Gutschrift ist bereits der steuerliche Beleg. Sie wird als
   Quelle für dieselbe digitale Gutschrift verwendet und nicht als Anlage behandelt.
 - Die ursprüngliche AMIC-PDF wird ausschließlich gelesen, nicht verändert, kopiert,
@@ -55,24 +59,25 @@
 - Manuelle Korrektur und ausdrückliche Bestätigung aller zu übernehmenden Daten
   ermöglichen.
 
-### 3. Bestätigte Daten in eine editierbare Gutschrift übernehmen
+### 3. Bestätigte Daten in eine editierbare Getreidegutschrift übernehmen
 
-- In der Prüfansicht eine ausdrückliche Schaltfläche „Geprüfte Daten in Formular
+- In der Prüfansicht eine ausdrückliche Schaltfläche „Als Getreidegutschrift
   übernehmen“ anbieten und nur einen vollständig geprüften Entwurf übernehmen.
-- Aus dem bestätigten Entwurf eine Gutschrift mit dem vorhandenen Dokumenttyp und
-  derselben Gutschriftnummer erzeugen; keinen zweiten steuerlichen Beleg anlegen.
-- Jede Lieferung als eigene Gutschriftposition abbilden und vorhandene
-  Getreide-Mapping- und Berechnungslogik soweit sinnvoll wiederverwenden.
-- Erkannte Abzüge und Analysewerte nachvollziehbar in die Positionsdarstellung
-  übernehmen, ohne Beträge ein zweites Mal zu berechnen.
-- Abschlagszahlungen fachlich und technisch im strukturierten Beleg abbilden. Bis
-  das Belegmodell einen Abschlagsbetrag separat und konsistent in PDF und XML
-  darstellen kann, Abrechnungen mit einer Abschlagszahlung ungleich `0,00 EUR`
-  nicht übernehmen und stattdessen einen verständlichen Hinweis anzeigen.
-- Den übernommenen Beleg in der bestehenden Gutschriftenmaske vollständig
-  bearbeitbar machen.
+- Aus dem bestätigten Entwurf eine strukturierte Getreidegutschrift mit derselben
+  Gutschriftnummer erzeugen; keinen zweiten steuerlichen Beleg anlegen und nicht
+  in die allgemeine Gutschriftenmaske wechseln.
+- Importierte und manuell erstellte Getreidegutschriften auf dasselbe fachliche
+  Dokumentmodell abbilden. Erkannte Endwerte nicht erneut durch ein Regelwerk
+  berechnen.
+- Lieferungen, Analysewerte, Mengen- und Preisänderungen sowie bestätigte Beträge
+  strukturiert und vollständig editierbar halten.
+- Abschlagszahlungen im strukturierten Beleg als eigenen Wert erhalten. PDF- und
+  XML-Ausgabe erst freigeben, wenn der Betrag dort gemäß P1.5 konsistent
+  dargestellt wird.
+- Den übernommenen Beleg im Getreideabrechnungs-Arbeitsbereich vollständig
+  bearbeitbar machen; die Übernahme speichert ihn noch nicht automatisch.
 
-### 4. Importierte Gutschrift speichern und wieder öffnen
+### 4. Importierte Getreidegutschrift speichern und wieder öffnen
 
 - Ausschließlich die bestätigten strukturierten Belegdaten über die bestehenden
   Speicherwege sichern; die ursprüngliche AMIC-PDF bleibt außerhalb der Anwendung.
@@ -91,6 +96,12 @@
   Formaten konsistent halten.
 - Für die XRechnung den vorhandenen Gutschriftprozess mit Typcode `389` verwenden
   und die Ausgabe mit XSD und KoSIT validieren.
+- In der XRechnung jede Lieferung als eigene Position mit Abrechnungsmenge in
+  Tonnen, Abrechnungspreis und bestätigtem Lieferbetrag abbilden. Analysewerte,
+  Ursprungsmenge, Basispreis sowie Mengen- und Preisänderungen als stabile
+  Artikelmerkmale (BG-32/BT-160/BT-161) und zusätzlich lesbar ausgeben.
+- Abschlagszahlungen als bezahlten Betrag (BT-113 beziehungsweise
+  `PrepaidAmount`) ausgeben und den Auszahlungsbetrag konsistent berechnen.
 - Die ursprüngliche AMIC-PDF weder einbetten noch als Anlage referenzieren.
 
 ### 6. Fachlicher End-to-End-Abnahmetest
@@ -135,8 +146,9 @@
   nachvollziehbare Tabellenaufschlüsselung sind umgesetzt.
 - Nettoabrechnungsbetrag, Umsatzsteuer und Auszahlungsbetrag werden getrennt
   berechnet und angezeigt.
-- Eine berechnete Getreideabrechnung kann als bearbeitbare Gutschrift mit einer
-  Position je Lieferung in die vorhandene Gutschriftenmaske übernommen werden.
-- Der erzeugte Beleg nutzt die bestehenden JSON-, Datenbank-, PDF- und XML-Wege;
-  Pflichtfeldprüfung, XSD, PDF-Erzeugung und Speichern/Laden sind automatisiert
-  getestet.
+- Manuell berechnete und aus einer PDF geprüfte Abrechnungen werden auf dasselbe
+  strukturierte Getreidegutschrift-Modell abgebildet und bleiben mit Lieferungen,
+  Analysewerten sowie Mengen-, Preis- und Betragsänderungen bearbeitbar.
+- Der bisherige allgemeine Gutschrift-Exportweg ist automatisiert getestet; die
+  verlustfreie Speicherung sowie der PDF-/XML-Export der strukturierten
+  Getreidegutschrift folgen in P1.4 und P1.5.

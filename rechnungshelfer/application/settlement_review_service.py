@@ -6,8 +6,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
-from rechnungshelfer.application.settlement_invoice_mapper import (
-    create_settlement_invoice,
+from rechnungshelfer.application.grain_credit_note_mapper import (
+    grain_credit_note_from_review,
 )
 from rechnungshelfer.services.format_service import parse_de
 
@@ -32,6 +32,7 @@ class SettlementReviewDetail:
     analysis_value: ReviewField
     quantity_change_kg: ReviewField
     price_change_per_tonne: ReviewField
+    amount_change: ReviewField = ReviewField("")
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,23 @@ class SettlementReview:
     total_amount: ReviewField
     advance_payment: ReviewField
     credit_amount: ReviewField
+    supplier_number: ReviewField = ReviewField("")
+    supplier_name: ReviewField = ReviewField("")
+    supplier_street: ReviewField = ReviewField("")
+    supplier_postcode: ReviewField = ReviewField("")
+    supplier_city: ReviewField = ReviewField("")
+    supplier_country: ReviewField = ReviewField("")
+    supplier_phone: ReviewField = ReviewField("")
+    supplier_email: ReviewField = ReviewField("")
+    supplier_vat: ReviewField = ReviewField("")
+    supplier_tax_number: ReviewField = ReviewField("")
+    supplier_registry_number: ReviewField = ReviewField("")
+    supplier_contact_name: ReviewField = ReviewField("")
+    supplier_buyer_reference: ReviewField = ReviewField("")
+    iban: ReviewField = ReviewField("")
+    bic: ReviewField = ReviewField("")
+    account_holder: ReviewField = ReviewField("")
+    payment_terms: ReviewField = ReviewField("")
 
 
 @dataclass(frozen=True)
@@ -105,6 +123,7 @@ class SettlementReviewService:
                             price_change_per_tonne=self._field(
                                 detail.price_change_per_tonne
                             ),
+                            amount_change=ReviewField(""),
                         )
                         for detail in delivery.details
                     ),
@@ -117,6 +136,82 @@ class SettlementReviewService:
             total_amount=self._field(draft.total_amount),
             advance_payment=self._field(draft.advance_payment, default="0"),
             credit_amount=self._field(draft.credit_amount),
+            supplier_number=self._field(draft.supplier_number),
+            supplier_name=self._field(draft.supplier_name),
+            supplier_street=self._field(draft.supplier_street),
+            supplier_postcode=self._field(draft.supplier_postcode),
+            supplier_city=self._field(draft.supplier_city),
+            supplier_country=self._field(draft.supplier_country),
+            supplier_phone=self._field(draft.supplier_phone),
+            supplier_email=self._field(draft.supplier_email),
+            supplier_vat=self._field(draft.supplier_vat),
+            supplier_tax_number=self._field(draft.supplier_tax_number),
+            supplier_registry_number=self._field(draft.supplier_registry_number),
+            supplier_contact_name=self._field(draft.supplier_contact_name),
+            supplier_buyer_reference=self._field(draft.supplier_buyer_reference),
+            iban=self._field(draft.iban),
+            bic=self._field(draft.bic),
+            account_holder=self._field(draft.account_holder),
+            payment_terms=self._field(draft.payment_terms),
+        )
+
+    def create_review_from_credit_note(self, credit_note) -> SettlementReview:
+        field = self._plain_field
+        return SettlementReview(
+            credit_note_number=field(credit_note.credit_note_number),
+            credit_note_date=field(credit_note.credit_note_date, date_value=True),
+            deliveries=tuple(
+                SettlementReviewDelivery(
+                    ticket_number=field(delivery.ticket_number),
+                    delivery_date=field(delivery.delivery_date, date_value=True),
+                    grain_name=field(delivery.grain_name),
+                    gross_quantity_kg=field(delivery.gross_quantity_kg),
+                    base_price_per_tonne=field(delivery.base_price_per_tonne),
+                    settlement_quantity_kg=field(
+                        delivery.settlement_quantity_kg
+                    ),
+                    settlement_price_per_tonne=field(
+                        delivery.settlement_price_per_tonne
+                    ),
+                    net_amount=field(delivery.net_amount),
+                    details=tuple(
+                        SettlementReviewDetail(
+                            label=field(detail.label),
+                            analysis_value=field(detail.analysis_value),
+                            quantity_change_kg=field(detail.quantity_change_kg),
+                            price_change_per_tonne=field(
+                                detail.price_change_per_tonne
+                            ),
+                            amount_change=field(detail.amount_change),
+                        )
+                        for detail in delivery.details
+                    ),
+                )
+                for delivery in credit_note.deliveries
+            ),
+            vat_rate=field(credit_note.vat_rate),
+            net_amount=field(credit_note.net_amount),
+            vat_amount=field(credit_note.vat_amount),
+            total_amount=field(credit_note.total_amount),
+            advance_payment=field(credit_note.advance_payment),
+            credit_amount=field(credit_note.credit_amount),
+            supplier_number=field(credit_note.supplier.supplier_number),
+            supplier_name=field(credit_note.supplier.name),
+            supplier_street=field(credit_note.supplier.street),
+            supplier_postcode=field(credit_note.supplier.postcode),
+            supplier_city=field(credit_note.supplier.city),
+            supplier_country=field(credit_note.supplier.country),
+            supplier_phone=field(credit_note.supplier.phone),
+            supplier_email=field(credit_note.supplier.email),
+            supplier_vat=field(credit_note.supplier.vat),
+            supplier_tax_number=field(credit_note.supplier.tax_number),
+            supplier_registry_number=field(credit_note.supplier.registry_number),
+            supplier_contact_name=field(credit_note.supplier.contact_name),
+            supplier_buyer_reference=field(credit_note.supplier.buyer_reference),
+            iban=field(credit_note.payment.iban),
+            bic=field(credit_note.payment.bic),
+            account_holder=field(credit_note.payment.account_holder),
+            payment_terms=field(credit_note.payment.payment_terms),
         )
 
     def validate(self, review: SettlementReview) -> SettlementReviewResult:
@@ -133,6 +228,20 @@ class SettlementReviewService:
             "Ausstellungsdatum",
             issues,
         )
+        for field, path, label in (
+            (review.supplier_number, "supplier_number", "Lieferantennummer"),
+            (review.supplier_name, "supplier_name", "Lieferantenname"),
+            (review.supplier_street, "supplier_street", "Strasse"),
+            (review.supplier_postcode, "supplier_postcode", "PLZ"),
+            (review.supplier_city, "supplier_city", "Ort"),
+            (review.supplier_country, "supplier_country", "Land"),
+            (review.supplier_email, "supplier_email", "E-Mail"),
+            (review.iban, "iban", "IBAN"),
+            (review.bic, "bic", "BIC"),
+            (review.account_holder, "account_holder", "Kontoinhaber"),
+            (review.payment_terms, "payment_terms", "Zahlungsbedingungen"),
+        ):
+            self._required_text(field, path, label, issues)
         if not review.deliveries:
             issues.append(
                 SettlementReviewIssue("deliveries", "Mindestens eine Lieferung fehlt.")
@@ -207,21 +316,6 @@ class SettlementReviewService:
                         "Abrechnungsmenge ist größer als die Ursprungsmenge.",
                     )
                 )
-            if (
-                settlement_quantity is not None
-                and settlement_price is not None
-                and amount is not None
-            ):
-                expected = self._money(
-                    settlement_quantity * settlement_price / Decimal("1000")
-                )
-                if self._money(amount) != expected:
-                    issues.append(
-                        SettlementReviewIssue(
-                            f"{prefix}.net_amount",
-                            f"Lieferbetrag stimmt rechnerisch nicht; erwartet {expected} EUR.",
-                        )
-                    )
             if base_price is not None and settlement_price is not None:
                 if settlement_price > base_price:
                     issues.append(
@@ -233,6 +327,7 @@ class SettlementReviewService:
                     )
             quantity_changes: list[Decimal] = []
             price_changes: list[Decimal] = []
+            amount_changes: list[Decimal] = []
             quantity_changes_valid = True
             price_changes_valid = True
             for detail_index, detail in enumerate(delivery.details):
@@ -249,16 +344,6 @@ class SettlementReviewService:
                     "Analysewert",
                     issues,
                 )
-                if not (
-                    detail.quantity_change_kg.value.strip()
-                    or detail.price_change_per_tonne.value.strip()
-                ):
-                    issues.append(
-                        SettlementReviewIssue(
-                            f"{detail_prefix}.quantity_change_kg",
-                            "Analysezeile benötigt eine Mengen- oder Preisänderung.",
-                        )
-                    )
                 for field_name, field, label, values in (
                     (
                         "quantity_change_kg",
@@ -287,6 +372,15 @@ class SettlementReviewService:
                                 price_changes_valid = False
                         else:
                             values.append(change)
+                if detail.amount_change.value.strip():
+                    amount_change = self._number(
+                        detail.amount_change,
+                        f"{detail_prefix}.amount_change",
+                        "Betragsänderung",
+                        issues,
+                    )
+                    if amount_change is not None:
+                        amount_changes.append(amount_change)
 
             if (
                 gross is not None
@@ -314,6 +408,22 @@ class SettlementReviewService:
                             f"{prefix}.settlement_price_per_tonne",
                             "Abrechnungspreis stimmt nicht mit Basispreis und "
                             f"Preisänderungen überein; erwartet {expected_price} EUR/t.",
+                        )
+                    )
+            if (
+                settlement_quantity is not None
+                and settlement_price is not None
+                and amount is not None
+            ):
+                expected = self._money(
+                    settlement_quantity * settlement_price / Decimal("1000")
+                    + sum(amount_changes, Decimal("0"))
+                )
+                if self._money(amount) != expected:
+                    issues.append(
+                        SettlementReviewIssue(
+                            f"{prefix}.net_amount",
+                            f"Lieferbetrag stimmt rechnerisch nicht; erwartet {expected} EUR.",
                         )
                     )
 
@@ -352,14 +462,6 @@ class SettlementReviewService:
             issues,
             non_negative=True,
         )
-        if advance is not None and advance != 0:
-            issues.append(
-                SettlementReviewIssue(
-                    "advance_payment",
-                    "Abschlagszahlungen können noch nicht in das "
-                    "Gutschriftformular übernommen werden.",
-                )
-            )
         credit = self._number(
             review.credit_amount,
             "credit_amount",
@@ -406,7 +508,7 @@ class SettlementReviewService:
                 )
         return SettlementReviewResult(tuple(issues))
 
-    def create_invoice(self, review: SettlementReview, template):
+    def create_credit_note(self, review: SettlementReview):
         result = self.validate(review)
         errors = [issue.message for issue in result.issues if issue.severity == "error"]
         if errors:
@@ -414,7 +516,7 @@ class SettlementReviewService:
                 "Die Abrechnung kann noch nicht übernommen werden:\n- "
                 + "\n- ".join(errors)
             )
-        return create_settlement_invoice(template, review)
+        return grain_credit_note_from_review(review)
 
     @staticmethod
     def _field(detected, *, date_value=False, default="") -> ReviewField:
@@ -432,6 +534,17 @@ class SettlementReviewService:
             page_number=detected.page_number,
             confidence=detected.confidence,
         )
+
+    @staticmethod
+    def _plain_field(value, *, date_value=False) -> ReviewField:
+        if value is None:
+            return ReviewField("")
+        if date_value and hasattr(value, "strftime"):
+            return ReviewField(value.strftime("%d.%m.%Y"))
+        rendered = format(value, "f") if isinstance(value, Decimal) else str(value)
+        if isinstance(value, Decimal):
+            rendered = rendered.replace(".", ",")
+        return ReviewField(rendered)
 
     @staticmethod
     def _required_text(field, path, label, issues):

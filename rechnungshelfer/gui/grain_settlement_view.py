@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date
+from dataclasses import replace
+from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 import sqlite3
 from tkinter import messagebox
@@ -11,8 +12,9 @@ from typing import Callable
 
 import customtkinter as ctk
 
-from rechnungshelfer.application.grain_invoice_mapper import (
-    create_grain_settlement_invoice,
+from rechnungshelfer.application.grain_credit_note_mapper import (
+    grain_credit_note_creation_issues,
+    grain_credit_note_from_calculation,
 )
 from rechnungshelfer.domain.grain_models import (
     GrainValidationError,
@@ -20,10 +22,17 @@ from rechnungshelfer.domain.grain_models import (
     SettlementResult,
 )
 from rechnungshelfer.domain.business_partner import BusinessPartnerRole
-from rechnungshelfer.domain.models import DocumentType, Invoice
+from rechnungshelfer.domain.models import DocumentType
 from rechnungshelfer.services.format_service import format_de
 
-from .components import button, card, clear_frame, set_button_enabled, small_button
+from .components import (
+    HoverTooltip,
+    button,
+    card,
+    clear_frame,
+    set_button_enabled,
+    small_button,
+)
 from .grain_form_mapper import (
     AnalysisFormValue,
     DeliveryFormValue,
@@ -43,6 +52,7 @@ from .grain_settlement_dialogs import (
     RuleEditorDialog,
     require_features_used_by_active_rules,
 )
+from .settlement_review_dialog import SettlementReviewDialog
 from .grain_rule_presets import grain_rule_preset
 from .business_partner_dialog import BusinessPartnerListDialog
 from .party_card import PartyCard
@@ -68,11 +78,11 @@ class GrainSettlementView(ctk.CTkFrame):
         self,
         parent,
         controller,
-        on_invoice_created: Callable[[Invoice], None] | None = None,
+        on_credit_note_created: Callable | None = None,
     ):
         super().__init__(parent, fg_color=APP_BG, corner_radius=0)
         self.controller = controller
-        self.on_invoice_created = on_invoice_created
+        self.on_credit_note_created = on_credit_note_created
         self.document = controller.create_empty_invoice(
             DocumentType.SELF_BILLED_INVOICE
         )
@@ -87,6 +97,7 @@ class GrainSettlementView(ctk.CTkFrame):
         self.field_entries = {}
         self._next_delivery_number = 1
         self._last_result: SettlementBatchResult | None = None
+        self.credit_note = None
         self.vat_variable = ctk.StringVar(master=self, value="— auswählen —")
 
         self.grid_columnconfigure(0, weight=4)
@@ -162,6 +173,7 @@ class GrainSettlementView(ctk.CTkFrame):
             extra_fields=[
                 (self.document.payment, ["iban", "bic", "account_holder"]),
             ],
+            on_change=self._on_document_field_change,
         ).render()
         supplier_card.pack(fill="both", expand=True)
 
@@ -200,6 +212,7 @@ class GrainSettlementView(ctk.CTkFrame):
                 "payment_due_date": "Auszahlungsdatum",
                 "payment_terms": "Auszahlungsbedingungen",
             },
+            on_change=self._on_document_field_change,
         ).render()
         info_card.pack(fill="both", expand=True)
 
@@ -211,15 +224,31 @@ class GrainSettlementView(ctk.CTkFrame):
 
         actions = ctk.CTkFrame(delivery_card, fg_color="transparent")
         actions.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 8))
-        button(actions, "+ Lieferung", self.add_delivery, primary=True).pack(
-            side="left"
+        self.add_button = button(
+            actions,
+            "+ Lieferung",
+            self.add_delivery,
+            primary=True,
         )
-        button(actions, "Neu berechnen", self.calculate).pack(side="left", padx=8)
+        self.add_button.pack(side="left")
+        self.calculate_button = button(actions, "Neu berechnen", self.calculate)
+        self.calculate_button.pack(side="left", padx=8)
         self.rule_button = button(actions, "Regeln bearbeiten", self.edit_rules)
         self.rule_button.pack(side="left")
-        button(actions, "Beispiel zurücksetzen", self.reset_example).pack(
+        self.example_button = button(
+            actions,
+            "Beispiel zurücksetzen",
+            self.reset_example,
+        )
+        self.example_button.pack(
             side="left",
             padx=8,
+        )
+        self.edit_credit_note_button = button(
+            actions,
+            "Getreidegutschrift bearbeiten",
+            self.edit_credit_note,
+            primary=True,
         )
         self.status_label = ctk.CTkLabel(
             actions,
@@ -324,13 +353,13 @@ class GrainSettlementView(ctk.CTkFrame):
             justify="left",
         ).grid(row=10, column=0, columnspan=2, sticky="w", padx=14, pady=12)
 
-        create_button = button(
+        self.create_button = button(
             totals,
-            "Gutschrift aus Abrechnung erstellen",
+            "Getreidegutschrift erstellen",
             self.create_credit_note,
             primary=True,
         )
-        create_button.grid(
+        self.create_button.grid(
             row=11,
             column=0,
             columnspan=2,
@@ -338,6 +367,8 @@ class GrainSettlementView(ctk.CTkFrame):
             padx=14,
             pady=(0, 8),
         )
+        HoverTooltip(self.create_button, self._credit_note_creation_hint)
+        self._refresh_create_button()
 
         output_buttons = (
             ("PDF erstellen", 12),
@@ -363,13 +394,14 @@ class GrainSettlementView(ctk.CTkFrame):
 
         try:
             form = self._form_value()
-            deliveries, _scheme = build_preview_inputs(form)
+            deliveries, scheme = build_preview_inputs(form)
             vat_rate = parse_vat_rate(form.vat_rate)
-            invoice = create_grain_settlement_invoice(
+            credit_note = grain_credit_note_from_calculation(
                 self.document,
                 deliveries,
                 self._last_result,
                 vat_rate,
+                scheme,
             )
         except (GrainValidationError, ValueError, ArithmeticError) as exc:
             messagebox.showerror(
@@ -379,25 +411,242 @@ class GrainSettlementView(ctk.CTkFrame):
             )
             return False
 
-        if self.on_invoice_created is None:
-            messagebox.showerror(
-                "Gutschrift erstellen",
-                "Die Gutschriftenmaske ist nicht verfügbar.",
-                parent=self,
-            )
-            return False
-
         if not messagebox.askyesno(
-            "Gutschrift erstellen",
-            "Die berechnete Getreideabrechnung wird in die Gutschriftenmaske "
-            "übernommen.\n\nNicht gespeicherte Eingaben in der dort aktuell "
-            "geöffneten Rechnung oder Gutschrift werden ersetzt. Fortfahren?",
+            "Getreidegutschrift erstellen",
+            "Die berechneten Werte werden als strukturierte Getreidegutschrift "
+            "übernommen und nicht automatisch gespeichert. Fortfahren?",
             parent=self,
         ):
             return False
-
-        self.on_invoice_created(invoice)
+        self.load_credit_note(credit_note, preserve_document=True)
+        if self.on_credit_note_created is not None:
+            self.on_credit_note_created(credit_note)
         return True
+
+    def load_credit_note(self, credit_note, *, preserve_document=False):
+        """Öffnet einen bestätigten Endbeleg im Getreide-Arbeitsbereich."""
+
+        self.credit_note = credit_note
+        self._last_result = None
+        if not preserve_document:
+            self.document = self.controller.create_empty_invoice(
+                DocumentType.SELF_BILLED_INVOICE
+            )
+        self.document.info.invoice_number = credit_note.credit_note_number
+        self.document.info.invoice_date = credit_note.credit_note_date.strftime(
+            "%d.%m.%Y"
+        )
+        for field in credit_note.supplier.__dataclass_fields__:
+            setattr(self.document.seller, field, getattr(credit_note.supplier, field))
+        for field in credit_note.payment.__dataclass_fields__:
+            setattr(self.document.payment, field, getattr(credit_note.payment, field))
+        self.vat_variable.set(f"{str(credit_note.vat_rate).replace('.', ',')} %")
+        self._render_top_cards()
+        self._set_credit_note_mode(True)
+        self._render_credit_note_deliveries(credit_note)
+        self._show_credit_note_totals(credit_note)
+        self.status_label.configure(
+            text=f"{len(credit_note.deliveries)} Lieferungen · Getreidegutschrift"
+        )
+
+    def edit_credit_note(self):
+        if self.credit_note is None:
+            return
+        try:
+            current = replace(
+                self.credit_note,
+                credit_note_number=self.document.info.invoice_number.strip(),
+                credit_note_date=datetime.strptime(
+                    self.document.info.invoice_date.strip(),
+                    "%d.%m.%Y",
+                ).date(),
+                supplier=replace(
+                    self.credit_note.supplier,
+                    **{
+                        field: str(getattr(self.document.seller, field)).strip()
+                        for field in self.credit_note.supplier.__dataclass_fields__
+                    },
+                ),
+                payment=replace(
+                    self.credit_note.payment,
+                    **{
+                        field: str(getattr(self.document.payment, field)).strip()
+                        for field in self.credit_note.payment.__dataclass_fields__
+                    },
+                ),
+            )
+        except ValueError:
+            messagebox.showerror(
+                "Getreidegutschrift bearbeiten",
+                "Gutschriftnummer oder Ausstellungsdatum ist ungültig.",
+                parent=self,
+            )
+            return
+        review = self.controller.create_settlement_review_from_credit_note(current)
+        SettlementReviewDialog(
+            self,
+            self.controller,
+            None,
+            lambda note: self.load_credit_note(note, preserve_document=True),
+            review=review,
+        ).open()
+
+    def _set_credit_note_mode(self, enabled):
+        for control in (
+            self.add_button,
+            self.calculate_button,
+            self.rule_button,
+            self.example_button,
+        ):
+            set_button_enabled(control, not enabled)
+        self._refresh_create_button()
+        if enabled:
+            self.edit_credit_note_button.pack(side="left", padx=8)
+        else:
+            self.edit_credit_note_button.pack_forget()
+
+    def _render_credit_note_deliveries(self, credit_note):
+        clear_frame(self.delivery_host)
+        headers = (
+            "Datum",
+            "Lieferschein",
+            "Getreideart",
+            "Analyse / Abrechnungsposition",
+            "Menge kg",
+            "Δ Menge kg",
+            "Δ Wert EUR",
+            "Betrag EUR",
+        )
+        for column, title in enumerate(headers):
+            self.delivery_host.grid_columnconfigure(
+                column,
+                weight=1 if column == 3 else 0,
+            )
+            ctk.CTkLabel(
+                self.delivery_host,
+                text=title,
+                font=("Segoe UI", 12, "bold"),
+                text_color=TEXT_MUTED,
+            ).grid(row=0, column=column, sticky="w", padx=5, pady=4)
+
+        row = 1
+        for delivery in credit_note.deliveries:
+            base_amount = (
+                delivery.gross_quantity_kg
+                * delivery.base_price_per_tonne
+                / Decimal("1000")
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            self._render_delivery_values(
+                (
+                    delivery.delivery_date.strftime("%d.%m.%Y"),
+                    delivery.ticket_number,
+                    delivery.grain_name,
+                    "Ursprungsmenge / Basispreis "
+                    f"{format_de(delivery.base_price_per_tonne)} EUR/t",
+                    self._quantity(delivery.gross_quantity_kg),
+                    "",
+                    "",
+                    format_de(base_amount),
+                ),
+                row=row,
+                font=("Segoe UI", 12, "bold"),
+                text_color=TEXT,
+            )
+            row += 1
+            for detail in delivery.details:
+                label = f"↳ {detail.label}: {format_de(detail.analysis_value)}"
+                if detail.price_change_per_tonne is not None:
+                    label += (
+                        " · "
+                        f"{self._signed_money(detail.price_change_per_tonne)} EUR/t"
+                    )
+                self._render_delivery_values(
+                    (
+                        "",
+                        "",
+                        "",
+                        label,
+                        "",
+                        (
+                            self._quantity(detail.quantity_change_kg)
+                            if detail.quantity_change_kg is not None
+                            else ""
+                        ),
+                        (
+                            self._signed_money(detail.amount_change)
+                            if detail.amount_change is not None
+                            else ""
+                        ),
+                        "",
+                    ),
+                    row=row,
+                    font=FONT_SMALL,
+                    text_color=TEXT_MUTED,
+                    detail=True,
+                )
+                row += 1
+            self._render_delivery_values(
+                (
+                    "",
+                    "",
+                    "",
+                    "= Abrechnungsmenge / Abrechnungspreis "
+                    f"{format_de(delivery.settlement_price_per_tonne)} EUR/t",
+                    self._quantity(delivery.settlement_quantity_kg),
+                    "",
+                    "",
+                    format_de(delivery.net_amount),
+                ),
+                row=row,
+                font=("Segoe UI", 12, "bold"),
+                text_color=TEXT,
+                detail=True,
+            )
+            row += 2
+
+    def _show_credit_note_totals(self, credit_note):
+        gross = sum(
+            (delivery.gross_quantity_kg for delivery in credit_note.deliveries),
+            Decimal("0"),
+        )
+        settlement = sum(
+            (
+                delivery.settlement_quantity_kg
+                for delivery in credit_note.deliveries
+            ),
+            Decimal("0"),
+        )
+        base_amount = sum(
+            (
+                delivery.gross_quantity_kg
+                * delivery.base_price_per_tonne
+                / Decimal("1000")
+                for delivery in credit_note.deliveries
+            ),
+            Decimal("0"),
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        self.total_rows["gross"].configure(text=f"{self._quantity(gross)} kg")
+        self.total_rows["deduction"].configure(
+            text=f"{self._quantity(gross - settlement)} kg"
+        )
+        self.total_rows["settlement"].configure(
+            text=f"{self._quantity(settlement)} kg"
+        )
+        self.total_rows["base_amount"].configure(
+            text=f"{format_de(base_amount)} EUR"
+        )
+        self.total_rows["money_deduction"].configure(
+            text=f"{format_de(base_amount - credit_note.net_amount)} EUR"
+        )
+        self.total_rows["net_amount"].configure(
+            text=f"{format_de(credit_note.net_amount)} EUR"
+        )
+        self.total_rows["tax_amount"].configure(
+            text=f"{format_de(credit_note.vat_amount)} EUR"
+        )
+        self.total_rows["payable_amount"].configure(
+            text=f"{format_de(credit_note.credit_amount)} EUR"
+        )
 
     def open_supplier_list(self):
         BusinessPartnerListDialog(
@@ -418,6 +667,9 @@ class GrainSettlementView(ctk.CTkFrame):
         )
         self._render_top_cards()
         self.calculate()
+
+    def _on_document_field_change(self, _model, _field, _value):
+        self._refresh_create_button()
 
     def reload_own_company(self):
         self.document.buyer = self.controller.load_own_company_buyer()
@@ -473,6 +725,7 @@ class GrainSettlementView(ctk.CTkFrame):
             self._render_deliveries()
             self._clear_totals()
             self.status_label.configure(text="")
+            self._refresh_create_button()
 
     def edit_rules(self):
         RuleEditorDialog(
@@ -560,6 +813,7 @@ class GrainSettlementView(ctk.CTkFrame):
             self.status_label.configure(text="Eingaben prüfen")
             if show_error:
                 messagebox.showerror("Getreideabrechnung", str(exc), parent=self)
+            self._refresh_create_button()
             return False
         self._last_result = result
         self._render_deliveries(result)
@@ -567,6 +821,7 @@ class GrainSettlementView(ctk.CTkFrame):
         self.status_label.configure(
             text=f"{len(result.delivery_results)} Lieferungen berechnet"
         )
+        self._refresh_create_button()
         return True
 
     def _restore_calculation(
@@ -578,11 +833,13 @@ class GrainSettlementView(ctk.CTkFrame):
         if result is None:
             self._clear_totals()
             self.status_label.configure(text="")
+            self._refresh_create_button()
             return
         self._show_totals(result)
         self.status_label.configure(
             text=f"{len(result.delivery_results)} Lieferungen berechnet"
         )
+        self._refresh_create_button()
 
     def _form_value(self) -> GrainSettlementForm:
         features, rules = self._current_rule_set()
@@ -895,12 +1152,14 @@ class GrainSettlementView(ctk.CTkFrame):
 
     def _refresh_tax_totals(self):
         if self._last_result is None:
+            self._refresh_create_button()
             return
         try:
             vat_rate = parse_vat_rate(self.vat_variable.get())
         except GrainValidationError:
             self.total_rows["tax_amount"].configure(text="—")
             self.total_rows["payable_amount"].configure(text="—")
+            self._refresh_create_button()
             return
         tax_amount = (
             self._last_result.net_amount * vat_rate / Decimal("100")
@@ -911,6 +1170,35 @@ class GrainSettlementView(ctk.CTkFrame):
         )
         self.total_rows["payable_amount"].configure(
             text=f"{format_de(payable_amount)} EUR"
+        )
+        self._refresh_create_button()
+
+    def _creation_issues(self):
+        if self.credit_note is not None:
+            return (
+                "Die Getreidegutschrift wurde bereits erstellt. "
+                "Änderungen sind über 'Getreidegutschrift bearbeiten' möglich.",
+            )
+        return grain_credit_note_creation_issues(
+            self.document,
+            self.deliveries,
+            self._last_result,
+            self.vat_variable.get(),
+        )
+
+    def _credit_note_creation_hint(self):
+        issues = self._creation_issues()
+        if not issues:
+            return ""
+        return "Zum Erstellen fehlt noch:\n- " + "\n- ".join(issues)
+
+    def _refresh_create_button(self):
+        if not hasattr(self, "create_button"):
+            return
+        set_button_enabled(
+            self.create_button,
+            not self._creation_issues(),
+            primary=True,
         )
 
     def _clear_totals(self):
@@ -926,13 +1214,31 @@ class GrainSettlementView(ctk.CTkFrame):
         return f"{value:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
     def reset_example(self):
+        self.credit_note = None
+        self._set_credit_note_mode(False)
         self.document = self.controller.create_empty_invoice(
             DocumentType.SELF_BILLED_INVOICE
         )
         self.document.info.invoice_number = "80001"
         self.document.info.delivery_date = date.today().strftime("%d.%m.%Y")
         self.document.seller.supplier_number = "1001"
-        self.document.seller.name = "Beispiellieferant"
+        self.document.seller.name = "Musterhof Testlieferant"
+        self.document.seller.street = "Feldweg 12"
+        self.document.seller.postcode = "54321"
+        self.document.seller.city = "Musterdorf"
+        self.document.seller.country = "DE"
+        self.document.seller.phone = "+49 9876 543210"
+        self.document.seller.email = "musterlieferant@example.de"
+        self.document.seller.vat = "DE987654321"
+        self.document.seller.tax_number = "12/345/67890"
+        self.document.seller.registry_number = "HRA 12345"
+        self.document.seller.contact_name = "Erika Muster"
+        self.document.seller.buyer_reference = "1001"
+        self.document.payment.iban = "DE89370400440532013000"
+        self.document.payment.bic = "TESTDEFFXXX"
+        self.document.payment.account_holder = "Musterhof Testlieferant"
+        self.document.payment.payment_means_code = "58"
+        self.document.payment.payment_terms = "Auszahlung innerhalb von 14 Tagen."
         self.rule_sets = {}
         for grain_type_code in GRAIN_TYPE_LABELS:
             grain_preset = grain_rule_preset(grain_type_code)

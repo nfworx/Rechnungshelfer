@@ -130,12 +130,16 @@ class InvoiceController:
     def create_settlement_review(self, draft):
         return self.settlement_review_service.create_review(draft)
 
+    def create_settlement_review_from_credit_note(self, credit_note):
+        return self.settlement_review_service.create_review_from_credit_note(
+            credit_note
+        )
+
     def validate_settlement_review(self, review):
         return self.settlement_review_service.validate(review)
 
-    def create_invoice_from_settlement_review(self, review):
-        template = self.create_empty_invoice(DocumentType.SELF_BILLED_INVOICE)
-        return self.settlement_review_service.create_invoice(review, template)
+    def create_grain_credit_note_from_review(self, review):
+        return self.settlement_review_service.create_credit_note(review)
 
     # Getreide-Regelwerke
     def load_grain_scheme_drafts(self, harvest_year: int):

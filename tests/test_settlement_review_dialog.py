@@ -12,15 +12,18 @@ class SettlementReviewDialogTests(unittest.TestCase):
         dialog.window = MagicMock()
         dialog.controller = MagicMock()
         dialog.review = object()
-        dialog.on_invoice_loaded = MagicMock()
+        dialog.edit_mode = False
+        dialog.on_credit_note_loaded = MagicMock()
         dialog.validate = MagicMock(return_value=SimpleNamespace(is_valid=valid))
         dialog.close = MagicMock()
         return dialog
 
     def test_valid_review_is_transferred_after_confirmation(self):
         dialog = self._dialog()
-        invoice = object()
-        dialog.controller.create_invoice_from_settlement_review.return_value = invoice
+        credit_note = object()
+        dialog.controller.create_grain_credit_note_from_review.return_value = (
+            credit_note
+        )
 
         with patch(
             "rechnungshelfer.gui.settlement_review_dialog.messagebox.askyesno",
@@ -29,11 +32,11 @@ class SettlementReviewDialogTests(unittest.TestCase):
             result = dialog.apply_to_form()
 
         self.assertTrue(result)
-        dialog.controller.create_invoice_from_settlement_review.assert_called_once_with(
+        dialog.controller.create_grain_credit_note_from_review.assert_called_once_with(
             dialog.review
         )
         dialog.close.assert_called_once_with()
-        dialog.on_invoice_loaded.assert_called_once_with(invoice)
+        dialog.on_credit_note_loaded.assert_called_once_with(credit_note)
 
     def test_invalid_review_is_not_transferred(self):
         dialog = self._dialog(valid=False)
@@ -45,8 +48,8 @@ class SettlementReviewDialogTests(unittest.TestCase):
 
         self.assertFalse(result)
         confirm.assert_not_called()
-        dialog.controller.create_invoice_from_settlement_review.assert_not_called()
-        dialog.on_invoice_loaded.assert_not_called()
+        dialog.controller.create_grain_credit_note_from_review.assert_not_called()
+        dialog.on_credit_note_loaded.assert_not_called()
 
     def test_declined_confirmation_keeps_review_open(self):
         dialog = self._dialog()
@@ -58,7 +61,7 @@ class SettlementReviewDialogTests(unittest.TestCase):
             result = dialog.apply_to_form()
 
         self.assertFalse(result)
-        dialog.controller.create_invoice_from_settlement_review.assert_not_called()
+        dialog.controller.create_grain_credit_note_from_review.assert_not_called()
         dialog.close.assert_not_called()
 
 

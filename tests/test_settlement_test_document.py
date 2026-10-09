@@ -30,6 +30,10 @@ class TestSettlementDocumentTests(unittest.TestCase):
         self.assertEqual(document.net_amount, Decimal("2087.53"))
         self.assertEqual(document.vat_amount, Decimal("162.83"))
         self.assertEqual(document.credit_amount, Decimal("2250.36"))
+        self.assertEqual(document.supplier_number, "1001")
+        self.assertEqual(document.supplier_name, "Musterhof Testlieferant")
+        self.assertEqual(document.supplier_email, "musterlieferant@example.de")
+        self.assertEqual(document.iban, "DE89370400440532013000")
 
         for delivery in document.deliveries:
             self.assertEqual(

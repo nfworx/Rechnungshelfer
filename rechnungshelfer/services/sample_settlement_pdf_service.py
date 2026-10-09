@@ -47,6 +47,23 @@ class TestSettlementDelivery:
 class TestSettlementDocument:
     credit_note_number: str
     credit_note_date: date
+    supplier_number: str
+    supplier_name: str
+    supplier_street: str
+    supplier_postcode: str
+    supplier_city: str
+    supplier_country: str
+    supplier_phone: str
+    supplier_email: str
+    supplier_vat: str
+    supplier_tax_number: str
+    supplier_registry_number: str
+    supplier_contact_name: str
+    supplier_buyer_reference: str
+    iban: str
+    bic: str
+    account_holder: str
+    payment_terms: str
     deliveries: tuple[TestSettlementDelivery, ...]
     vat_rate: Decimal
     net_amount: Decimal
@@ -103,6 +120,23 @@ _VAT_AMOUNT = _money(_NET_AMOUNT * _VAT_RATE / Decimal("100"))
 EXPECTED_TEST_SETTLEMENT = TestSettlementDocument(
     credit_note_number="91001",
     credit_note_date=date(2025, 11, 30),
+    supplier_number="1001",
+    supplier_name="Musterhof Testlieferant",
+    supplier_street="Feldweg 12",
+    supplier_postcode="54321",
+    supplier_city="Musterdorf",
+    supplier_country="DE",
+    supplier_phone="+49 9876 543210",
+    supplier_email="musterlieferant@example.de",
+    supplier_vat="DE987654321",
+    supplier_tax_number="12/345/67890",
+    supplier_registry_number="HRA 12345",
+    supplier_contact_name="Erika Muster",
+    supplier_buyer_reference="1001",
+    iban="DE89370400440532013000",
+    bic="TESTDEFFXXX",
+    account_holder="Musterhof Testlieferant",
+    payment_terms="Auszahlung innerhalb von 14 Tagen.",
     deliveries=_DELIVERIES,
     vat_rate=_VAT_RATE,
     net_amount=_NET_AMOUNT,
@@ -170,19 +204,56 @@ def create_test_settlement_pdf(
     )
     draw.line((left, 245, right, 245), fill="black", width=4)
 
-    draw.text((170, 275), "Analyse-", font=small_font, fill="black")
-    draw.text((170, 312), "werte", font=small_font, fill="black")
-    draw.text((470, 275), "Bezeichnung", font=header_font, fill="black")
-    _right(draw, quantity_x, 275, "Menge", header_font)
-    _right(draw, price_x, 275, "Preis", header_font)
-    _right(draw, price_x, 312, "EUR je t", small_font)
-    _right(draw, amount_x, 275, "Betrag", header_font)
-    _right(draw, amount_x, 312, "EUR", small_font)
-    draw.text((category_x, 275), "M", font=small_font, fill="black")
-    draw.text((category_x, 312), "S", font=small_font, fill="black")
-    draw.line((left, 370, right, 370), fill="black", width=3)
+    draw.text(
+        (left, 275),
+        "SYNTHETISCHE TESTDATEN - NICHT PRODUKTIV VERWENDEN",
+        font=small_font,
+        fill="black",
+    )
+    supplier_lines = (
+        f"Lieferantennummer: {document.supplier_number}",
+        f"Lieferant: {document.supplier_name}",
+        f"Strasse: {document.supplier_street}",
+        f"PLZ Ort: {document.supplier_postcode} {document.supplier_city}",
+        f"Land: {document.supplier_country}",
+        f"Telefon: {document.supplier_phone}",
+        f"E-Mail: {document.supplier_email}",
+        f"USt-IdNr.: {document.supplier_vat}",
+        f"Steuernummer: {document.supplier_tax_number}",
+        f"Handelsregister: {document.supplier_registry_number}",
+        f"Kontaktperson: {document.supplier_contact_name}",
+        f"Kaeuferreferenz: {document.supplier_buyer_reference}",
+    )
+    payment_lines = (
+        f"IBAN: {document.iban}",
+        f"BIC: {document.bic}",
+        f"Kontoinhaber: {document.account_holder}",
+        f"Zahlungsbedingungen: {document.payment_terms}",
+    )
+    for index, text in enumerate(supplier_lines):
+        draw.text(
+            (left, 335 + index * 43),
+            text,
+            font=small_font,
+            fill="black",
+        )
+    for index, text in enumerate(payment_lines):
+        draw.text((left, 870 + index * 43), text, font=small_font, fill="black")
 
-    y = 430
+    table_y = 1080
+    draw.text((170, table_y), "Analyse-", font=small_font, fill="black")
+    draw.text((170, table_y + 37), "werte", font=small_font, fill="black")
+    draw.text((470, table_y), "Bezeichnung", font=header_font, fill="black")
+    _right(draw, quantity_x, table_y, "Menge", header_font)
+    _right(draw, price_x, table_y, "Preis", header_font)
+    _right(draw, price_x, table_y + 37, "EUR je t", small_font)
+    _right(draw, amount_x, table_y, "Betrag", header_font)
+    _right(draw, amount_x, table_y + 37, "EUR", small_font)
+    draw.text((category_x, table_y), "M", font=small_font, fill="black")
+    draw.text((category_x, table_y + 37), "S", font=small_font, fill="black")
+    draw.line((left, table_y + 95, right, table_y + 95), fill="black", width=3)
+
+    y = table_y + 155
     for delivery in document.deliveries:
         draw.text(
             (330, y),
