@@ -42,6 +42,7 @@ class PdfTextBlock:
     right: float
     top: float
     method: ExtractionMethod = ExtractionMethod.DIGITAL
+    confidence: float | None = None
 
 
 @dataclass(frozen=True)

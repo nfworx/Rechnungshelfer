@@ -228,6 +228,7 @@ class TesseractOcrEngine:
                         right=right,
                         top=top,
                         method=ExtractionMethod.OCR,
+                        confidence=max(0.0, min(confidence / 100.0, 1.0)),
                     )
                 )
                 line_key = (

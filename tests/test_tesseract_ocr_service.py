@@ -126,6 +126,10 @@ class TesseractOcrEngineTests(unittest.TestCase):
         self.assertEqual([block.text for block in page.blocks], ["Gescannte", "Rechnung", "4711"])
         self.assertTrue(all(block.method is ExtractionMethod.OCR for block in page.blocks))
         self.assertTrue(all(block.left < block.right for block in page.blocks))
+        self.assertEqual(
+            [block.confidence for block in page.blocks],
+            [0.961, 0.92, 0.895],
+        )
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][1]["env"]["TESSDATA_PREFIX"], str(runtime.tessdata_dir))
 
