@@ -140,7 +140,18 @@ class PartyCard:
                     command=(
                         lambda ent=entry,
                         name=label_text,
-                        anchor=calendar_button: open_datepicker(ent, name, anchor)
+                        anchor=calendar_button,
+                        obj=model,
+                        attr=field: open_datepicker(
+                            ent,
+                            name,
+                            anchor,
+                            on_selected=lambda selected: self._handle_change(
+                                obj,
+                                attr,
+                                selected,
+                            ),
+                        )
                     )
                 )
                 calendar_button.grid(row=row, column=2, sticky="e", padx=(0, 14), pady=2)

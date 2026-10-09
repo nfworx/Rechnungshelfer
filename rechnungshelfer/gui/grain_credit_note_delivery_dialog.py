@@ -18,6 +18,7 @@ from rechnungshelfer.services.input_validation_service import (
 )
 
 from .components import button, clear_frame, form_entry, small_button
+from .date_fields import attach_date_validation, open_datepicker
 from .grain_settlement_dialogs import GRAIN_TYPES, GRAIN_TYPE_LABELS
 from .styles import APP_BG, FONT_NORMAL, FONT_SECTION, FONT_SMALL, TEXT
 
@@ -45,7 +46,7 @@ class GrainCreditNoteDeliveryDialog(ctk.CTkToplevel):
         self.ticket_number = self._field(
             body, 0, "Lieferscheinnummer", delivery.ticket_number.value
         )
-        self.delivery_date = self._field(
+        self.delivery_date = self._date_field(
             body, 1, "Lieferdatum", delivery.delivery_date.value
         )
         self.grain_name = self._field(
@@ -125,6 +126,34 @@ class GrainCreditNoteDeliveryDialog(ctk.CTkToplevel):
         ).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
         entry = form_entry(parent, value)
         entry.grid(row=row, column=1, sticky="ew", pady=5)
+        return entry
+
+    @staticmethod
+    def _date_field(parent, row, label, value):
+        ctk.CTkLabel(
+            parent,
+            text=label,
+            font=FONT_NORMAL,
+            text_color=TEXT,
+        ).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
+        field = ctk.CTkFrame(parent, fg_color="transparent")
+        field.grid(row=row, column=1, sticky="ew", pady=5)
+        field.grid_columnconfigure(0, weight=1)
+        entry = form_entry(field, value)
+        entry.grid(row=0, column=0, sticky="ew")
+        calendar_button = ctk.CTkButton(
+            field,
+            text="📅",
+            width=32,
+            height=28,
+            command=lambda: open_datepicker(
+                entry,
+                label,
+                calendar_button,
+            ),
+        )
+        calendar_button.grid(row=0, column=1, padx=(6, 0))
+        attach_date_validation(entry, label, required=True)
         return entry
 
     def _render_details(self):

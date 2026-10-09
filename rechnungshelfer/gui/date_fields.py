@@ -54,7 +54,29 @@ def attach_date_validation(entry: ctk.CTkEntry, field_name: str, required=True):
     return validate
 
 
-def open_datepicker(entry: ctk.CTkEntry, field_name="Datum", anchor=None):
+def apply_date_selection(
+    entry: ctk.CTkEntry,
+    selected_date,
+    field_name="Datum",
+    on_selected=None,
+):
+    """Uebernimmt ein Kalenderdatum in Feld und angebundenes Formularmodell."""
+
+    selected = normalize_date_de(selected_date, field_name)
+    entry.delete(0, "end")
+    entry.insert(0, selected)
+    entry.configure(border_color="green")
+    if on_selected is not None:
+        on_selected(selected)
+    return selected
+
+
+def open_datepicker(
+    entry: ctk.CTkEntry,
+    field_name="Datum",
+    anchor=None,
+    on_selected=None,
+):
     parent = entry.winfo_toplevel()
     anchor = anchor or entry
     dialog = ctk.CTkToplevel(parent)
@@ -72,10 +94,12 @@ def open_datepicker(entry: ctk.CTkEntry, field_name="Datum", anchor=None):
     cal.pack(padx=20, pady=20, fill="both", expand=True)
 
     def apply_date():
-        selected = normalize_date_de(cal.get_date(), field_name)
-        entry.delete(0, "end")
-        entry.insert(0, selected)
-        entry.configure(border_color="green")
+        apply_date_selection(
+            entry,
+            cal.get_date(),
+            field_name,
+            on_selected,
+        )
         dialog.destroy()
 
     attach_calendar_double_click(

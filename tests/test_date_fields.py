@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import Mock
 
 from rechnungshelfer.gui.date_fields import (
+    apply_date_selection,
     attach_calendar_double_click,
     calculate_datepicker_position,
 )
@@ -44,6 +45,31 @@ class DatepickerPositionTests(unittest.TestCase):
 
 
 class DatepickerInteractionTests(unittest.TestCase):
+    def test_selected_date_updates_entry_and_bound_model_callback(self):
+        entry = Mock()
+        on_selected = Mock()
+
+        selected = apply_date_selection(
+            entry,
+            "2026-10-09",
+            "Ausstellungsdatum",
+            on_selected,
+        )
+
+        self.assertEqual(selected, "09.10.2026")
+        entry.delete.assert_called_once_with(0, "end")
+        entry.insert.assert_called_once_with(0, "09.10.2026")
+        entry.configure.assert_called_once_with(border_color="green")
+        on_selected.assert_called_once_with("09.10.2026")
+
+    def test_selected_date_remains_compatible_without_model_callback(self):
+        entry = Mock()
+
+        selected = apply_date_selection(entry, "09.10.2026")
+
+        self.assertEqual(selected, "09.10.2026")
+        entry.insert.assert_called_once_with(0, "09.10.2026")
+
     def test_double_click_is_bound_to_internal_calendar_days(self):
         calendar = Mock()
         calendar._calendar = Mock()
