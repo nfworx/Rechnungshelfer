@@ -506,6 +506,30 @@ class GrainWorkspaceNavigationTests(unittest.TestCase):
 
 
 class GrainCreditNoteTransferTests(unittest.TestCase):
+    def test_created_credit_note_uses_active_edit_action(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.add_button = Mock()
+        view.calculate_button = Mock()
+        view.rule_button = Mock()
+        view.example_button = Mock()
+        view.create_button = Mock()
+        view.edit_credit_note_button = Mock()
+        view.credit_note = object()
+
+        view._set_credit_note_mode(True)
+
+        view.create_button.configure.assert_any_call(
+            text="Getreidegutschrift bearbeiten",
+            command=view.edit_credit_note,
+        )
+        self.assertTrue(
+            any(
+                call.kwargs.get("state") == "normal"
+                for call in view.create_button.configure.call_args_list
+            )
+        )
+        view.edit_credit_note_button.pack_forget.assert_called_once_with()
+
     def test_calculated_settlement_is_transferred_after_confirmation(self):
         form = GrainFormMapperTests._form(vat_rate="7 %")
         settlement = calculate_settlement_preview(form)
@@ -728,6 +752,26 @@ class GrainRuleSetSelectionTests(unittest.TestCase):
 
         view.total_rows["tax_amount"].configure.assert_called_once_with(text="—")
         view.total_rows["payable_amount"].configure.assert_called_once_with(text="—")
+
+    def test_created_credit_note_totals_only_update_tax_and_payout(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.total_rows = {
+            "tax_amount": Mock(),
+            "payable_amount": Mock(),
+        }
+        credit_note = Mock(
+            vat_amount=Decimal("162.83"),
+            credit_amount=Decimal("2250.36"),
+        )
+
+        view._show_credit_note_totals(credit_note)
+
+        view.total_rows["tax_amount"].configure.assert_called_once_with(
+            text="162,83 EUR"
+        )
+        view.total_rows["payable_amount"].configure.assert_called_once_with(
+            text="2.250,36 EUR"
+        )
 
     def test_current_delivery_selects_its_own_rule_set(self):
         view = GrainSettlementView.__new__(GrainSettlementView)

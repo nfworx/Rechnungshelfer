@@ -247,21 +247,22 @@ def grain_credit_note_creation_issues(document, deliveries, result, vat_value):
     except ValueError:
         issues.append("Ausstellungsdatum fehlt oder ist ungueltig.")
 
-    required_groups = (
-        (document.seller, ("supplier_number", *document.seller.required_fields)),
-        (document.buyer, tuple(document.buyer.required_fields)),
-        (document.payment, tuple(document.payment.required_fields)),
+    required_fields = (
+        (document.seller, "supplier_number", "Lieferantennummer"),
+        (document.seller, "name", "Lieferantenname"),
+        (document.seller, "street", "Strasse"),
+        (document.seller, "postcode", "PLZ"),
+        (document.seller, "city", "Ort"),
+        (document.seller, "country", "Land"),
+        (document.seller, "email", "E-Mail"),
+        (document.payment, "iban", "IBAN"),
+        (document.payment, "bic", "BIC"),
+        (document.payment, "account_holder", "Kontoinhaber"),
+        (document.payment, "payment_terms", "Zahlungsbedingungen"),
     )
-    seen = set()
-    for model, fields in required_groups:
-        for field in fields:
-            key = (id(model), field)
-            if key in seen:
-                continue
-            seen.add(key)
-            if not str(getattr(model, field, "") or "").strip():
-                label = model.get_label(field) if hasattr(model, "get_label") else field
-                issues.append(f"{label} fehlt.")
+    for model, field, label in required_fields:
+        if not str(getattr(model, field, "") or "").strip():
+            issues.append(f"{label} fehlt.")
 
     if not deliveries:
         issues.append("Mindestens eine Lieferung fehlt.")

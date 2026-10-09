@@ -276,52 +276,24 @@ class GrainSettlementView(ctk.CTkFrame):
         totals.grid_columnconfigure(0, weight=1)
         totals.grid_columnconfigure(1, weight=0)
         self.total_rows = {}
-        definitions = (
-            ("gross", "Bruttomenge"),
-            ("deduction", "Mengenabzug"),
-            ("settlement", "Abrechnungsmenge"),
-            ("base_amount", "Basiswarenwert"),
-            ("money_deduction", "Preis-/Kostenabzug"),
-            ("net_amount", "Nettoabrechnungsbetrag"),
-        )
-        for row, (key, label) in enumerate(definitions, start=1):
-            is_total = key == "net_amount"
-            font = FONT_SECTION if is_total else FONT_SMALL
-            ctk.CTkLabel(
-                totals,
-                text=label,
-                font=font,
-                text_color=TEXT,
-                anchor="w",
-            ).grid(row=row, column=0, sticky="w", padx=14, pady=(8, 3))
-            value = ctk.CTkLabel(
-                totals,
-                text="–",
-                font=font,
-                text_color=TEXT,
-                anchor="e",
-            )
-            value.grid(row=row, column=1, sticky="e", padx=14, pady=(8, 3))
-            self.total_rows[key] = value
-
         ctk.CTkLabel(
             totals,
             text="Umsatzsteuer",
             font=FONT_SMALL,
             text_color=TEXT,
             anchor="w",
-        ).grid(row=7, column=0, sticky="w", padx=14, pady=(14, 3))
+        ).grid(row=1, column=0, sticky="w", padx=14, pady=(14, 3))
         ctk.CTkOptionMenu(
             totals,
             values=["— auswählen —", "0 %", "7 %", "7,8 %", "19 %"],
             variable=self.vat_variable,
             command=lambda _value: self._refresh_tax_totals(),
             width=115,
-        ).grid(row=7, column=1, sticky="e", padx=14, pady=(14, 3))
+        ).grid(row=1, column=1, sticky="e", padx=14, pady=(14, 3))
 
         for row, key, label, is_total in (
-            (8, "tax_amount", "Umsatzsteuer", False),
-            (9, "payable_amount", "Auszahlungsbetrag", True),
+            (2, "tax_amount", "Steuerbetrag", False),
+            (3, "payable_amount", "Auszahlungsbetrag", True),
         ):
             font = FONT_SECTION if is_total else FONT_SMALL
             ctk.CTkLabel(
@@ -341,18 +313,6 @@ class GrainSettlementView(ctk.CTkFrame):
             value.grid(row=row, column=1, sticky="e", padx=14, pady=(8, 3))
             self.total_rows[key] = value
 
-        ctk.CTkLabel(
-            totals,
-            text=(
-                "Beim Preis-/Kostenabzug bedeutet ein negativer Wert "
-                "einen Zuschlag."
-            ),
-            font=FONT_SMALL,
-            text_color=TEXT_MUTED,
-            wraplength=270,
-            justify="left",
-        ).grid(row=10, column=0, columnspan=2, sticky="w", padx=14, pady=12)
-
         self.create_button = button(
             totals,
             "Getreidegutschrift erstellen",
@@ -360,7 +320,7 @@ class GrainSettlementView(ctk.CTkFrame):
             primary=True,
         )
         self.create_button.grid(
-            row=11,
+            row=4,
             column=0,
             columnspan=2,
             sticky="ew",
@@ -371,8 +331,8 @@ class GrainSettlementView(ctk.CTkFrame):
         self._refresh_create_button()
 
         output_buttons = (
-            ("PDF erstellen", 12),
-            ("HTML erstellen", 13),
+            ("PDF erstellen", 5),
+            ("HTML erstellen", 6),
         )
         for label, row in output_buttons:
             output_button = button(totals, label, lambda: None)
@@ -382,7 +342,7 @@ class GrainSettlementView(ctk.CTkFrame):
                 columnspan=2,
                 sticky="ew",
                 padx=14,
-                pady=(0, 8 if row < 13 else 14),
+                pady=(0, 8 if row < 6 else 14),
             )
             set_button_enabled(output_button, False)
 
@@ -499,11 +459,16 @@ class GrainSettlementView(ctk.CTkFrame):
             self.example_button,
         ):
             set_button_enabled(control, not enabled)
+        self.create_button.configure(
+            text=(
+                "Getreidegutschrift bearbeiten"
+                if enabled
+                else "Getreidegutschrift erstellen"
+            ),
+            command=self.edit_credit_note if enabled else self.create_credit_note,
+        )
         self._refresh_create_button()
-        if enabled:
-            self.edit_credit_note_button.pack(side="left", padx=8)
-        else:
-            self.edit_credit_note_button.pack_forget()
+        self.edit_credit_note_button.pack_forget()
 
     def _render_credit_note_deliveries(self, credit_note):
         clear_frame(self.delivery_host)
@@ -605,42 +570,6 @@ class GrainSettlementView(ctk.CTkFrame):
             row += 2
 
     def _show_credit_note_totals(self, credit_note):
-        gross = sum(
-            (delivery.gross_quantity_kg for delivery in credit_note.deliveries),
-            Decimal("0"),
-        )
-        settlement = sum(
-            (
-                delivery.settlement_quantity_kg
-                for delivery in credit_note.deliveries
-            ),
-            Decimal("0"),
-        )
-        base_amount = sum(
-            (
-                delivery.gross_quantity_kg
-                * delivery.base_price_per_tonne
-                / Decimal("1000")
-                for delivery in credit_note.deliveries
-            ),
-            Decimal("0"),
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        self.total_rows["gross"].configure(text=f"{self._quantity(gross)} kg")
-        self.total_rows["deduction"].configure(
-            text=f"{self._quantity(gross - settlement)} kg"
-        )
-        self.total_rows["settlement"].configure(
-            text=f"{self._quantity(settlement)} kg"
-        )
-        self.total_rows["base_amount"].configure(
-            text=f"{format_de(base_amount)} EUR"
-        )
-        self.total_rows["money_deduction"].configure(
-            text=f"{format_de(base_amount - credit_note.net_amount)} EUR"
-        )
-        self.total_rows["net_amount"].configure(
-            text=f"{format_de(credit_note.net_amount)} EUR"
-        )
         self.total_rows["tax_amount"].configure(
             text=f"{format_de(credit_note.vat_amount)} EUR"
         )
@@ -1130,24 +1059,6 @@ class GrainSettlementView(ctk.CTkFrame):
         )
 
     def _show_totals(self, result: SettlementBatchResult):
-        self.total_rows["gross"].configure(
-            text=f"{self._quantity(result.gross_quantity_kg)} kg"
-        )
-        self.total_rows["deduction"].configure(
-            text=f"{self._quantity(result.deducted_quantity_kg)} kg"
-        )
-        self.total_rows["settlement"].configure(
-            text=f"{self._quantity(result.settlement_quantity_kg)} kg"
-        )
-        self.total_rows["base_amount"].configure(
-            text=f"{format_de(result.base_amount)} EUR"
-        )
-        self.total_rows["money_deduction"].configure(
-            text=f"{format_de(result.deducted_amount)} EUR"
-        )
-        self.total_rows["net_amount"].configure(
-            text=f"{format_de(result.net_amount)} EUR"
-        )
         self._refresh_tax_totals()
 
     def _refresh_tax_totals(self):
@@ -1197,7 +1108,7 @@ class GrainSettlementView(ctk.CTkFrame):
             return
         set_button_enabled(
             self.create_button,
-            not self._creation_issues(),
+            self.credit_note is not None or not self._creation_issues(),
             primary=True,
         )
 

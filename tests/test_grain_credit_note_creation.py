@@ -37,6 +37,11 @@ class GrainCreditNoteCreationIssueTests(unittest.TestCase):
         self.result = SimpleNamespace(delivery_results=(object(),))
 
     def test_complete_document_can_be_created(self):
+        self.document.seller.vat = ""
+        self.document.seller.registry_number = ""
+        self.document.seller.contact_name = ""
+        self.document.buyer.email = ""
+
         issues = grain_credit_note_creation_issues(
             self.document,
             self.deliveries,
@@ -57,7 +62,7 @@ class GrainCreditNoteCreationIssueTests(unittest.TestCase):
             "— auswählen —",
         )
 
-        self.assertIn("Name fehlt.", issues)
+        self.assertIn("Lieferantenname fehlt.", issues)
         self.assertIn("IBAN fehlt.", issues)
         self.assertIn("Die Lieferungen sind noch nicht erfolgreich berechnet.", issues)
         self.assertIn("Steuersatz fehlt oder ist ungueltig.", issues)
