@@ -10,9 +10,14 @@
 
 - Rechnung, Gutschrift und Getreideabrechnung bleiben getrennte Eingabemasken.
 - Der steuerlich führende Beleg einer Getreideabrechnung ist die **Gutschrift**.
-- Eine interne oder externe Getreideabrechnung ist Berechnungsnachweis beziehungsweise
-  Anlage zur Gutschrift und erhält keinen eigenen steuerlichen Nummernkreis.
-- Gutschriftnummern und Rechnungsnummern werden manuell und ohne Präfix eingegeben.
+- Eine AMIC-Sammel-Final-Gutschrift ist bereits der steuerliche Beleg. Sie wird als
+  Quelle für dieselbe digitale Gutschrift verwendet und nicht als Anlage behandelt.
+- Die ursprüngliche AMIC-PDF wird ausschließlich gelesen, nicht verändert, kopiert,
+  eingebettet oder durch den Rechnungshelfer dauerhaft gespeichert.
+- Die aus einer AMIC-PDF erzeugte XML- beziehungsweise PDF-Ausgabe stellt denselben
+  Beleg mit derselben Gutschriftnummer, demselben Datum und denselben Beträgen dar.
+- Erkannte Gutschriftnummern und Rechnungsnummern bleiben vor der Übernahme
+  bestätigungs- und editierbar; zusätzliche Präfixe werden nicht erzeugt.
 - Eine Abrechnung verwendet einen ausdrücklich ausgewählten Steuersatz für alle
   enthaltenen Lieferungen.
 - OCR-Ergebnisse und daraus abgeleitete Regeln dürfen niemals ungeprüft übernommen
@@ -29,65 +34,67 @@
 
 ## P1 – Wichtige Funktionen in empfohlener Reihenfolge
 
-### 1. Allgemeines Anlagenmodell und Oberfläche
+### 1. AMIC-Sammel-Final-Gutschrift erkennen
 
-- Ein dokumenttypunabhängiges Anlagenmodell entwerfen; nicht auf AMIC oder Getreide
-  fest verdrahten.
-- Zunächst PDF-Anlagen unterstützen und Dateiname, Beschreibung, MIME-Typ,
-  Dateigröße und SHA-256-Prüfsumme erfassen.
-- In Rechnung und Gutschrift Anlagen hinzufügen, anzeigen, öffnen und entfernen.
-- Fremde Dateien als nicht vertrauenswürdig behandeln, Dateityp und Größe prüfen
-  und keine Datei beim bloßen Auswählen verändern.
-- Die manuelle Gutschrift muss auch dann funktionieren, wenn eine AMIC-Abrechnung
-  nur als Anlage beigefügt und nicht inhaltlich erkannt wird.
+- Eine vorhandene AMIC-PDF als nicht vertrauenswürdige, unveränderte Importquelle
+  einlesen und das Format „Sammel-Final-Gutschrift“ erkennen.
+- Vor der Verarbeitung Dateityp, Dateigröße und Lesbarkeit prüfen; die Quelldatei
+  weder verändern noch kopieren oder dauerhaft im Rechnungshelfer speichern.
+- Vorhandene PDF-Textschichten nutzen und bei unzureichender Qualität kontrolliert
+  auf OCR zurückgreifen.
+- Gutschriftnummer, Ausstellungsdatum, Lieferungen, Analysewerte, Mengen, Preise,
+  Beträge, Steuersatz und Summen als Importentwurf erfassen.
 
-### 2. Anlagen sicher speichern und wieder laden
+### 2. Prüfpflichtigen Importentwurf anzeigen
 
-- Vor der Implementierung entscheiden, ob Anlagen als verwaltete Dateien im
-  Datenverzeichnis oder als Datenbank-BLOB gespeichert werden. Backup,
-  Portabilität, Dateigröße, Löschen und verwaiste Dateien berücksichtigen.
-- Notwendige Schemaänderungen ausschließlich über eine versionierte Migration mit
-  Backup, Transaktion und verständlicher Fehleranzeige durchführen.
-- Anlagen zusammen mit dem Beleg konsistent speichern, laden und löschen; keine
-  stillen Überschreibungen vorhandener Dateien.
-- Speicherung und Neustart mit einer echten temporären Migration testen.
+- Erkannte Werte zusammen mit Fundstelle, Quelltext und Erkennungssicherheit in
+  einer Prüfansicht darstellen.
+- Einzelbeträge, Nettosumme, Umsatzsteuer und Gesamtbetrag rechnerisch
+  gegeneinander prüfen und Abweichungen deutlich anzeigen.
+- Unsichere oder widersprüchliche Werte niemals automatisch übernehmen.
+- Manuelle Korrektur und ausdrückliche Bestätigung aller zu übernehmenden Daten
+  ermöglichen.
 
-### 3. Anlagen in den Ausgabeformaten
+### 3. Bestätigte Daten in eine editierbare Gutschrift übernehmen
 
-- Eine externe Abrechnung auf der Gutschrift eindeutig als Anlage bezeichnen und
-  auf die Gutschriftnummer beziehen.
-- Anlagen in der XRechnung fachgerecht über `AdditionalDocumentReference`
-  referenzieren beziehungsweise einbetten und mit KoSIT validieren.
-- Für den PDF-Versand festlegen und umsetzen, ob Anlagen angehängt, mit dem PDF
-  zusammengeführt oder gemeinsam als Paket ausgegeben werden.
-- Die Anlage darf nicht wie ein zweiter steuerlicher Beleg erscheinen.
+- Aus dem bestätigten Entwurf eine Gutschrift mit dem vorhandenen Dokumenttyp und
+  derselben Gutschriftnummer erzeugen; keinen zweiten steuerlichen Beleg anlegen.
+- Jede Lieferung als eigene Gutschriftposition abbilden und vorhandene
+  Getreide-Mapping- und Berechnungslogik soweit sinnvoll wiederverwenden.
+- Erkannte Abzüge und Analysewerte nachvollziehbar in die Positionsdarstellung
+  übernehmen, ohne Beträge ein zweites Mal zu berechnen.
+- Den übernommenen Beleg in der bestehenden Gutschriftenmaske vollständig
+  bearbeitbar machen.
 
-### 4. Getreideabrechnung speichern und wieder öffnen
+### 4. Importierte Gutschrift speichern und wieder öffnen
 
-- Einen unveränderlichen Abrechnungssnapshot aus Lieferungen, Analysewerten,
-  Regelwerksversion, Berechnungsschritten, Steuersatz und Summen speichern.
-- Die erzeugte Gutschrift eindeutig mit diesem Snapshot verknüpfen, ohne die
-  Berechnung ein zweites Mal in den Rechnungspositionen anzuwenden.
-- Abrechnungen laden, nachvollziehbar anzeigen und bei Änderungen bewusst als neue
-  Berechnung beziehungsweise Version behandeln.
-- Schemaänderung, Backup, Migration, Fehlerfall und Neustart testen.
+- Ausschließlich die bestätigten strukturierten Belegdaten über die bestehenden
+  Speicherwege sichern; die ursprüngliche AMIC-PDF bleibt außerhalb der Anwendung.
+- Die Gutschrift nach einem Neustart vollständig und ohne Abhängigkeit von der
+  ursprünglichen PDF wieder laden können.
+- Falls Schemaänderungen erforderlich werden, ausschließlich eine versionierte
+  Migration mit Backup, Transaktion und verständlicher Fehleranzeige verwenden.
+- Speicherung, Neustart, erneutes Laden und Fehlerfälle mit einer temporären
+  Datenbank testen.
 
-### 5. Getreideabrechnung als lesbare Gutschriftanlage
+### 5. Dieselbe Gutschrift als PDF oder XRechnung ausgeben
 
-- Für intern berechnete Abrechnungen eine übersichtliche Anlage mit allen
-  Lieferungen, Ursprungsmengen, Abrechnungsmengen, Analysewerten und einzelnen
-  Mengen-, Preis- und Kostenänderungen erzeugen.
-- Benutzertexte statt interner Codes wie `dockage` oder technischer Faktoren
-  ausgeben.
-- Gutschrift und Berechnungsanlage verwenden dieselbe Gutschriftnummer; es gibt
-  keine zusätzliche sichtbare Abrechnungsnummer.
-- Mehrseitiges PDF, Seitenumbrüche und größere Lieferungsmengen testen.
+- Aus den bestätigten strukturierten Daten wahlweise eine lesbare PDF oder eine
+  XRechnung erzeugen; beide Ausgaben repräsentieren denselben Beleg.
+- Gutschriftnummer, Datum, Parteien, Positionen, Steuersatz und Summen in beiden
+  Formaten konsistent halten.
+- Für die XRechnung den vorhandenen Gutschriftprozess mit Typcode `389` verwenden
+  und die Ausgabe mit XSD und KoSIT validieren.
+- Die ursprüngliche AMIC-PDF weder einbetten noch als Anlage referenzieren.
 
 ### 6. Fachlicher End-to-End-Abnahmetest
 
-- Einen realistischen AMIC-Anwendungsfall mit mehreren Lieferungen, 7,8 Prozent
-  Umsatzsteuer, manueller Gutschriftnummer und externer Anlage durchspielen.
-- Speichern, Neustart, erneutes Laden, PDF und XRechnung einschließlich KoSIT prüfen.
+- Eine reale AMIC-Sammel-Final-Gutschrift mit mehreren Lieferungen und 7,8 Prozent
+  Umsatzsteuer von der PDF-Auswahl bis zum bestätigten Beleg durchspielen.
+- Unsichere OCR-Werte, rechnerische Gegenprüfung und manuelle Korrektur gezielt
+  testen.
+- Speichern, Neustart, erneutes Laden sowie PDF- und XRechnungsausgabe einschließlich
+  KoSIT prüfen.
 - Gemeinsam mit Hauptanwender und Steuerberater Bezeichnung, Steuersatz,
   Pflichtangaben und Darstellung einmal fachlich abnehmen.
 
@@ -101,14 +108,10 @@
 - Tesseract-Distribution verschlanken und Repository-Größe optimieren.
 - Datenbank-Backup und Wiederherstellung praktisch testen.
 
-## Später – OCR und lernende Regelvorschläge
+## Später – Weitere Importformate und lernende Regelvorschläge
 
-- Externe Getreideabrechnungen, insbesondere AMIC-Abrechnungen, per OCR einlesen.
-- Erkannte Kopfdaten, Lieferungen, Analysewerte, Abzüge und Summen in einer
-  Prüfansicht den sichtbaren Originalstellen gegenüberstellen.
-- Nur ausdrücklich bestätigte Werte in eine Gutschrift oder interne
-  Getreideabrechnung übernehmen; bei unsicherer Erkennung manuelle Eingabe und
-  unveränderte Originalanlage ermöglichen.
+- Nach dem fachlich abgenommenen AMIC-Import bei Bedarf weitere PDF-Layouts und
+  Abrechnungsprogramme als jeweils kontrollierte Importformate ergänzen.
 - Nach mehreren bestätigten AMIC-Abrechnungen Abweichungen zu den aktiven Regeln
   erkennen und neue oder geänderte Regeln lediglich vorschlagen.
 - Regelvorschläge erklären, mit Beispieldaten testen und erst nach Freigabe als
