@@ -37,6 +37,7 @@ def structured_note():
             postcode="12345",
             city="Teststadt",
             country="DE",
+            leitweg_id="EIGENER-BETRIEB",
             email="betrieb@example.de",
             vat="DE123456789",
         ),

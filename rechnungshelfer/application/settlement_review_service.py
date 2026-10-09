@@ -78,6 +78,7 @@ class SettlementReview:
     account_holder: ReviewField = ReviewField("")
     payment_terms: ReviewField = ReviewField("")
     buyer: GrainCreditNoteBuyer = GrainCreditNoteBuyer()
+    payment_due_date: ReviewField = ReviewField("")
 
 
 @dataclass(frozen=True)
@@ -156,6 +157,7 @@ class SettlementReviewService:
             account_holder=self._field(draft.account_holder),
             payment_terms=self._field(draft.payment_terms),
             buyer=GrainCreditNoteBuyer(),
+            payment_due_date=ReviewField(""),
         )
 
     def create_review_from_credit_note(self, credit_note) -> SettlementReview:
@@ -216,6 +218,10 @@ class SettlementReviewService:
             account_holder=field(credit_note.payment.account_holder),
             payment_terms=field(credit_note.payment.payment_terms),
             buyer=credit_note.buyer,
+            payment_due_date=field(
+                credit_note.payment_due_date,
+                date_value=True,
+            ),
         )
 
     def validate(self, review: SettlementReview) -> SettlementReviewResult:

@@ -14,7 +14,18 @@ from rechnungshelfer.domain.grain_models import (
     SettlementResult,
     SettlementStatus,
 )
-from rechnungshelfer.domain.models import DocumentType, Invoice, InvoiceItem
+from rechnungshelfer.domain.models import (
+    Buyer,
+    Delivery,
+    DocumentType,
+    Invoice,
+    InvoiceInfo,
+    InvoiceItem,
+    InvoiceItemProperty,
+    InvoiceLineAdjustment,
+    Payment,
+    Seller,
+)
 
 
 _CENT = Decimal("0.01")
@@ -28,6 +39,196 @@ _GRAIN_TYPE_LABELS = {
     "maize": "Mais",
     "rapeseed": "Raps",
 }
+
+
+def create_invoice_from_grain_credit_note(note) -> Invoice:
+    """Projiziert einen bestätigten Endbeleg verlustfrei in das Exportmodell."""
+
+    _validate_credit_note_for_export(note)
+    buyer = Buyer(
+        **{
+            field: getattr(note.buyer, field)
+            for field in note.buyer.__dataclass_fields__
+        },
+        use_invoice_address_as_delivery=True,
+    )
+    invoice = Invoice(
+        seller=Seller(
+            **{
+                field: getattr(note.supplier, field)
+                for field in note.supplier.__dataclass_fields__
+            }
+        ),
+        buyer=buyer,
+        delivery=Delivery(
+            name=buyer.name,
+            street=buyer.street,
+            postcode=buyer.postcode,
+            city=buyer.city,
+            country=buyer.country,
+        ),
+        info=InvoiceInfo(
+            invoice_number=note.credit_note_number,
+            invoice_date=_date_de(note.credit_note_date),
+            delivery_date=_date_de(
+                max(delivery.delivery_date for delivery in note.deliveries)
+            ),
+            payment_due_date=_date_de(note.payment_due_date),
+            invoice_type_code="389",
+        ),
+        payment=Payment(
+            **{
+                field: getattr(note.payment, field)
+                for field in note.payment.__dataclass_fields__
+            }
+        ),
+        items=[
+            _credit_note_item(index, delivery, note.vat_rate)
+            for index, delivery in enumerate(note.deliveries, start=1)
+        ],
+        document_type=DocumentType.SELF_BILLED_INVOICE,
+    )
+    invoice.monetarytotal.prepaid_amount = _money(note.advance_payment)
+    invoice.calculate(force=True)
+    if invoice.monetarytotal.tax_exclusive_amount != _money(note.net_amount):
+        raise GrainValidationError(
+            "Export-Nettosumme stimmt nicht mit der Getreidegutschrift überein."
+        )
+    if sum(tax.amount for tax in invoice.taxtotal) != _money(note.vat_amount):
+        raise GrainValidationError(
+            "Export-Umsatzsteuer stimmt nicht mit der Getreidegutschrift überein."
+        )
+    if invoice.monetarytotal.payable_amount != _money(note.credit_amount):
+        raise GrainValidationError(
+            "Export-Auszahlungsbetrag stimmt nicht mit der Getreidegutschrift überein."
+        )
+    return invoice
+
+
+def _credit_note_item(position, delivery, vat_rate):
+    adjustments = tuple(
+        InvoiceLineAdjustment(
+            amount=abs(detail.amount_change),
+            is_charge=detail.amount_change > 0,
+            reason=detail.label,
+        )
+        for detail in delivery.details
+        if detail.amount_change not in (None, Decimal("0"))
+    )
+    properties = [
+        InvoiceItemProperty("Lieferscheinnummer", delivery.ticket_number),
+        InvoiceItemProperty("Lieferdatum", _date_de(delivery.delivery_date)),
+        InvoiceItemProperty(
+            "Ursprungsmenge (kg)",
+            _plain_number(delivery.gross_quantity_kg),
+        ),
+        InvoiceItemProperty(
+            "Basispreis (EUR/t)",
+            _plain_number(delivery.base_price_per_tonne),
+        ),
+    ]
+    for detail in delivery.details:
+        properties.append(
+            InvoiceItemProperty(
+                f"Analyse – {detail.label}",
+                _plain_number(detail.analysis_value),
+            )
+        )
+        for value, suffix in (
+            (detail.quantity_change_kg, "Mengenänderung (kg)"),
+            (detail.price_change_per_tonne, "Preisänderung (EUR/t)"),
+            (detail.amount_change, "Betragsänderung (EUR)"),
+        ):
+            if value is not None:
+                properties.append(
+                    InvoiceItemProperty(
+                        f"{suffix} – {detail.label}",
+                        _plain_number(value),
+                    )
+                )
+    item = InvoiceItem(
+        pos=str(position),
+        name=f"Getreideabrechnung {delivery.grain_name}",
+        description=_credit_note_description(delivery),
+        qty=delivery.settlement_quantity_kg,
+        unit="KGM",
+        price_without_discount=delivery.settlement_price_per_tonne,
+        price_base_quantity=Decimal("1000"),
+        price_base_unit="KGM",
+        item_properties=tuple(properties),
+        line_adjustments=adjustments,
+        discount=Decimal("0"),
+        vat=vat_rate,
+    )
+    item.set_vat(vat_rate)
+    if item.net != _money(delivery.net_amount):
+        raise GrainValidationError(
+            f"Lieferbetrag für Lieferschein {delivery.ticket_number} ist "
+            "mit Menge, Preis und Zu-/Abschlägen nicht konsistent."
+        )
+    return item
+
+
+def _credit_note_description(delivery):
+    lines = [
+        f"Lieferschein: {delivery.ticket_number}",
+        f"Lieferdatum: {_date_de(delivery.delivery_date)}",
+        f"Ursprungsmenge: {_number(delivery.gross_quantity_kg, 3)} kg",
+        f"Abrechnungsmenge: {_number(delivery.settlement_quantity_kg, 3)} kg",
+        f"Basispreis: {_number(delivery.base_price_per_tonne, 2)} EUR/t",
+        f"Abrechnungspreis: {_number(delivery.settlement_price_per_tonne, 2)} EUR/t",
+    ]
+    lines.extend(
+        f"{detail.label}: {_plain_number(detail.analysis_value)}"
+        for detail in delivery.details
+    )
+    return "\n".join(lines)
+
+
+def _validate_credit_note_for_export(note):
+    if note.payment_due_date is None:
+        raise GrainValidationError("Auszahlungsdatum fehlt.")
+    rate = Decimal(str(note.vat_rate))
+    if rate not in _SUPPORTED_VAT_RATES:
+        raise GrainValidationError("Der gewählte Steuersatz wird nicht unterstützt.")
+    required = (
+        (note.supplier.supplier_number, "Lieferantennummer"),
+        (note.supplier.name, "Lieferantenname"),
+        (note.supplier.street, "Lieferantenstraße"),
+        (note.supplier.postcode, "Lieferanten-PLZ"),
+        (note.supplier.city, "Lieferantenort"),
+        (note.supplier.country, "Lieferantenland"),
+        (note.supplier.email, "Lieferanten-E-Mail"),
+        (note.buyer.name, "Name des eigenen Betriebs"),
+        (note.buyer.street, "Straße des eigenen Betriebs"),
+        (note.buyer.postcode, "PLZ des eigenen Betriebs"),
+        (note.buyer.city, "Ort des eigenen Betriebs"),
+        (note.buyer.country, "Land des eigenen Betriebs"),
+        (note.buyer.email, "E-Mail des eigenen Betriebs"),
+        (note.buyer.leitweg_id, "Käuferreferenz des eigenen Betriebs"),
+        (note.payment.iban, "IBAN"),
+        (note.payment.bic, "BIC"),
+        (note.payment.account_holder, "Kontoinhaber"),
+        (note.payment.payment_means_code, "Zahlungsart"),
+    )
+    missing = [label for value, label in required if not str(value or "").strip()]
+    if missing:
+        raise GrainValidationError("Für den Export fehlt: " + ", ".join(missing))
+    net = _money(sum((delivery.net_amount for delivery in note.deliveries), Decimal("0")))
+    vat = _money(net * rate / Decimal("100"))
+    total = _money(net + vat)
+    credit = _money(total - note.advance_payment)
+    if (
+        net != _money(note.net_amount)
+        or vat != _money(note.vat_amount)
+        or total != _money(note.total_amount)
+        or credit != _money(note.credit_amount)
+    ):
+        raise GrainValidationError("Summen der Getreidegutschrift sind nicht konsistent.")
+
+
+def _plain_number(value):
+    return format(Decimal(value), "f")
 
 
 def create_grain_settlement_invoice(

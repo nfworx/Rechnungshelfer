@@ -56,14 +56,23 @@ def calculate_line(
     price_without_discount: object,
     discount: object,
     quantity: object,
+    *,
+    price_base_quantity: object = 1,
+    adjustment_total: object = 0,
 ) -> LineCalculation:
     """Berechnet rabattierten Einzelpreis und Netto-Positionssumme."""
     price = _decimal(price_without_discount) - _decimal(discount)
     if price < 0:
         price = ZERO
+    base_quantity = _decimal(price_base_quantity)
+    if base_quantity <= 0:
+        raise ValueError("Preisbasismenge muss größer als null sein.")
 
     rounded_price = round_money(price)
-    net = round_money(rounded_price * _decimal(quantity))
+    net = round_money(
+        rounded_price * _decimal(quantity) / base_quantity
+        + _decimal(adjustment_total)
+    )
     return LineCalculation(price=rounded_price, net=net)
 
 

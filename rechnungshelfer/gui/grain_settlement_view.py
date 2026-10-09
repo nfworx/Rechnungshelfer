@@ -447,6 +447,11 @@ class GrainSettlementView(ctk.CTkFrame):
         self.document.info.invoice_date = credit_note.credit_note_date.strftime(
             "%d.%m.%Y"
         )
+        self.document.info.payment_due_date = (
+            credit_note.payment_due_date.strftime("%d.%m.%Y")
+            if credit_note.payment_due_date
+            else ""
+        )
         for field in credit_note.supplier.__dataclass_fields__:
             setattr(self.document.seller, field, getattr(credit_note.supplier, field))
         for field in credit_note.payment.__dataclass_fields__:
@@ -493,6 +498,14 @@ class GrainSettlementView(ctk.CTkFrame):
                 self.document.info.invoice_date.strip(),
                 "%d.%m.%Y",
             ).date(),
+            payment_due_date=(
+                datetime.strptime(
+                    self.document.info.payment_due_date.strip(),
+                    "%d.%m.%Y",
+                ).date()
+                if self.document.info.payment_due_date.strip()
+                else None
+            ),
             supplier=replace(
                 self.credit_note.supplier,
                 **{

@@ -79,6 +79,7 @@ class SettlementReviewDialog:
             (
                 ("Gutschriftnummer", "credit_note_number", self.review.credit_note_number),
                 ("Ausstellungsdatum", "credit_note_date", self.review.credit_note_date),
+                ("Auszahlungsdatum", "payment_due_date", self.review.payment_due_date),
             ),
         )
         row = self._section(
@@ -315,6 +316,9 @@ class SettlementReviewDialog:
             account_holder=updated("account_holder", self.review.account_holder),
             payment_terms=updated("payment_terms", self.review.payment_terms),
             buyer=self.review.buyer,
+            payment_due_date=updated(
+                "payment_due_date", self.review.payment_due_date
+            ),
         )
 
     def validate(self):

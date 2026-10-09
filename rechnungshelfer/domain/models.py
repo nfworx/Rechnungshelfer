@@ -1,4 +1,5 @@
 from decimal import Decimal, ROUND_HALF_UP
+from dataclasses import dataclass
 from enum import Enum
 from datetime import date, timedelta
 
@@ -256,6 +257,29 @@ class Delivery(Validatable):
 # =========================
 # InvoiceItem
 # =========================
+@dataclass(frozen=True)
+class InvoiceItemProperty:
+    name: str
+    value: str
+
+
+@dataclass(frozen=True)
+class InvoiceLineAdjustment:
+    amount: Decimal
+    is_charge: bool
+    reason: str
+
+    def __post_init__(self):
+        amount = to_decimal(self.amount)
+        if amount < 0:
+            raise ValueError("Positionszu- oder -abschlag darf nicht negativ sein.")
+        object.__setattr__(self, "amount", amount)
+
+    @property
+    def signed_amount(self):
+        return self.amount if self.is_charge else -self.amount
+
+
 class InvoiceItem(Validatable):
     required_fields = ["pos", "name", "qty", "unit", "price_without_discount", "net", "vat", "tax_category"]
     readonly_fields = ["net", "price", "pos"]
@@ -285,7 +309,9 @@ class InvoiceItem(Validatable):
     ]
 
     def __init__(self, pos="", name="", description="", qty="1", unit="C62",
-                 price="0.0", discount="0.0", vat="19.0", net="0.0", price_without_discount="0.0", tax_category="S"):
+                 price="0.0", discount="0.0", vat="19.0", net="0.0", price_without_discount="0.0", tax_category="S",
+                 price_base_quantity="1", price_base_unit="", item_properties=None,
+                 line_adjustments=None):
         self.pos = pos
         self.name = name
         self.description = description
@@ -297,6 +323,10 @@ class InvoiceItem(Validatable):
         self.vat = to_decimal(vat)
         self.net = to_decimal(net)
         self.price_without_discount = to_decimal(price_without_discount)
+        self.price_base_quantity = to_decimal(price_base_quantity)
+        self.price_base_unit = price_base_unit or unit
+        self.item_properties = tuple(item_properties or ())
+        self.line_adjustments = tuple(line_adjustments or ())
         self.recalculate()
 
     def recalculate(self):
@@ -304,6 +334,11 @@ class InvoiceItem(Validatable):
             self.price_without_discount,
             self.discount,
             self.qty,
+            price_base_quantity=self.price_base_quantity,
+            adjustment_total=sum(
+                (adjustment.signed_amount for adjustment in self.line_adjustments),
+                Decimal("0"),
+            ),
         )
         self.price = result.price
         self.net = result.net
@@ -414,17 +449,19 @@ class MonetaryTotal:
         "line_extension_amount": "Zwischensumme",
         "tax_exclusive_amount": "Summe ohne MwSt",
         "tax_inclusive_amount": "Summe inkl. MwSt",
+        "prepaid_amount": "Bereits gezahlter Betrag",
         "payable_amount": "Zu zahlender Betrag"
     }
-    readonly_fields = ["line_extension_amount", "tax_exclusive_amount", "tax_inclusive_amount", "payable_amount"]
+    readonly_fields = ["line_extension_amount", "tax_exclusive_amount", "tax_inclusive_amount", "prepaid_amount", "payable_amount"]
 
 
 
     def __init__(self, line_extension_amount=Decimal("0.0"), tax_exclusive_amount=Decimal("0.0"),
-                 tax_inclusive_amount=Decimal("0.0"), payable_amount=Decimal("0.0")):
+                 tax_inclusive_amount=Decimal("0.0"), payable_amount=Decimal("0.0"), prepaid_amount=Decimal("0.0")):
         self.line_extension_amount = to_decimal(line_extension_amount)
         self.tax_exclusive_amount = to_decimal(tax_exclusive_amount)
         self.tax_inclusive_amount = to_decimal(tax_inclusive_amount)
+        self.prepaid_amount = to_decimal(prepaid_amount)
         self.payable_amount = to_decimal(payable_amount)
 
     def get_label(self, field):
@@ -537,7 +574,9 @@ class Invoice:
         self.monetarytotal.line_extension_amount = result.line_extension_amount
         self.monetarytotal.tax_exclusive_amount = result.tax_exclusive_amount
         self.monetarytotal.tax_inclusive_amount = result.tax_inclusive_amount
-        self.monetarytotal.payable_amount = result.payable_amount
+        self.monetarytotal.payable_amount = (
+            result.payable_amount - self.monetarytotal.prepaid_amount
+        ).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
         # Berechnung abgeschlossen
         self.calculation_mode = CalculationMode.AUTO
@@ -592,6 +631,31 @@ class Invoice:
     # -------------------------
     def to_dict(self):
         def serialize_value(v): return str(v) if isinstance(v, Decimal) else v
+        def serialize_item(item):
+            data = {
+                k: serialize_value(v)
+                for k, v in item.__dict__.items()
+                if k not in {
+                    "required_fields",
+                    "readonly_fields",
+                    "FIELD_LABELS_DE",
+                    "item_properties",
+                    "line_adjustments",
+                }
+            }
+            data["item_properties"] = [
+                {"name": prop.name, "value": prop.value}
+                for prop in item.item_properties
+            ]
+            data["line_adjustments"] = [
+                {
+                    "amount": str(adjustment.amount),
+                    "is_charge": adjustment.is_charge,
+                    "reason": adjustment.reason,
+                }
+                for adjustment in item.line_adjustments
+            ]
+            return data
         return {
             "document_type": self.document_type.value,
             "seller":{k:serialize_value(v) for k,v in self.seller.__dict__.items()},
@@ -599,14 +663,7 @@ class Invoice:
             "delivery": {k: str(v) for k,v in self.delivery.__dict__.items()},
             "info":{k:serialize_value(v) for k,v in self.info.__dict__.items()},
             "payment":{k:serialize_value(v) for k,v in self.payment.__dict__.items()},
-            "items": [
-                {
-                    k: serialize_value(v)
-                    for k, v in i.__dict__.items()
-                    if k not in ("required_fields", "readonly_fields", "FIELD_LABELS_DE")
-                }
-                for i in self.items
-            ],
+            "items": [serialize_item(item) for item in self.items],
             "taxtotal":[
                 {
                     "amount":str(t.amount),
@@ -669,12 +726,31 @@ class Invoice:
         # --------------------------
         # Items laden
         # --------------------------
-        allowed_item_fields = set(InvoiceItem.__init__.__code__.co_varnames[1:])
+        allowed_item_fields = set(
+            InvoiceItem.__init__.__code__.co_varnames[
+                1:InvoiceItem.__init__.__code__.co_argcount
+            ]
+        )
         items = []
-        for i in data.get("items", []):
-            i = {k: v for k, v in i.items() if k in allowed_item_fields}
+        for item_data in data.get("items", []):
+            i = {k: v for k, v in item_data.items() if k in allowed_item_fields}
+            i["item_properties"] = tuple(
+                InvoiceItemProperty(
+                    name=str(prop.get("name") or ""),
+                    value=str(prop.get("value") or ""),
+                )
+                for prop in item_data.get("item_properties", [])
+            )
+            i["line_adjustments"] = tuple(
+                InvoiceLineAdjustment(
+                    amount=Decimal(str(adjustment.get("amount", "0"))),
+                    is_charge=bool(adjustment.get("is_charge", False)),
+                    reason=str(adjustment.get("reason") or ""),
+                )
+                for adjustment in item_data.get("line_adjustments", [])
+            )
             
-            for f in ["qty","price","discount","net","price_without_discount","vat"]:
+            for f in ["qty","price","discount","net","price_without_discount","vat", "price_base_quantity"]:
                 if f in i:
                     i[f] = Decimal(str(i[f]))
             items.append(InvoiceItem(**i))

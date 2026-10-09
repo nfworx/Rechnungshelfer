@@ -121,6 +121,7 @@ class GrainCreditNote:
     supplier: GrainCreditNoteSupplier = GrainCreditNoteSupplier()
     payment: GrainCreditNotePayment = GrainCreditNotePayment()
     buyer: GrainCreditNoteBuyer = GrainCreditNoteBuyer()
+    payment_due_date: date | None = None
 
     @property
     def supplier_number(self) -> str:
@@ -133,6 +134,10 @@ class GrainCreditNote:
             raise GrainValidationError("Gutschriftnummer fehlt.")
         if not isinstance(self.credit_note_date, date):
             raise GrainValidationError("Ausstellungsdatum ist ungültig.")
+        if self.payment_due_date is not None and not isinstance(
+            self.payment_due_date, date
+        ):
+            raise GrainValidationError("Auszahlungsdatum ist ungültig.")
         object.__setattr__(self, "deliveries", tuple(self.deliveries))
         if not self.deliveries:
             raise GrainValidationError("Mindestens eine Lieferung fehlt.")

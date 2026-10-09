@@ -96,6 +96,7 @@ def grain_credit_note_from_review(review) -> GrainCreditNote:
             payment_terms=review.payment_terms.value.strip(),
         ),
         buyer=review.buyer,
+        payment_due_date=_optional_date(review.payment_due_date.value),
     )
 
 
@@ -187,6 +188,7 @@ def grain_credit_note_from_calculation(
         supplier=_supplier_from_document(document),
         payment=_payment_from_document(document),
         buyer=_buyer_from_document(document),
+        payment_due_date=_optional_date(document.info.payment_due_date),
         deliveries=tuple(result_deliveries),
         vat_rate=rate,
         net_amount=net,
@@ -203,6 +205,10 @@ def _date(value: str):
 
 def _optional_decimal(value: str):
     return parse_de(value) if str(value or "").strip() else None
+
+
+def _optional_date(value):
+    return _date(value) if str(value or "").strip() else None
 
 
 def _money(value):

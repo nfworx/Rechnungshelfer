@@ -23,6 +23,9 @@ def grain_credit_note_to_data(note: GrainCreditNote) -> dict:
         "record_version": RECORD_VERSION,
         "credit_note_number": note.credit_note_number,
         "credit_note_date": note.credit_note_date.isoformat(),
+        "payment_due_date": (
+            note.payment_due_date.isoformat() if note.payment_due_date else None
+        ),
         "supplier": _text_fields(note.supplier),
         "payment": _text_fields(note.payment),
         "buyer": _text_fields(note.buyer),
@@ -78,6 +81,7 @@ def grain_credit_note_from_data(data: dict) -> GrainCreditNote:
     return GrainCreditNote(
         credit_note_number=str(data.get("credit_note_number") or ""),
         credit_note_date=_date(data.get("credit_note_date")),
+        payment_due_date=_optional_date(data.get("payment_due_date")),
         supplier=GrainCreditNoteSupplier(
             **_known_fields(GrainCreditNoteSupplier, supplier)
         ),
@@ -162,6 +166,10 @@ def _date(value) -> date:
         return date.fromisoformat(str(value))
     except (TypeError, ValueError) as exc:
         raise ValueError("Gespeichertes Belegdatum ist ungültig.") from exc
+
+
+def _optional_date(value) -> date | None:
+    return None if value in (None, "") else _date(value)
 
 
 __all__ = ["grain_credit_note_from_data", "grain_credit_note_to_data"]
