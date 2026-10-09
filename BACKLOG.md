@@ -26,10 +26,22 @@
   enthaltenen Lieferungen.
 - OCR-Ergebnisse und daraus abgeleitete Regeln dürfen niemals ungeprüft übernommen
   werden, sondern müssen als bestätigungspflichtiger Entwurf angezeigt werden.
+- Bei einer manuell erstellten Getreideabrechnung ist das ausgewählte Regelwerk
+  für Mengen- und Preisänderungen führend. Bei einem PDF-/OCR-Import bleiben die
+  bestätigten Werte des vorhandenen Belegs führend; ein vorhandenes Regelwerk wird
+  ausschließlich für eine zusätzliche, nicht verändernde Plausibilitätsprüfung
+  verwendet.
+- Lieferbetrag, Nettosumme, Umsatzsteuer, Gesamtbetrag und Auszahlungsbetrag werden
+  auch bei Importen immer rechnerisch geprüft. Finanzielle Abweichungen blockieren
+  Übernahme und Ausgabe; Abweichungen der Analyse- und Abzugsberechnung vom
+  Regelwerk erzeugen dagegen nur einen Hinweis und verändern keine Belegwerte.
 
 ## Aktuell in Entwicklung
 
-- Keine aktive Aufgabe. Im neuen Chat genau einen Punkt aus P1 auswählen.
+- P1.6 „Belegworkflow, Summenfeld und Menüführung vereinheitlichen“. Vor dem
+  größeren Oberflächenumbau zuerst die Überschreibwarnung für bestehende
+  Getreidegutschriften korrigieren und anschließend den Getreide-Workflow in
+  kleinen, einzeln getesteten Schritten vereinheitlichen.
 
 ## P0 – Kritische Fehler und Datenrisiken
 
@@ -53,8 +65,21 @@
 
 - Erkannte Werte zusammen mit Fundstelle, Quelltext und Erkennungssicherheit in
   einer Prüfansicht darstellen.
-- Einzelbeträge, Nettosumme, Umsatzsteuer und Gesamtbetrag rechnerisch
-  gegeneinander prüfen und Abweichungen deutlich anzeigen.
+- Für jede Lieferung den Lieferbetrag aus Abrechnungsmenge und Abrechnungspreis je
+  Tonne sowie gegebenenfalls festen Betragsanpassungen berechnen. Anschließend die
+  Nettosumme als Summe der Lieferbeträge, die Umsatzsteuer aus Nettosumme und
+  Steuersatz, den Gesamtbetrag aus Netto und Steuer sowie den Auszahlungsbetrag
+  unter Berücksichtigung der Abschlagszahlung prüfen.
+- Abweichungen bei Lieferbetrag, Nettosumme, Umsatzsteuer, Gesamtbetrag oder
+  Auszahlungsbetrag als blockierende Fehler mit Belegwert, Prüfwert und Differenz
+  anzeigen.
+- Wenn ein passendes Regelwerk eindeutig verfügbar ist, importierte Mengen- und
+  Preisabzüge zusätzlich dagegen prüfen. Abweichungen in der OCR-Prüfansicht je
+  Analysezeile beispielsweise als „Beleg: -28 kg / Regelwerk: -30 kg“ darstellen,
+  aber nur als nicht blockierende Warnung behandeln.
+- Wenn kein passendes Regelwerk eindeutig verfügbar ist, auf die Regelprüfung
+  verzichten und lediglich kenntlich machen, dass nur die finanziellen
+  Zusammenhänge geprüft wurden.
 - Unsichere oder widersprüchliche Werte niemals automatisch übernehmen.
 - Manuelle Korrektur und ausdrückliche Bestätigung aller zu übernehmenden Daten
   ermöglichen.
@@ -67,10 +92,19 @@
   Gutschriftnummer erzeugen; keinen zweiten steuerlichen Beleg anlegen und nicht
   in die allgemeine Gutschriftenmaske wechseln.
 - Importierte und manuell erstellte Getreidegutschriften auf dasselbe fachliche
-  Dokumentmodell abbilden. Erkannte Endwerte nicht erneut durch ein Regelwerk
-  berechnen.
+  Dokumentmodell abbilden. Bei importierten Belegen die bestätigten Endwerte nicht
+  durch ein Regelwerk überschreiben; eine mögliche Regelwerksberechnung nur als
+  getrennten Vergleichswert verwenden.
 - Lieferungen, Analysewerte, Mengen- und Preisänderungen sowie bestätigte Beträge
   strukturiert und vollständig editierbar halten.
+- Herkunft des Belegs sowie erkannte Regelwerksabweichungen einschließlich der
+  verwendeten Regelwerksversion strukturiert speichern, damit das Prüfverhalten
+  und die Warnhinweise nach erneutem Laden nachvollziehbar bleiben. PDF-Datei,
+  OCR-Rohtext und Erkennungsmetadaten weiterhin nicht dauerhaft speichern.
+- In der Hauptmaske bei einer bestätigten Regelwerksabweichung ausschließlich ein
+  Ausrufezeichensymbol an der betroffenen Analysezeile anzeigen. Der Hoverhinweis
+  erklärt knapp, dass die Abzugsberechnung vom beim Import geprüften Regelwerk
+  abweicht; konkrete Vergleichswerte bleiben der OCR-Prüfansicht vorbehalten.
 - Abschlagszahlungen im strukturierten Beleg als eigenen Wert erhalten. PDF- und
   XML-Ausgabe erst freigeben, wenn der Betrag dort gemäß P1.5 konsistent
   dargestellt wird.
@@ -103,6 +137,9 @@
   Artikelmerkmale (BG-32/BT-160/BT-161) und zusätzlich lesbar ausgeben.
 - Abschlagszahlungen als bezahlten Betrag (BT-113 beziehungsweise
   `PrepaidAmount`) ausgeben und den Auszahlungsbetrag konsistent berechnen.
+- PDF- und XML-Ausgabe bei finanziellen Inkonsistenzen sperren. Bestätigte
+  Regelwerksabweichungen aus einem Import lediglich als Warnung behandeln und die
+  Ausgabe dadurch nicht blockieren.
 - Die ursprüngliche AMIC-PDF weder einbetten noch als Anlage referenzieren.
 
 ### 6. Belegworkflow, Summenfeld und Menüführung vereinheitlichen
@@ -113,6 +150,14 @@
 - Eine manuell erstellte Getreideabrechnung beim Speichern validieren, intern als
   strukturierte Getreidegutschrift übernehmen und direkt in der Datenbank sichern;
   den zusätzlichen Bedienschritt „Getreidegutschrift erstellen“ dafür entfernen.
+- In der manuellen Eingabemaske Ursprungsmenge, Analysewerte und Basispreis als
+  Eingaben behandeln und Abrechnungsmenge, Abrechnungspreis, Lieferbetrag und
+  Gesamtsummen automatisch über das Regelwerk beziehungsweise die verbindliche
+  Summenlogik berechnen.
+- Bei importierten Belegen bestätigte Abrechnungsmenge und Abrechnungspreis als
+  Belegwerte verwenden. Lieferbetrag und Gesamtsummen weiterhin automatisch
+  berechnen und gegen die importierten Referenzwerte prüfen; Regelwerksvergleiche
+  verändern diese Werte nicht.
 - Gespeicherte Getreidegutschriften im Getreide-Arbeitsbereich laden und dort
   unmittelbar weiterbearbeiten. Das separate Prüffenster nur für den
   bestätigungspflichtigen PDF-/OCR-Import verwenden.
@@ -166,6 +211,8 @@
 
 ## Erledigt
 
+- Vor jedem Überschreiben einer bereits vorhandenen Getreidegutschrift wird auch
+  nach dem Laden desselben Belegs ausdrücklich nachgefragt.
 - Geschäftspartner besitzen stabile interne IDs und getrennte Kunden-/Lieferantenrollen;
   sichtbare Geschäftspartnernummern bleiben numerisch und editierbar.
 - Mehrere Lieferungen, Getreidearten, Analysewerte sowie konfigurierbare Mengen-,

@@ -569,6 +569,53 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
         self.assertFalse(saved)
         view.controller.save_grain_credit_note.assert_not_called()
 
+    def test_loaded_credit_note_requires_overwrite_confirmation(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        note = Mock(credit_note_number="91001")
+        view.credit_note = note
+        view._persisted_credit_note_number = "91001"
+        view._current_credit_note = Mock(return_value=note)
+        view.controller = Mock()
+        view.controller.grain_credit_note_exists.return_value = True
+
+        with patch(
+            "rechnungshelfer.gui.grain_settlement_view.messagebox.askyesno",
+            return_value=False,
+        ) as askyesno:
+            saved = view.save_credit_note()
+
+        self.assertFalse(saved)
+        askyesno.assert_called_once()
+        view.controller.save_grain_credit_note.assert_not_called()
+
+    def test_loaded_credit_note_is_overwritten_after_confirmation(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        note = Mock(credit_note_number="91001")
+        view.credit_note = note
+        view._persisted_credit_note_number = "91001"
+        view._current_credit_note = Mock(return_value=note)
+        view.controller = Mock()
+        view.controller.grain_credit_note_exists.return_value = True
+
+        with (
+            patch(
+                "rechnungshelfer.gui.grain_settlement_view.messagebox.askyesno",
+                return_value=True,
+            ) as askyesno,
+            patch(
+                "rechnungshelfer.gui.grain_settlement_view.messagebox.showinfo"
+            ),
+        ):
+            saved = view.save_credit_note()
+
+        self.assertTrue(saved)
+        askyesno.assert_called_once()
+        view.controller.save_grain_credit_note.assert_called_once_with(
+            note,
+            overwrite=True,
+            previous_number="91001",
+        )
+
     def test_created_credit_note_uses_active_edit_action(self):
         view = GrainSettlementView.__new__(GrainSettlementView)
         view.add_button = Mock()

@@ -536,9 +536,8 @@ class GrainSettlementView(ctk.CTkFrame):
             target_exists = self.controller.grain_credit_note_exists(
                 current.credit_note_number
             )
-            same_record = previous == current.credit_note_number
-            overwrite = bool(same_record)
-            if target_exists and not same_record:
+            overwrite = False
+            if target_exists:
                 overwrite = messagebox.askyesno(
                     "Getreidegutschrift überschreiben",
                     f"Getreidegutschrift {current.credit_note_number} ist bereits "
