@@ -1,11 +1,14 @@
+import tempfile
 import unittest
 from copy import deepcopy
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 from rechnungshelfer.application.grain_invoice_mapper import (
     create_grain_settlement_invoice,
 )
+from rechnungshelfer.controller import InvoiceController
 from rechnungshelfer.domain.grain_calculation import calculate_settlement_quantities
 from rechnungshelfer.domain.grain_models import (
     GrainDelivery,
@@ -20,7 +23,19 @@ from rechnungshelfer.domain.grain_models import (
     SettlementSchemeVersion,
 )
 from rechnungshelfer.domain.invoice_factory import InvoiceFactory
-from rechnungshelfer.domain.models import DocumentType
+from rechnungshelfer.domain.models import (
+    DocumentType,
+    Invoice,
+    Payment,
+    Seller,
+)
+from rechnungshelfer.repositories.invoice_repository import InvoiceRepository
+from rechnungshelfer.services.pdf_service import create_pdf
+from rechnungshelfer.services.validation_service import (
+    validate_document,
+    validate_xsd,
+)
+from rechnungshelfer.services.xml_service import create_xml
 
 
 class GrainInvoiceMapperTests(unittest.TestCase):
@@ -203,6 +218,97 @@ class GrainInvoiceMapperTests(unittest.TestCase):
                 self.settlement,
                 Decimal("10"),
             )
+
+    def _complete_invoice(self):
+        own_company = Seller(
+            name="Muster Agrarhandel GmbH",
+            street="Handelsweg 10",
+            postcode="12345",
+            city="Musterstadt",
+            country="DE",
+            phone="0123456789",
+            email="abrechnung@example.de",
+            vat="DE123456789",
+            tax_number="98/765/43210",
+            registry_number="HRB 12345",
+            buyer_reference="80001",
+        )
+        template = InvoiceFactory().create(
+            DocumentType.SELF_BILLED_INVOICE,
+            own_company=own_company,
+            supplier_number="0001",
+        )
+        template.seller = Seller(
+            name="Landwirt Test",
+            street="Feldweg 1",
+            postcode="54321",
+            city="Dorf",
+            country="DE",
+            phone="0987654321",
+            email="landwirt@example.de",
+            tax_number="12/345/67890",
+            supplier_number="0001",
+            buyer_reference="0001",
+        )
+        template.payment = Payment(
+            iban="DE89370400440532013000",
+            bic="COBADEFFXXX",
+            account_holder="Landwirt Test",
+            payment_terms="Auszahlung bis 23.10.2026",
+        )
+        template.info.invoice_number = "80001"
+        template.info.invoice_date = "09.10.2026"
+        template.info.payment_due_date = "23.10.2026"
+        return create_grain_settlement_invoice(
+            template,
+            self.deliveries,
+            self.settlement,
+            Decimal("7.8"),
+        )
+
+    def test_generated_invoice_is_ready_for_existing_pdf_and_xml_workflows(self):
+        invoice = self._complete_invoice()
+        controller = InvoiceController.__new__(InvoiceController)
+
+        self.assertTrue(controller.check_pdf_required_fields(invoice))
+        self.assertTrue(controller.check_xml_required_fields(invoice))
+        self.assertEqual(validate_document(invoice).errors, [])
+
+        restored = Invoice.from_dict(invoice.to_dict())
+        xml = create_xml(restored)
+
+        self.assertEqual(validate_xsd(xml).errors, [])
+        self.assertEqual(restored.document_type, DocumentType.SELF_BILLED_INVOICE)
+        self.assertEqual(
+            restored.monetarytotal.payable_amount,
+            invoice.monetarytotal.payable_amount,
+        )
+        self.assertIn("Wiegeschein: WS-4711", restored.items[0].description)
+
+        with tempfile.TemporaryDirectory() as directory:
+            pdf_path = Path(directory) / "getreide-gutschrift.pdf"
+            create_pdf(restored, pdf_path)
+            self.assertGreater(pdf_path.stat().st_size, 1000)
+
+    def test_generated_invoice_can_be_saved_and_loaded(self):
+        invoice = self._complete_invoice()
+
+        with tempfile.TemporaryDirectory() as directory:
+            repository = InvoiceRepository(Path(directory) / "invoices.db")
+            try:
+                repository.save(invoice)
+                loaded = repository.load("80001")
+            finally:
+                repository.close()
+
+        self.assertIsNotNone(loaded)
+        self.assertTrue(loaded.is_self_billed)
+        self.assertEqual(loaded.seller.supplier_number, "0001")
+        self.assertEqual(len(loaded.items), len(self.deliveries))
+        self.assertEqual(
+            loaded.monetarytotal.payable_amount,
+            invoice.monetarytotal.payable_amount,
+        )
 
 
 if __name__ == "__main__":
