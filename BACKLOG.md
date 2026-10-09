@@ -57,6 +57,8 @@
 
 ### 3. Bestätigte Daten in eine editierbare Gutschrift übernehmen
 
+- In der Prüfansicht eine ausdrückliche Schaltfläche „Geprüfte Daten in Formular
+  übernehmen“ anbieten und nur einen vollständig geprüften Entwurf übernehmen.
 - Aus dem bestätigten Entwurf eine Gutschrift mit dem vorhandenen Dokumenttyp und
   derselben Gutschriftnummer erzeugen; keinen zweiten steuerlichen Beleg anlegen.
 - Jede Lieferung als eigene Gutschriftposition abbilden und vorhandene

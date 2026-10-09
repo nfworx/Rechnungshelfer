@@ -5,6 +5,9 @@ from rechnungshelfer.application.grain_scheme_service import (
     GrainSchemeApplicationService,
 )
 from rechnungshelfer.application.party_service import PartyApplicationService
+from rechnungshelfer.application.settlement_review_service import (
+    SettlementReviewService,
+)
 from rechnungshelfer.domain.invoice_factory import InvoiceFactory
 from rechnungshelfer.domain.business_partner import BusinessPartnerProfile
 from rechnungshelfer.domain.models import (
@@ -40,6 +43,7 @@ class InvoiceController:
         self.invoice_service = self._create_invoice_service()
         self.party_service = self._create_party_service()
         self.export_service = self._create_export_service()
+        self.settlement_review_service = SettlementReviewService()
         self.grain_scheme_service = GrainSchemeApplicationService(
             database=self.database,
             repository=self.grain_scheme_repo,
@@ -122,6 +126,12 @@ class InvoiceController:
 
     def create_invoice_from_pdf_analysis(self, analysis):
         return self._get_invoice_service().create_invoice_from_pdf_analysis(analysis)
+
+    def create_settlement_review(self, draft):
+        return self.settlement_review_service.create_review(draft)
+
+    def validate_settlement_review(self, review):
+        return self.settlement_review_service.validate(review)
 
     # Getreide-Regelwerke
     def load_grain_scheme_drafts(self, harvest_year: int):

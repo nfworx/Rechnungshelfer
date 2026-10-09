@@ -9,6 +9,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from .components import button
+from .settlement_review_dialog import SettlementReviewDialog
 from .styles import FONT_NORMAL, FONT_SECTION, FONT_SMALL, TEXT, TEXT_MUTED
 from rechnungshelfer.domain.models import DocumentType
 from rechnungshelfer.services.pdf_invoice_parser import BUSINESS_PARTNER_NUMBER_PATH
@@ -101,6 +102,7 @@ class PdfImportDialog:
         self._import = None
         self._filepath = None
         self._job_id = 0
+        self._settlement_review_dialog = None
 
     def open(self, filepath, *, source_cleanup=None):
         self.close()
@@ -272,18 +274,24 @@ class PdfImportDialog:
         )
         apply_button = button(
             footer,
-            "In Formular übernehmen",
-            self._apply_to_form,
+            (
+                "Abrechnung prüfen"
+                if analysis.settlement_draft is not None
+                else "In Formular übernehmen"
+            ),
+            (
+                self._open_settlement_review
+                if analysis.settlement_draft is not None
+                else self._apply_to_form
+            ),
             primary=True,
         )
         apply_button.grid(row=0, column=1, padx=8, sticky="ew")
         if (
-            analysis.settlement_draft is not None
-            or (
-                not analysis.draft.fields
-                and not analysis.draft.items
-                and analysis.draft.embedded_invoice_data is None
-            )
+            analysis.settlement_draft is None
+            and not analysis.draft.fields
+            and not analysis.draft.items
+            and analysis.draft.embedded_invoice_data is None
         ):
             apply_button.configure(state="disabled")
         button(footer, "Schließen", self.close).grid(
@@ -324,6 +332,16 @@ class PdfImportDialog:
         invoice = self._import.invoice
         self.close()
         self.on_invoice_loaded(invoice)
+
+    def _open_settlement_review(self):
+        if self._analysis is None or self._analysis.settlement_draft is None:
+            return
+        self._settlement_review_dialog = SettlementReviewDialog(
+            self.window,
+            self.controller,
+            self._analysis.settlement_draft,
+        )
+        self._settlement_review_dialog.open()
 
     def close(self):
         if self.window is not None:

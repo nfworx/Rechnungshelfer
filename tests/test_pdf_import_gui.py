@@ -165,6 +165,29 @@ class PdfImportGuiTests(unittest.TestCase):
         controller.create_invoice_from_pdf_analysis.assert_not_called()
         dialog._show_result.assert_called_once_with()
 
+    def test_recognized_settlement_opens_editable_review_dialog(self):
+        controller = MagicMock()
+        draft = object()
+        dialog = PdfImportDialog(MagicMock(), controller, MagicMock())
+        dialog.window = MagicMock()
+        dialog._analysis = SimpleNamespace(settlement_draft=draft)
+
+        with patch(
+            "rechnungshelfer.gui.pdf_import_dialog.SettlementReviewDialog"
+        ) as review_dialog_class:
+            dialog._open_settlement_review()
+
+        review_dialog_class.assert_called_once_with(
+            dialog.window,
+            controller,
+            draft,
+        )
+        review_dialog_class.return_value.open.assert_called_once_with()
+        self.assertIs(
+            dialog._settlement_review_dialog,
+            review_dialog_class.return_value,
+        )
+
     def test_test_document_dialog_forwards_ocr_selection(self):
         callback = MagicMock()
         dialog = TestDocumentDialog.__new__(TestDocumentDialog)
