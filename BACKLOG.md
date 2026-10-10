@@ -254,7 +254,9 @@
   Die zentrale Regelverwaltung unter „Einstellungen > Abrechnungsregeln“ anbieten;
   geeignete Hilfetexte, Tooltips und Statushinweise für die belegbezogene Anwendung
   konzeptionell prüfen. Bestätigte oder gespeicherte Belege dürfen durch
-  Regeländerungen niemals unbemerkt neu berechnet werden.
+  Regeländerungen niemals unbemerkt neu berechnet werden. **Teilweise umgesetzt:**
+  Der deaktivierte Button erklärt per Tooltip, warum bestätigte Belegwerte nicht durch
+  Regeländerungen beeinflusst werden; die zentrale Navigation bleibt offen.
 - [ ] Lieferungsübersicht der Getreideabrechnung kompakter darstellen: Die separaten
   Spalten „Δ Menge kg“ und „Δ Wert EUR“ entfernen und Mengenabzüge direkt in der
   Spalte „Menge kg“ sowie wertmäßige Abzüge direkt in der Spalte „Betrag EUR“

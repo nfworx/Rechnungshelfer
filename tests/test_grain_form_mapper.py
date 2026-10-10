@@ -843,6 +843,18 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
             )
         )
 
+    def test_rule_edit_hint_explains_why_confirmed_values_are_not_recalculated(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.credit_note = object()
+
+        hint = view._rule_edit_hint()
+
+        self.assertIn("bereits bestätigte Werte", hint)
+        self.assertIn("nicht verändern", hint)
+
+        view.credit_note = None
+        self.assertEqual(view._rule_edit_hint(), "")
+
     def test_calculated_settlement_is_mapped_and_saved_directly(self):
         form = GrainFormMapperTests._form(vat_rate="7 %")
         settlement = calculate_settlement_preview(form)

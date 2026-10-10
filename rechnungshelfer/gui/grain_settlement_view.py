@@ -248,6 +248,7 @@ class GrainSettlementView(ctk.CTkFrame):
         self.calculate_button.pack(side="left", padx=8)
         self.rule_button = button(actions, "Regeln bearbeiten", self.edit_rules)
         self.rule_button.pack(side="left")
+        HoverTooltip(self.rule_button, self._rule_edit_hint)
         self.example_button = button(
             actions,
             "Beispiel zurücksetzen",
@@ -1402,6 +1403,16 @@ class GrainSettlementView(ctk.CTkFrame):
         if not issues:
             return ""
         return "Zum Speichern fehlt noch:\n- " + "\n- ".join(issues)
+
+    def _rule_edit_hint(self):
+        if self.credit_note is None:
+            return ""
+        return (
+            "Dieser Beleg enthält bereits bestätigte Werte. "
+            "Änderungen an den Abrechnungsregeln würden diese Werte nicht "
+            "verändern. Regeln können für eine neue manuelle Abrechnung "
+            "bearbeitet werden."
+        )
 
     def _pdf_export_hint(self):
         issues = self._save_issues()
