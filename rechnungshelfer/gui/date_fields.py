@@ -156,17 +156,31 @@ def attach_calendar_double_click(calendar, callback, *, scheduler=None):
     fuer kuenftige Calendar-Implementierungen verwendbar.
     """
 
-    event_target = getattr(calendar, "_calendar", calendar)
-
     def apply_after_selection(_event=None):
         if scheduler is None:
             callback()
         else:
             scheduler(callback)
 
-    event_target.bind(
-        "<Double-Button-1>",
-        apply_after_selection,
-        add="+",
-    )
+    def bindable_widgets(value):
+        if hasattr(value, "bind"):
+            return [value]
+        if isinstance(value, (list, tuple)):
+            return [
+                widget
+                for child in value
+                for widget in bindable_widgets(child)
+            ]
+        return []
+
+    event_targets = bindable_widgets(getattr(calendar, "_calendar", None))
+    if not event_targets:
+        event_targets = [calendar]
+
+    for event_target in event_targets:
+        event_target.bind(
+            "<Double-Button-1>",
+            apply_after_selection,
+            add="+",
+        )
     return apply_after_selection

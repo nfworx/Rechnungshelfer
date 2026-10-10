@@ -129,7 +129,9 @@ class DatepickerInteractionTests(unittest.TestCase):
 
     def test_double_click_is_bound_to_internal_calendar_days(self):
         calendar = Mock()
-        calendar._calendar = Mock()
+        first_day = Mock()
+        second_day = Mock()
+        calendar._calendar = [[[first_day], [second_day]]]
         callback = Mock()
         scheduler = Mock()
 
@@ -140,13 +142,27 @@ class DatepickerInteractionTests(unittest.TestCase):
         )
         handler()
 
+        for day in (first_day, second_day):
+            day.bind.assert_called_once_with(
+                "<Double-Button-1>",
+                handler,
+                add="+",
+            )
+        scheduler.assert_called_once_with(callback)
+        callback.assert_not_called()
+
+    def test_double_click_supports_calendar_versions_with_internal_widget(self):
+        calendar = Mock()
+        calendar._calendar = Mock()
+        callback = Mock()
+
+        handler = attach_calendar_double_click(calendar, callback)
+
         calendar._calendar.bind.assert_called_once_with(
             "<Double-Button-1>",
             handler,
             add="+",
         )
-        scheduler.assert_called_once_with(callback)
-        callback.assert_not_called()
 
     def test_double_click_falls_back_to_calendar_widget(self):
         calendar = Mock(spec=["bind"])
