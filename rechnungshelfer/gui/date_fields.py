@@ -33,19 +33,42 @@ def calculate_datepicker_position(
     return max(0, min(x, max_x)), max(0, min(y, max_y))
 
 
-def attach_date_validation(entry: ctk.CTkEntry, field_name: str, required=True):
-    def validate(_event=None): 
-        try:
-            normalized = normalize_date_de(entry.get(), field_name, required)
+def _apply_normalized_date(
+    entry: ctk.CTkEntry,
+    value,
+    field_name: str,
+    *,
+    required: bool,
+    on_valid=None,
+):
+    normalized = normalize_date_de(value, field_name, required)
+    entry.delete(0, "end")
+    entry.insert(0, normalized)
+    if on_valid is not None:
+        on_valid(normalized)
+    entry.configure(border_color="green")
+    return normalized
 
-            entry.delete(0, "end")
-            entry.insert(0, normalized)
-            entry.configure(border_color="green")
+
+def attach_date_validation(
+    entry: ctk.CTkEntry,
+    field_name: str,
+    required=True,
+    on_valid=None,
+):
+    def validate(_event=None):
+        try:
+            _apply_normalized_date(
+                entry,
+                entry.get(),
+                field_name,
+                required=required,
+                on_valid=on_valid,
+            )
             return True
 
-        except InputValidationError as e:
+        except InputValidationError:
             entry.configure(border_color="red")
-            print(e)
             return False
 
     entry.bind("<FocusOut>", validate, add="+")
@@ -62,13 +85,13 @@ def apply_date_selection(
 ):
     """Uebernimmt ein Kalenderdatum in Feld und angebundenes Formularmodell."""
 
-    selected = normalize_date_de(selected_date, field_name)
-    entry.delete(0, "end")
-    entry.insert(0, selected)
-    entry.configure(border_color="green")
-    if on_selected is not None:
-        on_selected(selected)
-    return selected
+    return _apply_normalized_date(
+        entry,
+        selected_date,
+        field_name,
+        required=True,
+        on_valid=on_selected,
+    )
 
 
 def open_datepicker(

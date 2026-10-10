@@ -38,9 +38,9 @@
 
 ## Aktuell in Entwicklung
 
-- P1.1 bis P1.5 sowie der ursprüngliche Kernumfang von P1.6 „Belegworkflow,
-  Summenfeld und Menüführung vereinheitlichen“ sind umgesetzt. Später ergänzte
-  Folgeaufgaben zu Datumsfeldern und gemeinsamer Belegliste bleiben offen. Die
+- P1.1 bis P1.5 sowie der bisherige Belegworkflow, das Summenfeld und die
+  vereinheitlichten Datumsfelder aus P1.6 sind umgesetzt. Als Nächstes bleiben dort
+  die neu festgelegte Hauptnavigation und die gemeinsame Belegliste offen. Die
   visuelle PDF-Überarbeitung bleibt als separates P2-Thema vorgemerkt.
 
 ## P0 – Kritische Fehler und Datenrisiken
@@ -196,16 +196,26 @@
 - [x] Nach der Umstellung alte, deaktivierte oder doppelte Bedienelemente entfernen
   und den vollständigen Workflow für jede Belegart mit GUI-Regressionstests
   absichern.
-- [ ] Die weiterhin fehlerhaften Datumsfelder in allen drei Belegmasken systematisch
+- [ ] Die Hauptnavigation neu und dauerhaft in vier klare Bereiche gliedern:
+  „Datei“ enthält „Neu“ mit Rechnung, Gutschrift und Getreideabrechnung, danach
+  „PDF importieren“, „XML importieren“, „Aktuelles Formular leeren“ und
+  „Programm beenden“. „Verwaltung“ enthält „Belegliste“ und „Geschäftspartner“.
+  „Einstellungen“ enthält „Eigener Betrieb“ und „Abrechnungsregeln“. „Hilfe“ bleibt
+  für Informationen und Hilfsfunktionen vorgesehen. Kontextabhängige Aktionen
+  müssen verständlich benannt sein; vor dem Leeren ungespeicherter Änderungen
+  weiterhin eine Bestätigung verlangen.
+- [x] Die weiterhin fehlerhaften Datumsfelder in allen drei Belegmasken systematisch
   prüfen und vereinheitlichen. Manuelle Eingabe, Datumsauswahl, Fokuswechsel,
   Validierung sowie Speichern und erneutes Laden müssen mit dem deutschen
   Datumsformat zuverlässig funktionieren und durch GUI-Regressionstests abgesichert
   werden.
 - [ ] Beim Laden gespeicherter Belege unabhängig vom aktuell geöffneten Arbeitsbereich
   immer Rechnungen, Gutschriften und Getreidegutschriften in einer gemeinsamen Liste
-  anzeigen. Den Belegtyp eindeutig kennzeichnen und den gewählten Beleg anschließend
-  automatisch im passenden Arbeitsbereich öffnen; Filter dürfen die Gesamtliste nur
-  optional einschränken.
+  unter „Verwaltung > Belegliste“ anzeigen. Belegtyp, Belegnummer, Belegdatum,
+  Kunde beziehungsweise Lieferant und Gesamt- beziehungsweise Auszahlungsbetrag
+  eindeutig darstellen. Den gewählten Beleg anschließend automatisch im passenden
+  Arbeitsbereich öffnen; Suche und Filter dürfen die Gesamtliste nur optional
+  einschränken.
 
 ### 7. Fachlicher End-to-End-Abnahmetest
 
@@ -241,11 +251,10 @@
   von Regelwerken verständlicher gestalten. Insbesondere bei importierten oder bereits
   erzeugten Getreidegutschriften erklären, warum „Regeln bearbeiten“ nicht verfügbar
   ist und dass spätere Regeländerungen die bestätigten Belegwerte nicht verändern.
-  Geeignete Hilfetexte, Tooltips, Statushinweise sowie eine mögliche Trennung zwischen
-  Regelverwaltung und belegbezogener Anwendung zunächst konzeptionell prüfen. Die
-  konkrete Navigation und Darstellung erst nach Abstimmung festlegen; bestätigte oder
-  gespeicherte Belege dürfen durch Regeländerungen niemals unbemerkt neu berechnet
-  werden.
+  Die zentrale Regelverwaltung unter „Einstellungen > Abrechnungsregeln“ anbieten;
+  geeignete Hilfetexte, Tooltips und Statushinweise für die belegbezogene Anwendung
+  konzeptionell prüfen. Bestätigte oder gespeicherte Belege dürfen durch
+  Regeländerungen niemals unbemerkt neu berechnet werden.
 - [ ] Lieferungsübersicht der Getreideabrechnung kompakter darstellen: Die separaten
   Spalten „Δ Menge kg“ und „Δ Wert EUR“ entfernen und Mengenabzüge direkt in der
   Spalte „Menge kg“ sowie wertmäßige Abzüge direkt in der Spalte „Betrag EUR“

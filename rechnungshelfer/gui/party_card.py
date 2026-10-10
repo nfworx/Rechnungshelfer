@@ -208,6 +208,15 @@ class PartyCard:
                         entry,
                         label_text,
                         required=field != "delivery_date",
+                        on_valid=(
+                            lambda selected,
+                            obj=model,
+                            attr=field: self._handle_change(
+                                obj,
+                                attr,
+                                selected,
+                            )
+                        ),
                     )
 
             row += 1

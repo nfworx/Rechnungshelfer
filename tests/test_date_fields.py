@@ -4,6 +4,7 @@ from unittest.mock import Mock
 
 from rechnungshelfer.gui.date_fields import (
     apply_date_selection,
+    attach_date_validation,
     attach_calendar_double_click,
     calculate_datepicker_position,
 )
@@ -45,6 +46,62 @@ class DatepickerPositionTests(unittest.TestCase):
 
 
 class DatepickerInteractionTests(unittest.TestCase):
+    def test_manual_date_is_normalized_and_updates_bound_model_callback(self):
+        entry = Mock()
+        entry.get.return_value = "1.2.26"
+        on_valid = Mock()
+        validate = attach_date_validation(
+            entry,
+            "Rechnungsdatum",
+            on_valid=on_valid,
+        )
+
+        self.assertTrue(validate())
+        entry.delete.assert_called_once_with(0, "end")
+        entry.insert.assert_called_once_with(0, "01.02.2026")
+        entry.configure.assert_called_once_with(border_color="green")
+        on_valid.assert_called_once_with("01.02.2026")
+
+    def test_iso_date_from_import_is_normalized_on_focus_change(self):
+        entry = Mock()
+        entry.get.return_value = "2026-02-01"
+        on_valid = Mock()
+        validate = attach_date_validation(entry, "Datum", on_valid=on_valid)
+
+        self.assertTrue(validate())
+
+        entry.insert.assert_called_once_with(0, "01.02.2026")
+        on_valid.assert_called_once_with("01.02.2026")
+
+    def test_invalid_manual_date_stays_unchanged_and_does_not_update_model(self):
+        entry = Mock()
+        entry.get.return_value = "31.02.2026"
+        on_valid = Mock()
+        validate = attach_date_validation(entry, "Rechnungsdatum", on_valid=on_valid)
+
+        self.assertFalse(validate())
+
+        entry.delete.assert_not_called()
+        entry.insert.assert_not_called()
+        entry.configure.assert_called_once_with(border_color="red")
+        on_valid.assert_not_called()
+
+    def test_optional_empty_delivery_date_updates_model_with_empty_value(self):
+        entry = Mock()
+        entry.get.return_value = ""
+        on_valid = Mock()
+        validate = attach_date_validation(
+            entry,
+            "Lieferdatum",
+            required=False,
+            on_valid=on_valid,
+        )
+
+        self.assertTrue(validate())
+
+        entry.insert.assert_called_once_with(0, "")
+        on_valid.assert_called_once_with("")
+
     def test_selected_date_updates_entry_and_bound_model_callback(self):
         entry = Mock()
         on_selected = Mock()
