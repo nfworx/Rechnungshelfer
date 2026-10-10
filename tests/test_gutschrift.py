@@ -4,6 +4,8 @@ from decimal import Decimal
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+import pypdfium2 as pdfium
+
 from rechnungshelfer.domain.models import (
     Buyer,
     Delivery,
@@ -168,6 +170,44 @@ class SelfBilledInvoiceTests(unittest.TestCase):
             path = Path(directory) / "gutschrift.pdf"
             create_pdf(self.create_invoice(), path)
             self.assertGreater(path.stat().st_size, 1000)
+
+    def test_pdf_footer_uses_own_master_data_instead_of_supplier_payment(self):
+        company = Seller(
+            name="Aktuelle Firma GmbH",
+            street="Neuer Weg 5",
+            postcode="10115",
+            city="Berlin",
+            phone="030 123456",
+            email="rechnung@aktuelle-firma.de",
+            vat="DE999999999",
+            tax_number="12/345/67890",
+            registry_number="HRB 98765",
+        )
+        payment = Payment(
+            iban="DE02120300000000202051",
+            bic="BYLADEM1001",
+            account_holder="Aktuelle Firma GmbH",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "gutschrift.pdf"
+            create_pdf(
+                self.create_invoice(),
+                path,
+                footer_company=company,
+                footer_payment=payment,
+            )
+            document = pdfium.PdfDocument(path)
+            try:
+                text = "\n".join(
+                    page.get_textpage().get_text_range() for page in document
+                )
+            finally:
+                document.close()
+
+        self.assertIn("Aktuelle Firma GmbH", text)
+        self.assertIn("DE02120300000000202051", text.replace(" ", ""))
+        self.assertIn("BYLADEM1001", text)
 
     def test_pdf_is_addressed_to_supplier(self):
         invoice = self.create_invoice()

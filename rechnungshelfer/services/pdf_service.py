@@ -140,6 +140,8 @@ def create_pdf(
     *,
     document_kind=None,
     grain_credit_note_data=None,
+    footer_company=None,
+    footer_payment=None,
 ):
     seller = invoice.seller
     buyer = invoice.buyer
@@ -149,6 +151,8 @@ def create_pdf(
     items = invoice.items
     is_self_billed = invoice.is_self_billed
     issuer, recipient = _pdf_parties(invoice)
+    footer_company = footer_company or issuer
+    footer_payment = footer_payment or payment
 
     # ====================
     # Layout
@@ -225,14 +229,14 @@ def create_pdf(
 
         # FOOTER
         y_footer = bottom_margin
-        footer_left_text = f"{issuer.name}<br/>{issuer.street}<br/>{issuer.postcode} {issuer.city}<br/>Telefon: {issuer.phone}<br/>E-Mail: {issuer.email}"
+        footer_left_text = f"{footer_company.name}<br/>{footer_company.street}<br/>{footer_company.postcode} {footer_company.city}<br/>Telefon: {footer_company.phone}<br/>E-Mail: {footer_company.email}"
         footer_left = Paragraph(footer_left_text, footer_style)
         footer_center_data = [
-            ["HR-Nr.:", issuer.registry_number],
-            ["USt-ID:", issuer.vat],
-            ["St.-Nr.:", issuer.tax_number],
-            ["IBAN:", "" if is_self_billed else payment.iban],
-            ["BIC:", "" if is_self_billed else payment.bic]
+            ["HR-Nr.:", footer_company.registry_number],
+            ["USt-ID:", footer_company.vat],
+            ["St.-Nr.:", footer_company.tax_number],
+            ["IBAN:", footer_payment.iban],
+            ["BIC:", footer_payment.bic]
         ]
         footer_center_table = Table(footer_center_data, colWidths=[15*mm, 60*mm], hAlign='LEFT')
         footer_center_table.setStyle(TableStyle([

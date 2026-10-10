@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from rechnungshelfer.domain.models import Payment, Seller
 from rechnungshelfer.services.export_service import (
     ExportValidationError,
     InvoiceExportService,
@@ -85,6 +86,45 @@ class InvoiceExportServiceTests(unittest.TestCase):
         service.export_pdf(invoice, "invoice.pdf")
 
         renderer.assert_called_once_with(invoice, "invoice.pdf")
+
+    def test_pdf_export_passes_current_master_data_for_all_document_types(self):
+        company = Seller(name="Aktuelle Firma GmbH")
+        payment = Payment(
+            iban="DE02120300000000202051",
+            bic="BYLADEM1001",
+        )
+        cases = (
+            ("invoice", create_validator_invoice(), {}),
+            ("credit-note", create_validator_self_billed_invoice(), {}),
+            (
+                "grain-credit-note",
+                create_validator_self_billed_invoice(),
+                {
+                    "document_kind": "grain_credit_note",
+                    "grain_credit_note_data": {"deliveries": []},
+                },
+            ),
+        )
+
+        for label, invoice, export_options in cases:
+            with self.subTest(document_type=label):
+                renderer = MagicMock()
+                provider = MagicMock(return_value=(company, payment))
+                service = InvoiceExportService(
+                    pdf_renderer=renderer,
+                    pdf_footer_data_provider=provider,
+                )
+
+                service.export_pdf(invoice, f"{label}.pdf", **export_options)
+
+                provider.assert_called_once()
+                renderer.assert_called_once_with(
+                    invoice,
+                    f"{label}.pdf",
+                    footer_company=company,
+                    footer_payment=payment,
+                    **export_options,
+                )
 
 
 if __name__ == "__main__":

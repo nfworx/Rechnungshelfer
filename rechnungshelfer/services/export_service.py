@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable
 
-from rechnungshelfer.domain.models import Invoice
+from rechnungshelfer.domain.models import Invoice, Payment, Seller
 from rechnungshelfer.services.input_validation_service import (
     InputValidationError,
     normalize_invoice_input,
@@ -49,10 +49,12 @@ class InvoiceExportService:
         *,
         external_validator: ExternalInvoiceValidator | None = None,
         pdf_renderer: Callable = create_pdf,
+        pdf_footer_data_provider: Callable | None = None,
         xml_renderer: Callable = create_xml,
     ):
         self._external_validator = external_validator
         self._pdf_renderer = pdf_renderer
+        self._pdf_footer_data_provider = pdf_footer_data_provider
         self._xml_renderer = xml_renderer
 
     def export_pdf(
@@ -69,15 +71,23 @@ class InvoiceExportService:
             raise ValueError(self.format_missing_fields(missing, "PDF"))
 
         invoice.calculate(force=True)
-        if document_kind is None and grain_credit_note_data is None:
-            self._pdf_renderer(invoice, filepath)
-        else:
-            self._pdf_renderer(
-                invoice,
-                filepath,
+        renderer_options = {}
+        if self._pdf_footer_data_provider is not None:
+            footer_company, footer_payment = self._pdf_footer_data_provider(
+                Seller(),
+                Payment(),
+            )
+            renderer_options.update(
+                footer_company=footer_company,
+                footer_payment=footer_payment,
+            )
+
+        if document_kind is not None or grain_credit_note_data is not None:
+            renderer_options.update(
                 document_kind=document_kind,
                 grain_credit_note_data=grain_credit_note_data,
             )
+        self._pdf_renderer(invoice, filepath, **renderer_options)
 
     def export_xml(
         self,

@@ -98,8 +98,14 @@ class InvoiceController:
         return self.party_service
 
     def _create_export_service(self):
+        master_data_repository = getattr(self, "master_data_repository", None)
         return InvoiceExportService(
             external_validator=KositValidator(),
+            pdf_footer_data_provider=(
+                master_data_repository.load_into
+                if master_data_repository is not None
+                else None
+            ),
         )
 
     def _get_export_service(self):

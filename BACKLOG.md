@@ -38,12 +38,10 @@
 
 ## Aktuell in Entwicklung
 
-- P1.3 „Bestätigte Daten in eine editierbare Getreidegutschrift übernehmen“ sowie der
-  ursprüngliche Kernumfang von P1.6 „Belegworkflow, Summenfeld und Menüführung
-  vereinheitlichen“ sind umgesetzt. Später ergänzte Folgeaufgaben zu Datumsfeldern
-  und gemeinsamer Belegliste bleiben offen. Als Nächstes die rollengerechte
-  PDF-Fußzeile korrigieren; die einheitliche Detailanzeige finanzieller
-  Prüfdifferenzen aus P1.2 und die visuelle PDF-Überarbeitung bleiben separat offen.
+- P1.1 bis P1.5 sowie der ursprüngliche Kernumfang von P1.6 „Belegworkflow,
+  Summenfeld und Menüführung vereinheitlichen“ sind umgesetzt. Später ergänzte
+  Folgeaufgaben zu Datumsfeldern und gemeinsamer Belegliste bleiben offen. Die
+  visuelle PDF-Überarbeitung bleibt als separates P2-Thema vorgemerkt.
 
 ## P0 – Kritische Fehler und Datenrisiken
 
@@ -67,7 +65,7 @@
   Merkmals in den passenden Arbeitsbereich leiten. Getreidegutschriften dabei mit
   ihren vollständigen strukturierten Daten einbetten und Widersprüche zwischen
   sichtbarem Inhalt, Exportdaten und Belegtyp blockieren.
-- [ ] Bei fremden PDFs und eingescannten Belegen ohne eingebetteten Belegtyp im
+- [x] Bei fremden PDFs und eingescannten Belegen ohne eingebetteten Belegtyp im
   Importfenster den erkannten Typ nur als Vorschlag anzeigen und eine bewusste
   Auswahl zwischen Rechnung, Gutschrift und Getreideabrechnung ermöglichen. Nach
   einer geänderten Auswahl die fachlich passende Erkennung erneut ausführen. Eine
@@ -85,11 +83,9 @@
   Nettosumme als Summe der Lieferbeträge, die Umsatzsteuer aus Nettosumme und
   Steuersatz, den Gesamtbetrag aus Netto und Steuer sowie den Auszahlungsbetrag
   unter Berücksichtigung der Abschlagszahlung prüfen.
-- [ ] Abweichungen bei Lieferbetrag, Nettosumme, Umsatzsteuer, Gesamtbetrag oder
+- [x] Abweichungen bei Lieferbetrag, Nettosumme, Umsatzsteuer, Gesamtbetrag oder
   Auszahlungsbetrag als blockierende Fehler mit Belegwert, Prüfwert und Differenz
-  anzeigen. **Teilweise umgesetzt:** Abweichungen blockieren die Übernahme und der
-  erwartete Wert wird genannt; die einheitliche Anzeige von Belegwert, Prüfwert und
-  Differenz fehlt noch.
+  anzeigen.
 - [x] Wenn ein passendes Regelwerk eindeutig verfügbar ist, importierte Mengen- und
   Preisabzüge zusätzlich dagegen prüfen. Abweichungen in der OCR-Prüfansicht je
   Analysezeile beispielsweise als „Beleg: -28 kg / Regelwerk: -30 kg“ darstellen,
@@ -154,11 +150,11 @@
   Artikelmerkmale (BG-32/BT-160/BT-161) und zusätzlich lesbar ausgeben.
 - [x] Abschlagszahlungen als bezahlten Betrag (BT-113 beziehungsweise
   `PrepaidAmount`) ausgeben und den Auszahlungsbetrag konsistent berechnen.
-- [ ] Die PDF-Fußzeile rollengerecht erzeugen: Bei Rechnungen den Verkäufer
-  beziehungsweise Belegsteller, bei Gutschriften und Getreidegutschriften den
-  Käufer beziehungsweise Belegsteller anzeigen. Kontaktdaten sowie insbesondere
-  IBAN und BIC aus dem fachlich richtigen Datensatz übernehmen und den Unterschied
-  für alle drei Belegarten mit Regressionstests absichern.
+- [x] Die PDF-Fußzeile bei Rechnungen, Gutschriften und Getreidegutschriften aus den
+  aktuellen eigenen Stammdaten erzeugen. Firmen-, Kontakt- und Steuerdaten sowie
+  IBAN und BIC getrennt von den historischen Beleg- und Auszahlungskonten behandeln
+  und den einheitlichen Stammdatenkontext für alle drei Belegarten mit
+  Regressionstests absichern.
 - [x] PDF- und XML-Ausgabe bei finanziellen Inkonsistenzen sperren. Bestätigte
   Regelwerksabweichungen aus einem Import lediglich als Warnung behandeln und die
   Ausgabe dadurch nicht blockieren.
@@ -241,6 +237,15 @@
   müssen dabei erhalten bleiben. Die auffälligen Interaktionen je Maske manuell
   prüfen und zentrale Aktualisierungs- und Wechselpfade mit GUI-Regressionstests
   absichern; keine allgemeine GUI-Architekturänderung ohne nachgewiesenen Bedarf.
+- [ ] Bedienführung für Abrechnungsregeln überarbeiten: Die Verwaltung und Verwendung
+  von Regelwerken verständlicher gestalten. Insbesondere bei importierten oder bereits
+  erzeugten Getreidegutschriften erklären, warum „Regeln bearbeiten“ nicht verfügbar
+  ist und dass spätere Regeländerungen die bestätigten Belegwerte nicht verändern.
+  Geeignete Hilfetexte, Tooltips, Statushinweise sowie eine mögliche Trennung zwischen
+  Regelverwaltung und belegbezogener Anwendung zunächst konzeptionell prüfen. Die
+  konkrete Navigation und Darstellung erst nach Abstimmung festlegen; bestätigte oder
+  gespeicherte Belege dürfen durch Regeländerungen niemals unbemerkt neu berechnet
+  werden.
 - [ ] Lieferungsübersicht der Getreideabrechnung kompakter darstellen: Die separaten
   Spalten „Δ Menge kg“ und „Δ Wert EUR“ entfernen und Mengenabzüge direkt in der
   Spalte „Menge kg“ sowie wertmäßige Abzüge direkt in der Spalte „Betrag EUR“
