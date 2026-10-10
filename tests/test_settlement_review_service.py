@@ -102,6 +102,88 @@ class SettlementReviewServiceTests(unittest.TestCase):
         self.assertIn("vat_amount", paths)
         self.assertIn("credit_amount", paths)
 
+    def test_financial_mismatches_show_document_check_and_difference_values(self):
+        first = self.review.deliveries[0]
+        cases = (
+            (
+                "deliveries.0.net_amount",
+                replace(
+                    self.review,
+                    deliveries=(
+                        replace(
+                            first,
+                            net_amount=first.net_amount.with_value("400,00"),
+                        ),
+                        *self.review.deliveries[1:],
+                    ),
+                ),
+                "Lieferbetrag",
+                "400,00 EUR",
+                "402,72 EUR",
+                "-2,72 EUR",
+            ),
+            (
+                "net_amount",
+                replace(
+                    self.review,
+                    net_amount=self.review.net_amount.with_value("2000,00"),
+                ),
+                "Nettosumme",
+                "2000,00 EUR",
+                "2087,53 EUR",
+                "-87,53 EUR",
+            ),
+            (
+                "vat_amount",
+                replace(
+                    self.review,
+                    vat_amount=self.review.vat_amount.with_value("160,00"),
+                ),
+                "Umsatzsteuer",
+                "160,00 EUR",
+                "162,83 EUR",
+                "-2,83 EUR",
+            ),
+            (
+                "total_amount",
+                replace(
+                    self.review,
+                    total_amount=self.review.total_amount.with_value("2200,00"),
+                ),
+                "Gesamtbetrag",
+                "2200,00 EUR",
+                "2250,36 EUR",
+                "-50,36 EUR",
+            ),
+            (
+                "credit_amount",
+                replace(
+                    self.review,
+                    credit_amount=self.review.credit_amount.with_value("2200,00"),
+                ),
+                "Auszahlungsbetrag",
+                "2200,00 EUR",
+                "2250,36 EUR",
+                "-50,36 EUR",
+            ),
+        )
+
+        for path, review, label, document, expected, difference in cases:
+            with self.subTest(path=path):
+                result = self.service.validate(review)
+                issue = next(
+                    issue for issue in result.issues if issue.field_path == path
+                )
+
+                self.assertEqual(issue.severity, "error")
+                self.assertIn(label, issue.message)
+                self.assertIn(f"Belegwert: {document}", issue.message)
+                self.assertIn(f"Prüfwert: {expected}", issue.message)
+                self.assertIn(
+                    f"Differenz (Belegwert − Prüfwert): {difference}",
+                    issue.message,
+                )
+
     def test_reconciles_quantity_and_price_changes_with_delivery_values(self):
         first = self.review.deliveries[0]
         quantity_detail = replace(

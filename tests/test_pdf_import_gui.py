@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from rechnungshelfer.gui.main_window import InvoiceGUI
 from rechnungshelfer.gui.pdf_import_dialog import (
     PdfImportDialog,
+    analysis_document_kind,
     format_detected_fields,
     format_settlement_draft,
 )
@@ -16,6 +17,11 @@ from rechnungshelfer.domain.models import DocumentType
 from rechnungshelfer.services.pdf_invoice_parser import (
     BUSINESS_PARTNER_NUMBER_PATH,
     DetectedInvoiceField,
+)
+from rechnungshelfer.services.pdf_invoice_metadata import (
+    DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+    DOCUMENT_KIND_INVOICE,
+    DOCUMENT_KIND_SELF_BILLED_INVOICE,
 )
 from rechnungshelfer.services.settlement_credit_note_parser import DetectedValue
 
@@ -125,6 +131,60 @@ class PdfImportGuiTests(unittest.TestCase):
         cleanup.assert_called_once_with()
         self.assertEqual(dialog._results.get_nowait()[1], "result")
         self.assertEqual(dialog._results.get_nowait()[1], "error")
+
+    def test_analysis_kind_prefers_explicit_selection_over_text_suggestion(self):
+        analysis = SimpleNamespace(
+            selected_document_kind=DOCUMENT_KIND_INVOICE,
+            settlement_draft=object(),
+            grain_credit_note=None,
+            draft=SimpleNamespace(
+                embedded_document_kind=None,
+                document_type=DocumentType.SELF_BILLED_INVOICE,
+            ),
+        )
+
+        self.assertEqual(analysis_document_kind(analysis), DOCUMENT_KIND_INVOICE)
+
+    def test_document_type_change_reuses_analysis_and_prepares_new_result(self):
+        controller = MagicMock()
+        old_analysis = SimpleNamespace(
+            selected_document_kind=DOCUMENT_KIND_INVOICE,
+        )
+        changed_analysis = SimpleNamespace(
+            selected_document_kind=DOCUMENT_KIND_SELF_BILLED_INVOICE,
+        )
+        controller.reanalyze_pdf.return_value = changed_analysis
+        dialog = PdfImportDialog(MagicMock(), controller, MagicMock())
+        dialog._analysis = old_analysis
+        dialog.window = MagicMock()
+        dialog._prepare_analysis = MagicMock()
+        dialog._show_result = MagicMock()
+
+        dialog._select_document_kind("Gutschrift")
+
+        controller.reanalyze_pdf.assert_called_once_with(
+            old_analysis,
+            DOCUMENT_KIND_SELF_BILLED_INVOICE,
+        )
+        dialog._prepare_analysis.assert_called_once_with(changed_analysis)
+        self.assertIs(dialog._analysis, changed_analysis)
+        dialog._show_result.assert_called_once_with()
+
+    def test_incomplete_selected_grain_import_is_not_converted_to_invoice(self):
+        controller = MagicMock()
+        analysis = SimpleNamespace(
+            selected_document_kind=DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+            settlement_draft=None,
+            grain_credit_note=None,
+            draft=SimpleNamespace(errors=()),
+        )
+        dialog = PdfImportDialog(MagicMock(), controller, MagicMock())
+
+        dialog._prepare_analysis(analysis)
+
+        self.assertIsNone(dialog._import)
+        self.assertIsNone(dialog._grain_credit_note)
+        controller.create_invoice_from_pdf_analysis.assert_not_called()
 
     def test_settlement_summary_shows_detected_values(self):
         number = self._value("91001", 0.93)

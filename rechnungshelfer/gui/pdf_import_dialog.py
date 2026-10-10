@@ -12,7 +12,39 @@ from .components import button
 from .settlement_review_dialog import SettlementReviewDialog
 from .styles import FONT_NORMAL, FONT_SECTION, FONT_SMALL, TEXT, TEXT_MUTED
 from rechnungshelfer.domain.models import DocumentType
+from rechnungshelfer.services.pdf_invoice_metadata import (
+    DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+    DOCUMENT_KIND_INVOICE,
+    DOCUMENT_KIND_SELF_BILLED_INVOICE,
+)
 from rechnungshelfer.services.pdf_invoice_parser import BUSINESS_PARTNER_NUMBER_PATH
+
+
+DOCUMENT_KIND_LABELS = {
+    DOCUMENT_KIND_INVOICE: "Rechnung",
+    DOCUMENT_KIND_SELF_BILLED_INVOICE: "Gutschrift",
+    DOCUMENT_KIND_GRAIN_CREDIT_NOTE: "Getreideabrechnung",
+}
+DOCUMENT_KIND_BY_LABEL = {
+    label: document_kind
+    for document_kind, label in DOCUMENT_KIND_LABELS.items()
+}
+
+
+def analysis_document_kind(analysis) -> str:
+    selected = getattr(analysis, "selected_document_kind", None)
+    if selected in DOCUMENT_KIND_LABELS:
+        return selected
+    if getattr(analysis, "grain_credit_note", None) is not None:
+        return DOCUMENT_KIND_GRAIN_CREDIT_NOTE
+    if analysis.settlement_draft is not None:
+        return DOCUMENT_KIND_GRAIN_CREDIT_NOTE
+    embedded = getattr(analysis.draft, "embedded_document_kind", None)
+    if embedded in DOCUMENT_KIND_LABELS:
+        return embedded
+    if analysis.draft.document_type is DocumentType.SELF_BILLED_INVOICE:
+        return DOCUMENT_KIND_SELF_BILLED_INVOICE
+    return DOCUMENT_KIND_INVOICE
 
 
 FIELD_LABELS = {
@@ -188,23 +220,46 @@ class PdfImportDialog:
             return
 
         self._analysis = value
-        if value.settlement_draft is None:
-            if not value.draft.errors:
-                try:
-                    if getattr(value, "grain_credit_note", None) is not None:
-                        self._grain_credit_note = (
-                            self.controller.create_grain_credit_note_from_pdf_analysis(
-                                value
-                            )
-                        )
-                    else:
-                        self._import = (
-                            self.controller.create_invoice_from_pdf_analysis(value)
-                        )
-                except Exception as exc:
-                    self.close()
-                    messagebox.showerror("PDF-Import", str(exc), parent=self.parent)
-                    return
+        try:
+            self._prepare_analysis(value)
+        except Exception as exc:
+            self.close()
+            messagebox.showerror("PDF-Import", str(exc), parent=self.parent)
+            return
+        self._show_result()
+
+    def _prepare_analysis(self, analysis):
+        self._import = None
+        self._grain_credit_note = None
+        if getattr(getattr(analysis, "draft", None), "errors", ()):
+            return
+        document_kind = analysis_document_kind(analysis)
+        if document_kind == DOCUMENT_KIND_GRAIN_CREDIT_NOTE:
+            if getattr(analysis, "grain_credit_note", None) is not None:
+                self._grain_credit_note = (
+                    self.controller.create_grain_credit_note_from_pdf_analysis(
+                        analysis
+                    )
+                )
+            return
+        self._import = self.controller.create_invoice_from_pdf_analysis(analysis)
+
+    def _select_document_kind(self, label):
+        document_kind = DOCUMENT_KIND_BY_LABEL.get(label)
+        if document_kind is None or self._analysis is None:
+            return
+        if document_kind == analysis_document_kind(self._analysis):
+            return
+        try:
+            analysis = self.controller.reanalyze_pdf(
+                self._analysis,
+                document_kind,
+            )
+            self._prepare_analysis(analysis)
+        except Exception as exc:
+            messagebox.showerror("PDF-Import", str(exc), parent=self.window)
+            return
+        self._analysis = analysis
         self._show_result()
 
     def _show_result(self):
@@ -216,10 +271,13 @@ class PdfImportDialog:
 
         analysis = self._analysis
         extraction = analysis.extraction
+        document_kind = analysis_document_kind(analysis)
+        is_grain = document_kind == DOCUMENT_KIND_GRAIN_CREDIT_NOTE
+        requires_settlement_review = is_grain and self._grain_credit_note is None
         self.window.title("PDF-Import prüfen")
         self.window.geometry("920x720")
         self.window.resizable(True, True)
-        self.window.grid_rowconfigure(3, weight=1)
+        self.window.grid_rowconfigure(4, weight=1)
         self.window.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
@@ -247,18 +305,56 @@ class PdfImportDialog:
             anchor="w",
         ).grid(row=1, column=0, padx=24, pady=(0, 10), sticky="ew")
 
+        type_frame = ctk.CTkFrame(self.window, fg_color="transparent")
+        type_frame.grid(row=2, column=0, padx=24, pady=(0, 10), sticky="ew")
+        ctk.CTkLabel(
+            type_frame,
+            text=(
+                "Validierter Belegtyp:"
+                if analysis.draft.embedded_document_kind is not None
+                else "Erkannter Belegtyp (bitte prüfen):"
+            ),
+            font=FONT_NORMAL,
+            text_color=TEXT,
+        ).pack(side="left", padx=(0, 12))
+        type_label = DOCUMENT_KIND_LABELS[document_kind]
+        if analysis.draft.embedded_document_kind is not None or analysis.draft.errors:
+            ctk.CTkLabel(
+                type_frame,
+                text=type_label,
+                font=FONT_NORMAL,
+                text_color=TEXT,
+            ).pack(side="left")
+        else:
+            type_menu = ctk.CTkOptionMenu(
+                type_frame,
+                values=list(DOCUMENT_KIND_BY_LABEL),
+                command=self._select_document_kind,
+            )
+            type_menu.set(type_label)
+            type_menu.pack(side="left")
+
         status_messages = [*extraction.warnings, *extraction.errors]
         if analysis.settlement_draft is None:
             status_messages.extend(analysis.draft.warnings)
             status_messages.extend(
                 f"BLOCKIERT: {error}" for error in analysis.draft.errors
             )
+        if is_grain and analysis.settlement_draft is None and self._grain_credit_note is None:
+            status_messages.append(
+                "BLOCKIERT: Lieferungen, Abrechnungswerte oder Pflichtangaben "
+                "konnten nicht ausreichend sicher als Getreideabrechnung "
+                "rekonstruiert werden."
+            )
         detected = len(analysis.draft.fields)
-        status = [f"Erkannte Formularfelder: {detected}"]
+        status = [
+            f"Ausgewählter Belegtyp: {DOCUMENT_KIND_LABELS[document_kind]}",
+            f"Erkannte Formularfelder: {detected}",
+        ]
         if getattr(analysis, "grain_credit_note", None) is not None:
             status.append("Belegtyp: Getreidegutschrift")
         if analysis.settlement_draft is not None:
-            status = format_settlement_draft(analysis.settlement_draft)
+            status.extend(format_settlement_draft(analysis.settlement_draft))
         elif analysis.draft.embedded_invoice_data is not None:
             item_count = len(analysis.draft.embedded_invoice_data.get("items", []))
             status.append(f"Vollständig eingebettete Positionen: {item_count}")
@@ -278,7 +374,7 @@ class PdfImportDialog:
             font=FONT_SMALL,
             wrap="word",
         )
-        status_box.grid(row=2, column=0, padx=24, pady=(0, 10), sticky="ew")
+        status_box.grid(row=3, column=0, padx=24, pady=(0, 10), sticky="ew")
         self._set_text(status_box, "\n".join(status))
 
         self.text_box = ctk.CTkTextbox(
@@ -286,14 +382,14 @@ class PdfImportDialog:
             font=("Consolas", 13),
             wrap="word",
         )
-        self.text_box.grid(row=3, column=0, padx=24, pady=(0, 14), sticky="nsew")
+        self.text_box.grid(row=4, column=0, padx=24, pady=(0, 14), sticky="nsew")
         self._set_text(
             self.text_box,
             extraction.full_text or "Kein Text konnte extrahiert werden.",
         )
 
         footer = ctk.CTkFrame(self.window, fg_color="transparent")
-        footer.grid(row=4, column=0, padx=24, pady=(0, 20), sticky="ew")
+        footer.grid(row=5, column=0, padx=24, pady=(0, 20), sticky="ew")
         footer.grid_columnconfigure((0, 1, 2), weight=1)
         button(footer, "Text kopieren", self._copy_text).grid(
             row=0, column=0, padx=(0, 8), sticky="ew"
@@ -302,26 +398,28 @@ class PdfImportDialog:
             footer,
             (
                 "Abrechnung prüfen"
-                if analysis.settlement_draft is not None
+                if requires_settlement_review
                 else "In Formular übernehmen"
             ),
             (
                 self._open_settlement_review
-                if analysis.settlement_draft is not None
+                if requires_settlement_review
                 else self._apply_to_form
             ),
             primary=True,
         )
         apply_button.grid(row=0, column=1, padx=8, sticky="ew")
         if (
-            analysis.settlement_draft is None
-            and (
-                analysis.draft.errors
-                or (
-                    not analysis.draft.fields
-                    and not analysis.draft.items
-                    and analysis.draft.embedded_invoice_data is None
-                )
+            analysis.draft.errors
+            or (
+                requires_settlement_review
+                and analysis.settlement_draft is None
+            )
+            or (
+                not is_grain
+                and not analysis.draft.fields
+                and not analysis.draft.items
+                and analysis.draft.embedded_invoice_data is None
             )
         ):
             apply_button.configure(state="disabled")

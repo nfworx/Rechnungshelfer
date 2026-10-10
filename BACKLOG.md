@@ -38,10 +38,12 @@
 
 ## Aktuell in Entwicklung
 
-- P1.3 „Bestätigte Daten in eine editierbare Getreidegutschrift übernehmen“ und
-  P1.6 „Belegworkflow, Summenfeld und Menüführung vereinheitlichen“ sind umgesetzt.
-  Als Nächstes die einheitliche Detailanzeige finanzieller Prüfdifferenzen aus P1.2
-  bearbeiten; PDF-Darstellung und rollengerechte Fußzeile bleiben separat im Backlog.
+- P1.3 „Bestätigte Daten in eine editierbare Getreidegutschrift übernehmen“ sowie der
+  ursprüngliche Kernumfang von P1.6 „Belegworkflow, Summenfeld und Menüführung
+  vereinheitlichen“ sind umgesetzt. Später ergänzte Folgeaufgaben zu Datumsfeldern
+  und gemeinsamer Belegliste bleiben offen. Als Nächstes die rollengerechte
+  PDF-Fußzeile korrigieren; die einheitliche Detailanzeige finanzieller
+  Prüfdifferenzen aus P1.2 und die visuelle PDF-Überarbeitung bleiben separat offen.
 
 ## P0 – Kritische Fehler und Datenrisiken
 
@@ -157,11 +159,9 @@
   Käufer beziehungsweise Belegsteller anzeigen. Kontaktdaten sowie insbesondere
   IBAN und BIC aus dem fachlich richtigen Datensatz übernehmen und den Unterschied
   für alle drei Belegarten mit Regressionstests absichern.
-- [ ] PDF- und XML-Ausgabe bei finanziellen Inkonsistenzen sperren. Bestätigte
+- [x] PDF- und XML-Ausgabe bei finanziellen Inkonsistenzen sperren. Bestätigte
   Regelwerksabweichungen aus einem Import lediglich als Warnung behandeln und die
-  Ausgabe dadurch nicht blockieren. **Teilweise umgesetzt:** Finanzielle
-  Inkonsistenzen blockieren den Export; persistierte Regelwerksabweichungen fehlen
-  noch.
+  Ausgabe dadurch nicht blockieren.
 - [x] Die ursprüngliche ExternInvoice-PDF weder einbetten noch als Anlage referenzieren.
 
 ### 6. Belegworkflow, Summenfeld und Menüführung vereinheitlichen
@@ -176,11 +176,10 @@
   Eingaben behandeln und Abrechnungsmenge, Abrechnungspreis, Lieferbetrag und
   Gesamtsummen automatisch über das Regelwerk beziehungsweise die verbindliche
   Summenlogik berechnen.
-- [ ] Bei importierten Belegen bestätigte Abrechnungsmenge und Abrechnungspreis als
+- [x] Bei importierten Belegen bestätigte Abrechnungsmenge und Abrechnungspreis als
   Belegwerte verwenden. Lieferbetrag und Gesamtsummen weiterhin automatisch
   berechnen und gegen die importierten Referenzwerte prüfen; Regelwerksvergleiche
-  verändern diese Werte nicht. **Teilweise umgesetzt:** Belegwerte und finanzielle
-  Neuberechnung sind vorhanden; der getrennte Regelwerksvergleich fehlt noch.
+  verändern diese Werte nicht.
 - [x] Gespeicherte Getreidegutschriften im Getreide-Arbeitsbereich laden und dort
   unmittelbar weiterbearbeiten. Das separate Prüffenster nur für den
   bestätigungspflichtigen PDF-/OCR-Import verwenden.

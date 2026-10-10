@@ -26,6 +26,11 @@ from rechnungshelfer.services.pdf_invoice_parser import (
     PdfInvoiceImport,
     PdfInvoiceParser,
 )
+from rechnungshelfer.services.pdf_invoice_metadata import (
+    DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+    DOCUMENT_KIND_INVOICE,
+    DOCUMENT_KIND_SELF_BILLED_INVOICE,
+)
 from rechnungshelfer.services.settlement_credit_note_parser import (
     SettlementCreditNoteParser,
 )
@@ -161,7 +166,64 @@ class InvoiceApplicationService:
         """Fuehrt die dateibasierte Analyse ohne Datenbankzugriff aus."""
 
         extraction = self._pdf_import.extract(filepath, password=password)
-        draft = self._pdf_parser.parse(extraction)
+        return self._analyze_pdf_extraction(extraction)
+
+    def reanalyze_pdf(
+        self,
+        analysis: PdfInvoiceAnalysis,
+        document_kind: str,
+    ) -> PdfInvoiceAnalysis:
+        """Wertet bereits extrahierten PDF-Inhalt mit bewusst gewaehltem Typ aus."""
+
+        if analysis.draft.embedded_document_kind is not None:
+            raise ValueError(
+                "Der validierte eingebettete Belegtyp kann nicht geändert werden."
+            )
+        if analysis.draft.errors:
+            raise ValueError(
+                "Ein wegen ungültiger oder widersprüchlicher eingebetteter Daten "
+                "gesperrter Import kann nicht umgedeutet werden."
+            )
+        return self._analyze_pdf_extraction(
+            analysis.extraction,
+            selected_document_kind=document_kind,
+        )
+
+    def _analyze_pdf_extraction(
+        self,
+        extraction,
+        *,
+        selected_document_kind: str | None = None,
+    ) -> PdfInvoiceAnalysis:
+        supported_kinds = {
+            DOCUMENT_KIND_INVOICE,
+            DOCUMENT_KIND_SELF_BILLED_INVOICE,
+            DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+        }
+        if (
+            selected_document_kind is not None
+            and selected_document_kind not in supported_kinds
+        ):
+            raise ValueError("Unbekannter Belegtyp für den PDF-Import.")
+
+        forced_document_type = None
+        if selected_document_kind == DOCUMENT_KIND_INVOICE:
+            forced_document_type = DocumentType.INVOICE
+        elif selected_document_kind in {
+            DOCUMENT_KIND_SELF_BILLED_INVOICE,
+            DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+        }:
+            forced_document_type = DocumentType.SELF_BILLED_INVOICE
+
+        draft = self._pdf_parser.parse(
+            extraction,
+            document_type=forced_document_type,
+        )
+        settlement_draft = (
+            self._settlement_parser.parse(extraction)
+            if selected_document_kind in {None, DOCUMENT_KIND_GRAIN_CREDIT_NOTE}
+            else None
+        )
         grain_credit_note = None
         grain_data = draft.embedded_grain_credit_note_data
         if grain_data is not None and not draft.errors:
@@ -182,10 +244,22 @@ class InvoiceApplicationService:
                         f"Eingebettete Getreidegutschrift ist ungültig: {exc}",
                     ),
                 )
+
+        if selected_document_kind is None:
+            if draft.embedded_document_kind is not None:
+                selected_document_kind = draft.embedded_document_kind
+            elif settlement_draft is not None:
+                selected_document_kind = DOCUMENT_KIND_GRAIN_CREDIT_NOTE
+            elif draft.document_type is DocumentType.SELF_BILLED_INVOICE:
+                selected_document_kind = DOCUMENT_KIND_SELF_BILLED_INVOICE
+            else:
+                selected_document_kind = DOCUMENT_KIND_INVOICE
+
         return PdfInvoiceAnalysis(
             extraction=extraction,
             draft=draft,
-            settlement_draft=self._settlement_parser.parse(extraction),
+            selected_document_kind=selected_document_kind,
+            settlement_draft=settlement_draft,
             grain_credit_note=grain_credit_note,
         )
 
@@ -221,6 +295,7 @@ class InvoiceApplicationService:
         return PdfInvoiceImport(
             extraction=analysis.extraction,
             draft=analysis.draft,
+            selected_document_kind=analysis.selected_document_kind,
             invoice=invoice,
         )
 

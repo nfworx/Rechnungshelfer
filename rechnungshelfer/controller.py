@@ -147,6 +147,12 @@ class InvoiceController:
             password=password,
         )
 
+    def reanalyze_pdf(self, analysis, document_kind):
+        return self._get_invoice_service().reanalyze_pdf(
+            analysis,
+            document_kind,
+        )
+
     def create_invoice_from_pdf_analysis(self, analysis):
         return self._get_invoice_service().create_invoice_from_pdf_analysis(analysis)
 

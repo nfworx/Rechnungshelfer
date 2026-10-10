@@ -25,6 +25,8 @@ from rechnungshelfer.services.pdf_invoice_parser import (
 )
 from rechnungshelfer.services.pdf_invoice_metadata import (
     DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+    DOCUMENT_KIND_INVOICE,
+    DOCUMENT_KIND_SELF_BILLED_INVOICE,
     METADATA_PREFIX,
     encode_invoice_metadata,
 )
@@ -257,6 +259,19 @@ Lieferschein: LS-88
         self.assertEqual(draft.get("seller.name").value, "Hof Beispiel")
         self.assertTrue(any("muss geprueft" in warning for warning in draft.warnings))
 
+    def test_explicit_document_type_restarts_role_specific_detection(self):
+        extraction = extraction_with(
+            "Gutschrift\nGutschriftsnummer: GS-55\nLieferant: Hof Beispiel"
+        )
+
+        draft = PdfInvoiceParser().parse(
+            extraction,
+            document_type=DocumentType.INVOICE,
+        )
+
+        self.assertEqual(draft.document_type, DocumentType.INVOICE)
+        self.assertFalse(any("Belegtyp Gutschrift" in warning for warning in draft.warnings))
+
     def test_visible_self_billed_layout_maps_recipient_to_seller(self):
         original = create_sample_self_billed_invoice()
         with tempfile.TemporaryDirectory() as tmp:
@@ -359,6 +374,68 @@ class PdfInvoiceApplicationServiceTests(unittest.TestCase):
         partners.save_customer.assert_not_called()
         partners.save_supplier.assert_not_called()
         database.transaction.assert_not_called()
+
+    def test_foreign_pdf_can_be_reanalyzed_with_explicit_document_type(self):
+        extraction = extraction_with(
+            "Gutschrift\nGutschriftsnummer: GS-2026-1\nLieferant: Beispielhof"
+        )
+        service, _database, _invoices, _partners, _master_data = self._service(
+            extraction
+        )
+        analysis = service.analyze_pdf("gutschrift.pdf")
+
+        changed = service.reanalyze_pdf(analysis, DOCUMENT_KIND_INVOICE)
+
+        self.assertIs(changed.extraction, extraction)
+        self.assertEqual(changed.selected_document_kind, DOCUMENT_KIND_INVOICE)
+        self.assertEqual(changed.draft.document_type, DocumentType.INVOICE)
+        service._pdf_import.extract.assert_called_once_with(
+            "gutschrift.pdf",
+            password=None,
+        )
+
+    def test_explicit_grain_type_is_blocked_when_structure_cannot_be_reconstructed(self):
+        extraction = extraction_with("Rechnungsnummer: R-1")
+        service, _database, _invoices, _partners, _master_data = self._service(
+            extraction
+        )
+        analysis = service.analyze_pdf("rechnung.pdf")
+
+        changed = service.reanalyze_pdf(
+            analysis,
+            DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+        )
+
+        self.assertEqual(
+            changed.selected_document_kind,
+            DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+        )
+        self.assertEqual(
+            changed.draft.document_type,
+            DocumentType.SELF_BILLED_INVOICE,
+        )
+        self.assertIsNone(changed.settlement_draft)
+
+    def test_validated_embedded_document_type_cannot_be_changed(self):
+        original = create_sample_invoice()
+        extraction = replace(
+            extraction_with(
+                f"Rechnung Nr. {original.info.invoice_number} vom "
+                f"{original.info.invoice_date}"
+            ),
+            metadata={"Subject": encode_invoice_metadata(original)},
+        )
+        service, _database, _invoices, _partners, _master_data = self._service(
+            extraction
+        )
+        analysis = service.analyze_pdf("rechnung.pdf")
+
+        self.assertEqual(analysis.selected_document_kind, DOCUMENT_KIND_INVOICE)
+        with self.assertRaisesRegex(ValueError, "nicht geändert"):
+            service.reanalyze_pdf(
+                analysis,
+                DOCUMENT_KIND_SELF_BILLED_INVOICE,
+            )
 
     def test_background_analysis_includes_structured_settlement_draft(self):
         extraction = extraction_with(

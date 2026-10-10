@@ -463,9 +463,11 @@ class SettlementReviewService:
                 )
                 if self._money(amount) != expected:
                     issues.append(
-                        SettlementReviewIssue(
+                        self._financial_difference_issue(
                             f"{prefix}.net_amount",
-                            f"Lieferbetrag stimmt rechnerisch nicht; erwartet {expected} EUR.",
+                            "Lieferbetrag",
+                            amount,
+                            expected,
                         )
                     )
 
@@ -516,39 +518,72 @@ class SettlementReviewService:
             expected_net = self._money(sum(delivery_amounts, Decimal("0")))
             if self._money(net) != expected_net:
                 issues.append(
-                    SettlementReviewIssue(
+                    self._financial_difference_issue(
                         "net_amount",
-                        f"Nettosumme stimmt nicht mit den Lieferbeträgen überein; erwartet {expected_net} EUR.",
+                        "Nettosumme",
+                        net,
+                        expected_net,
                     )
                 )
         if net is not None and vat_rate is not None and vat is not None:
             expected_vat = self._money(net * vat_rate / Decimal("100"))
             if self._money(vat) != expected_vat:
                 issues.append(
-                    SettlementReviewIssue(
+                    self._financial_difference_issue(
                         "vat_amount",
-                        f"Umsatzsteuer stimmt rechnerisch nicht; erwartet {expected_vat} EUR.",
+                        "Umsatzsteuer",
+                        vat,
+                        expected_vat,
                     )
                 )
         if net is not None and vat is not None and total is not None:
             expected_total = self._money(net + vat)
             if self._money(total) != expected_total:
                 issues.append(
-                    SettlementReviewIssue(
+                    self._financial_difference_issue(
                         "total_amount",
-                        f"Gesamtbetrag stimmt rechnerisch nicht; erwartet {expected_total} EUR.",
+                        "Gesamtbetrag",
+                        total,
+                        expected_total,
                     )
                 )
         if total is not None and advance is not None and credit is not None:
             expected_credit = self._money(total - advance)
             if self._money(credit) != expected_credit:
                 issues.append(
-                    SettlementReviewIssue(
+                    self._financial_difference_issue(
                         "credit_amount",
-                        f"Gutschriftbetrag stimmt rechnerisch nicht; erwartet {expected_credit} EUR.",
+                        "Auszahlungsbetrag",
+                        credit,
+                        expected_credit,
                     )
                 )
         return SettlementReviewResult(tuple(issues))
+
+    @classmethod
+    def _financial_difference_issue(
+        cls,
+        field_path: str,
+        label: str,
+        document_value: Decimal,
+        expected_value: Decimal,
+    ) -> SettlementReviewIssue:
+        document_value = cls._money(document_value)
+        expected_value = cls._money(expected_value)
+        difference = cls._money(document_value - expected_value)
+        return SettlementReviewIssue(
+            field_path,
+            f"{label} ist rechnerisch nicht schlüssig – "
+            f"Belegwert: {cls._format_money(document_value)}; "
+            f"Prüfwert: {cls._format_money(expected_value)}; "
+            "Differenz (Belegwert − Prüfwert): "
+            f"{cls._format_money(difference, signed=True)}.",
+        )
+
+    @staticmethod
+    def _format_money(value: Decimal, *, signed: bool = False) -> str:
+        pattern = "+.2f" if signed else ".2f"
+        return f"{format(value, pattern).replace('.', ',')} EUR"
 
     @staticmethod
     def _deviation_message(deviation: GrainRuleDeviation) -> str:

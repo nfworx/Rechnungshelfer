@@ -346,7 +346,7 @@ class SettlementReviewDialog:
         if result.issues:
             self._set_status(
                 "\n".join(
-                    f"{'Fehler' if issue.severity == 'error' else 'Hinweis'}: {issue.message}"
+                    f"{'BLOCKIERT' if issue.severity == 'error' else 'Hinweis'}: {issue.message}"
                     for issue in result.issues
                 )
             )

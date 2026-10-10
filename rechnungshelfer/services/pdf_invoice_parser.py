@@ -68,6 +68,7 @@ class PdfInvoiceDraft:
 class PdfInvoiceAnalysis:
     extraction: PdfImportResult
     draft: PdfInvoiceDraft
+    selected_document_kind: str = field(kw_only=True)
     settlement_draft: SettlementCreditNoteDraft | None = field(
         default=None,
         kw_only=True,
@@ -262,8 +263,17 @@ class PdfInvoiceParser:
         "m": "MTR", "min": "MIN", "tag": "DAY", "woche": "WEE",
         "monat": "MON", "jahr": "ANN", "leistung": "LS",
     }
-    def parse(self, extraction: PdfImportResult) -> PdfInvoiceDraft:
-        document_type = self._detect_document_type(extraction.full_text)
+    def parse(
+        self,
+        extraction: PdfImportResult,
+        *,
+        document_type: DocumentType | str | None = None,
+    ) -> PdfInvoiceDraft:
+        document_type = (
+            self._detect_document_type(extraction.full_text)
+            if document_type is None
+            else DocumentType.from_value(document_type)
+        )
         detected = {}
         detected_items: dict[int, DetectedInvoiceItem] = {}
         searchable_pages = []
