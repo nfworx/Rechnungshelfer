@@ -134,7 +134,13 @@ def _pdf_detail_layout(frame_width):
 # ====================
 # PDF-Erstellung
 # ====================
-def create_pdf(invoice: 'Invoice', output_filename="Rechnung.pdf"):
+def create_pdf(
+    invoice: 'Invoice',
+    output_filename="Rechnung.pdf",
+    *,
+    document_kind=None,
+    grain_credit_note_data=None,
+):
     seller = invoice.seller
     buyer = invoice.buyer
     delivery = invoice.delivery
@@ -159,7 +165,11 @@ def create_pdf(invoice: 'Invoice', output_filename="Rechnung.pdf"):
     class NumberedCanvas(canvas.Canvas):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            self._invoice_metadata = encode_invoice_metadata(invoice)
+            self._invoice_metadata = encode_invoice_metadata(
+                invoice,
+                document_kind=document_kind,
+                grain_credit_note_data=grain_credit_note_data,
+            )
             self._saved_page_states = []
 
         def showPage(self):

@@ -2,12 +2,14 @@ import unittest
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
+from unittest.mock import MagicMock
 
 from lxml import etree
 
 from rechnungshelfer.application.grain_invoice_mapper import (
     create_invoice_from_grain_credit_note,
 )
+from rechnungshelfer.controller import InvoiceController
 from rechnungshelfer.domain.grain_models import GrainValidationError
 from rechnungshelfer.domain.models import Invoice
 from rechnungshelfer.services.kosit_validation_service import (
@@ -16,6 +18,12 @@ from rechnungshelfer.services.kosit_validation_service import (
     SCENARIOS_XML,
 )
 from rechnungshelfer.services.validation_service import validate_invoice, validate_xsd
+from rechnungshelfer.services.pdf_invoice_metadata import (
+    DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+)
+from rechnungshelfer.repositories.grain_credit_note_record import (
+    grain_credit_note_to_data,
+)
 from rechnungshelfer.services.xml_service import NSMAP, create_xml
 from tests.test_grain_credit_note_repository import structured_note
 
@@ -59,6 +67,29 @@ def exportable_note_with_allowance_and_advance():
 
 
 class GrainCreditNoteExportMapperTests(unittest.TestCase):
+    def test_controller_embeds_structured_note_in_grain_pdf_export(self):
+        note = exportable_note()
+        invoice = create_invoice_from_grain_credit_note(note)
+        export_service = MagicMock()
+        controller = InvoiceController.__new__(InvoiceController)
+        controller.export_service = export_service
+
+        controller.generate_pdf(
+            invoice,
+            "getreidegutschrift.pdf",
+            grain_credit_note=note,
+        )
+
+        export_service.export_pdf.assert_called_once()
+        args, kwargs = export_service.export_pdf.call_args
+        self.assertEqual(args[0].to_dict(), invoice.to_dict())
+        self.assertEqual(args[1], "getreidegutschrift.pdf")
+        self.assertEqual(kwargs["document_kind"], DOCUMENT_KIND_GRAIN_CREDIT_NOTE)
+        self.assertEqual(
+            kwargs["grain_credit_note_data"],
+            grain_credit_note_to_data(note),
+        )
+
     def test_each_delivery_uses_kilograms_and_tonne_price_base(self):
         note = exportable_note()
 

@@ -14,11 +14,11 @@
   Lieferungen, Analysewerte sowie Mengen- und Preisänderungen bleiben im
   Rechnungshelfer fachlich strukturiert und werden nicht dauerhaft auf freie
   Beschreibungstexte reduziert.
-- Eine AMIC-Sammel-Final-Gutschrift ist bereits der steuerliche Beleg. Sie wird als
+- Eine ExternInvoice-Sammel-Final-Gutschrift ist bereits der steuerliche Beleg. Sie wird als
   Quelle für dieselbe digitale Gutschrift verwendet und nicht als Anlage behandelt.
-- Die ursprüngliche AMIC-PDF wird ausschließlich gelesen, nicht verändert, kopiert,
+- Die ursprüngliche ExternInvoice-PDF wird ausschließlich gelesen, nicht verändert, kopiert,
   eingebettet oder durch den Rechnungshelfer dauerhaft gespeichert.
-- Die aus einer AMIC-PDF erzeugte XML- beziehungsweise PDF-Ausgabe stellt denselben
+- Die aus einer ExternInvoice-PDF erzeugte XML- beziehungsweise PDF-Ausgabe stellt denselben
   Beleg mit derselben Gutschriftnummer, demselben Datum und denselben Beträgen dar.
 - Erkannte Gutschriftnummern und Rechnungsnummern bleiben vor der Übernahme
   bestätigungs- und editierbar; zusätzliche Präfixe werden nicht erzeugt.
@@ -50,9 +50,9 @@
 
 ## P1 – Wichtige Funktionen in empfohlener Reihenfolge
 
-### 1. AMIC-Sammel-Final-Gutschrift erkennen
+### 1. ExternInvoice-Sammel-Final-Gutschrift erkennen
 
-- [x] Eine vorhandene AMIC-PDF als nicht vertrauenswürdige, unveränderte Importquelle
+- [x] Eine vorhandene ExternInvoice-PDF als nicht vertrauenswürdige, unveränderte Importquelle
   einlesen und das Format „Sammel-Final-Gutschrift“ erkennen.
 - [x] Vor der Verarbeitung Dateityp, Dateigröße und Lesbarkeit prüfen; die Quelldatei
   weder verändern noch kopieren oder dauerhaft im Rechnungshelfer speichern.
@@ -60,13 +60,19 @@
   auf OCR zurückgreifen.
 - [x] Gutschriftnummer, Ausstellungsdatum, Lieferungen, Analysewerte, Mengen, Preise,
   Beträge, Steuersatz und Summen als Importentwurf erfassen.
-- [ ] Selbst erzeugte PDFs um einen validierten internen Belegtyp (`invoice`,
+- [x] Selbst erzeugte PDFs um einen validierten internen Belegtyp (`invoice`,
   `self_billed_invoice`, `grain_credit_note`) erweitern und den Import anhand dieses
-  Merkmals in den passenden Arbeitsbereich leiten. Fremde PDFs ohne internes Merkmal
-  nur anhand mehrerer fachlicher Strukturmerkmale konservativ einordnen; die Anzahl
-  der Lieferscheine allein darf nicht entscheiden, damit auch Getreideabrechnungen mit
-  nur einer Lieferung korrekt erkannt werden. Widersprüche zwischen sichtbarem Inhalt
-  und eingebettetem Belegtyp müssen den Import blockieren.
+  Merkmals in den passenden Arbeitsbereich leiten. Getreidegutschriften dabei mit
+  ihren vollständigen strukturierten Daten einbetten und Widersprüche zwischen
+  sichtbarem Inhalt, Exportdaten und Belegtyp blockieren.
+- [ ] Bei fremden PDFs und eingescannten Belegen ohne eingebetteten Belegtyp im
+  Importfenster den erkannten Typ nur als Vorschlag anzeigen und eine bewusste
+  Auswahl zwischen Rechnung, Gutschrift und Getreideabrechnung ermöglichen. Nach
+  einer geänderten Auswahl die fachlich passende Erkennung erneut ausführen. Eine
+  Getreideabrechnung stets durch die strukturierte Prüfansicht leiten und die
+  Übernahme sperren, wenn Lieferungen, Abrechnungswerte oder Pflichtangaben nicht
+  ausreichend sicher rekonstruiert werden können. Die Anzahl der Lieferscheine darf
+  weiterhin nur ein unterstützendes Merkmal sein.
 
 ### 2. Prüfpflichtigen Importentwurf anzeigen
 
@@ -123,7 +129,7 @@
 ### 4. Importierte Getreidegutschrift speichern und wieder öffnen
 
 - [x] Ausschließlich die bestätigten strukturierten Belegdaten über die bestehenden
-  Speicherwege sichern; die ursprüngliche AMIC-PDF bleibt außerhalb der Anwendung.
+  Speicherwege sichern; die ursprüngliche ExternInvoice-PDF bleibt außerhalb der Anwendung.
 - [x] Die Gutschrift nach einem Neustart vollständig und ohne Abhängigkeit von der
   ursprünglichen PDF wieder laden können.
 - [x] Falls Schemaänderungen erforderlich werden, ausschließlich eine versionierte
@@ -156,7 +162,7 @@
   Ausgabe dadurch nicht blockieren. **Teilweise umgesetzt:** Finanzielle
   Inkonsistenzen blockieren den Export; persistierte Regelwerksabweichungen fehlen
   noch.
-- [x] Die ursprüngliche AMIC-PDF weder einbetten noch als Anlage referenzieren.
+- [x] Die ursprüngliche ExternInvoice-PDF weder einbetten noch als Anlage referenzieren.
 
 ### 6. Belegworkflow, Summenfeld und Menüführung vereinheitlichen
 
@@ -208,7 +214,7 @@
 
 ### 7. Fachlicher End-to-End-Abnahmetest
 
-- [ ] Eine reale AMIC-Sammel-Final-Gutschrift mit mehreren Lieferungen und 7,8 Prozent
+- [ ] Eine reale ExternInvoice-Sammel-Final-Gutschrift mit mehreren Lieferungen und 7,8 Prozent
   Umsatzsteuer von der PDF-Auswahl bis zum bestätigten Beleg durchspielen.
 - [ ] Unsichere OCR-Werte, rechnerische Gegenprüfung und manuelle Korrektur gezielt
   testen.
@@ -258,9 +264,9 @@
 
 ## Später – Weitere Importformate und lernende Regelvorschläge
 
-- [ ] Nach dem fachlich abgenommenen AMIC-Import bei Bedarf weitere PDF-Layouts und
+- [ ] Nach dem fachlich abgenommenen ExternInvoice-Import bei Bedarf weitere PDF-Layouts und
   Abrechnungsprogramme als jeweils kontrollierte Importformate ergänzen.
-- [ ] Nach mehreren bestätigten AMIC-Abrechnungen Abweichungen zu den aktiven Regeln
+- [ ] Nach mehreren bestätigten ExternInvoice-Abrechnungen Abweichungen zu den aktiven Regeln
   erkennen und neue oder geänderte Regeln lediglich vorschlagen.
 - [ ] Regelvorschläge erklären, mit Beispieldaten testen und erst nach Freigabe als
   neue Regelwerksversion aktivieren; bestehende Abrechnungen bleiben unverändert.

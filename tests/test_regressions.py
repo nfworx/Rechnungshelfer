@@ -377,6 +377,32 @@ class RegressionTests(unittest.TestCase):
         controller.generate_pdf.assert_called_once_with(invoice, "rechnung.pdf")
         showinfo.assert_called_once_with("Export", "PDF wurde erstellt.")
 
+    def test_export_workflow_forwards_grain_credit_note_for_pdf_metadata(self):
+        invoice = self._invoice()
+        grain_credit_note = object()
+        controller = MagicMock()
+        workflow = ExportWorkflow(
+            root=MagicMock(),
+            controller=controller,
+            invoice_provider=lambda: invoice,
+            grain_credit_note_provider=lambda: grain_credit_note,
+        )
+
+        with (
+            patch(
+                "rechnungshelfer.gui.export_workflow.filedialog.asksaveasfilename",
+                return_value="getreidegutschrift.pdf",
+            ),
+            patch("rechnungshelfer.gui.export_workflow.messagebox.showinfo"),
+        ):
+            workflow.generate_pdf()
+
+        controller.generate_pdf.assert_called_once_with(
+            invoice,
+            "getreidegutschrift.pdf",
+            grain_credit_note=grain_credit_note,
+        )
+
     def test_export_workflow_closes_progress_after_xml_input_error(self):
         invoice = self._invoice()
         controller = MagicMock()

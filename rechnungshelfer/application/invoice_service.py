@@ -1,12 +1,20 @@
 """Anwendungsfälle zum Erstellen, Speichern und Laden von Belegen."""
 
+from dataclasses import replace
+
 from rechnungshelfer.application.errors import CustomerDuplicateError
+from rechnungshelfer.application.grain_invoice_mapper import (
+    create_invoice_from_grain_credit_note,
+)
 from rechnungshelfer.domain.invoice_factory import InvoiceFactory
 from rechnungshelfer.domain.models import (
     DocumentType,
     Invoice,
     Payment,
     Seller,
+)
+from rechnungshelfer.repositories.grain_credit_note_record import (
+    grain_credit_note_from_data,
 )
 from rechnungshelfer.services.input_validation_service import (
     InputValidationError,
@@ -154,10 +162,31 @@ class InvoiceApplicationService:
 
         extraction = self._pdf_import.extract(filepath, password=password)
         draft = self._pdf_parser.parse(extraction)
+        grain_credit_note = None
+        grain_data = draft.embedded_grain_credit_note_data
+        if grain_data is not None and not draft.errors:
+            try:
+                grain_credit_note = grain_credit_note_from_data(grain_data)
+                projected = create_invoice_from_grain_credit_note(grain_credit_note)
+                if projected.to_dict() != draft.embedded_invoice_data:
+                    raise ValueError(
+                        "Getreidegutschrift und eingebettete Rechnungsdaten "
+                        "widersprechen sich."
+                    )
+            except Exception as exc:
+                grain_credit_note = None
+                draft = replace(
+                    draft,
+                    errors=(
+                        *draft.errors,
+                        f"Eingebettete Getreidegutschrift ist ungültig: {exc}",
+                    ),
+                )
         return PdfInvoiceAnalysis(
             extraction=extraction,
             draft=draft,
             settlement_draft=self._settlement_parser.parse(extraction),
+            grain_credit_note=grain_credit_note,
         )
 
     def create_invoice_from_pdf_analysis(
@@ -169,6 +198,12 @@ class InvoiceApplicationService:
         if analysis.settlement_draft is not None:
             raise ValueError(
                 "Die erkannte Testabrechnung muss vor der Übernahme geprüft werden."
+            )
+
+        if analysis.grain_credit_note is not None:
+            raise ValueError(
+                "Die erkannte Getreidegutschrift muss in die Getreideabrechnung "
+                "übernommen werden."
             )
 
         if analysis.draft.errors:
@@ -188,6 +223,18 @@ class InvoiceApplicationService:
             draft=analysis.draft,
             invoice=invoice,
         )
+
+    @staticmethod
+    def create_grain_credit_note_from_pdf_analysis(analysis: PdfInvoiceAnalysis):
+        if analysis.draft.errors:
+            raise ValueError(
+                "Der PDF-Rückimport wurde wegen widersprüchlicher oder ungültiger "
+                "Getreidegutschriftdaten gesperrt:\n- "
+                + "\n- ".join(analysis.draft.errors)
+            )
+        if analysis.grain_credit_note is None:
+            raise ValueError("Das PDF enthält keine strukturierte Getreidegutschrift.")
+        return analysis.grain_credit_note
 
     def copy_invoice(self, invoice: Invoice) -> Invoice:
         return self._factory.copy(invoice)

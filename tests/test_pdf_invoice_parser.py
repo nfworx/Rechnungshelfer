@@ -1,11 +1,15 @@
 import tempfile
 import unittest
 from dataclasses import replace
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import Mock
 
 from rechnungshelfer.application.invoice_service import InvoiceApplicationService
+from rechnungshelfer.application.grain_invoice_mapper import (
+    create_invoice_from_grain_credit_note,
+)
 from rechnungshelfer.domain.invoice_factory import InvoiceFactory
 from rechnungshelfer.domain.models import DocumentType, Payment, Seller
 from rechnungshelfer.services.pdf_import_service import (
@@ -20,13 +24,18 @@ from rechnungshelfer.services.pdf_invoice_parser import (
     PdfInvoiceParser,
 )
 from rechnungshelfer.services.pdf_invoice_metadata import (
+    DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
     METADATA_PREFIX,
     encode_invoice_metadata,
+)
+from rechnungshelfer.repositories.grain_credit_note_record import (
+    grain_credit_note_to_data,
 )
 from rechnungshelfer.services.sample_document_service import (
     create_sample_invoice,
     create_sample_self_billed_invoice,
 )
+from tests.test_grain_credit_note_repository import structured_note
 
 
 def extraction_with(*page_texts):
@@ -454,6 +463,69 @@ Gutschriftbetrag in EUR 434,13
         partners.save_customer.assert_not_called()
         partners.save_supplier.assert_not_called()
         database.transaction.assert_not_called()
+
+    def test_roundtrips_structured_grain_credit_note_for_grain_workspace(self):
+        note = replace(
+            structured_note(),
+            payment_due_date=date(2025, 12, 14),
+        )
+        invoice = create_invoice_from_grain_credit_note(note)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "getreidegutschrift.pdf"
+            create_pdf(
+                invoice,
+                path,
+                document_kind=DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+                grain_credit_note_data=grain_credit_note_to_data(note),
+            )
+            extraction = PdfImportService().extract(path)
+
+        service, _database, _invoices, _partners, _master_data = self._service(
+            extraction
+        )
+        analysis = service.analyze_pdf("getreidegutschrift.pdf")
+
+        self.assertFalse(analysis.draft.errors)
+        self.assertEqual(analysis.grain_credit_note, note)
+        self.assertEqual(
+            service.create_grain_credit_note_from_pdf_analysis(analysis),
+            note,
+        )
+        with self.assertRaisesRegex(ValueError, "Getreideabrechnung"):
+            service.create_invoice_from_pdf_analysis(analysis)
+
+    def test_blocks_structured_grain_data_that_contradicts_export_invoice(self):
+        note = replace(
+            structured_note(),
+            payment_due_date=date(2025, 12, 14),
+        )
+        invoice = create_invoice_from_grain_credit_note(note)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "getreidegutschrift.pdf"
+            create_pdf(invoice, path)
+            extraction = PdfImportService().extract(path)
+        tampered_data = grain_credit_note_to_data(note)
+        tampered_data["credit_note_number"] = "MANIPULIERT-1"
+        extraction = replace(
+            extraction,
+            metadata={
+                "Subject": encode_invoice_metadata(
+                    invoice,
+                    document_kind=DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+                    grain_credit_note_data=tampered_data,
+                )
+            },
+        )
+        service, _database, _invoices, _partners, _master_data = self._service(
+            extraction
+        )
+
+        analysis = service.analyze_pdf("getreidegutschrift.pdf")
+
+        self.assertIsNone(analysis.grain_credit_note)
+        self.assertTrue(
+            any("Getreidegutschrift" in error for error in analysis.draft.errors)
+        )
 
     def test_contradictory_embedded_data_cannot_be_converted(self):
         original = create_sample_invoice()

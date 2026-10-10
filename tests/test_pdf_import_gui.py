@@ -165,6 +165,32 @@ class PdfImportGuiTests(unittest.TestCase):
         controller.create_invoice_from_pdf_analysis.assert_not_called()
         dialog._show_result.assert_called_once_with()
 
+    def test_embedded_grain_credit_note_is_prepared_for_grain_workspace(self):
+        controller = MagicMock()
+        credit_note = object()
+        controller.create_grain_credit_note_from_pdf_analysis.return_value = (
+            credit_note
+        )
+        dialog = PdfImportDialog(MagicMock(), controller, MagicMock())
+        dialog.window = MagicMock()
+        dialog.window.winfo_exists.return_value = True
+        dialog._show_result = MagicMock()
+        draft = SimpleNamespace(errors=())
+        analysis = SimpleNamespace(
+            settlement_draft=None,
+            draft=draft,
+            grain_credit_note=credit_note,
+        )
+        dialog._results.put((0, "result", analysis))
+
+        dialog._poll_result()
+
+        self.assertIs(dialog._grain_credit_note, credit_note)
+        controller.create_grain_credit_note_from_pdf_analysis.assert_called_once_with(
+            analysis
+        )
+        controller.create_invoice_from_pdf_analysis.assert_not_called()
+
     def test_blocked_invoice_import_stays_in_review_without_conversion(self):
         controller = MagicMock()
         dialog = PdfImportDialog(MagicMock(), controller, MagicMock())
@@ -273,6 +299,30 @@ class PdfImportGuiTests(unittest.TestCase):
 
         callback.assert_called_once_with(invoice)
         controller.save_invoice.assert_not_called()
+
+    def test_form_takeover_routes_embedded_grain_note_to_grain_workspace(self):
+        invoice_callback = MagicMock()
+        grain_callback = MagicMock()
+        credit_note = object()
+        dialog = PdfImportDialog(
+            MagicMock(),
+            MagicMock(),
+            invoice_callback,
+            grain_callback,
+        )
+        dialog.window = MagicMock()
+        dialog._grain_credit_note = credit_note
+        dialog.close = MagicMock()
+
+        with patch(
+            "rechnungshelfer.gui.pdf_import_dialog.messagebox.askyesno",
+            return_value=True,
+        ):
+            dialog._apply_to_form()
+
+        grain_callback.assert_called_once_with(credit_note)
+        invoice_callback.assert_not_called()
+        dialog.close.assert_called_once_with()
 
     def test_declined_form_takeover_keeps_dialog_open(self):
         callback = MagicMock()

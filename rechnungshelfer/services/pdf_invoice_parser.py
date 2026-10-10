@@ -7,9 +7,15 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 import re
 
+from rechnungshelfer.domain.grain_credit_note import GrainCreditNote
 from rechnungshelfer.domain.models import DocumentType, Invoice, InvoiceItem
 from .pdf_import_service import PdfImportResult, normalize_ocr_text
-from .pdf_invoice_metadata import decode_invoice_metadata
+from .pdf_invoice_metadata import (
+    DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+    DOCUMENT_KIND_INVOICE,
+    DOCUMENT_KIND_SELF_BILLED_INVOICE,
+    decode_pdf_metadata,
+)
 from .settlement_credit_note_parser import SettlementCreditNoteDraft
 from .validation_service import validate_document
 
@@ -49,6 +55,8 @@ class PdfInvoiceDraft:
     fields: tuple[DetectedInvoiceField, ...]
     items: tuple[DetectedInvoiceItem, ...] = ()
     embedded_invoice_data: dict | None = None
+    embedded_document_kind: str | None = None
+    embedded_grain_credit_note_data: dict | None = None
     warnings: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
 
@@ -61,6 +69,10 @@ class PdfInvoiceAnalysis:
     extraction: PdfImportResult
     draft: PdfInvoiceDraft
     settlement_draft: SettlementCreditNoteDraft | None = field(
+        default=None,
+        kw_only=True,
+    )
+    grain_credit_note: GrainCreditNote | None = field(
         default=None,
         kw_only=True,
     )
@@ -314,6 +326,8 @@ class PdfInvoiceParser:
         warnings = []
         errors = []
         embedded_invoice_data = None
+        embedded_document_kind = None
+        embedded_grain_credit_note_data = None
         subject = next(
             (
                 value
@@ -323,7 +337,11 @@ class PdfInvoiceParser:
             None,
         )
         try:
-            embedded_invoice_data = decode_invoice_metadata(subject)
+            metadata = decode_pdf_metadata(subject)
+            if metadata is not None:
+                embedded_invoice_data = metadata.invoice
+                embedded_document_kind = metadata.document_kind
+                embedded_grain_credit_note_data = metadata.grain_credit_note
         except ValueError as exc:
             errors.append(str(exc))
 
@@ -335,6 +353,7 @@ class PdfInvoiceParser:
                     tuple(detected.values()),
                     tuple(detected_items.values()),
                     "\n".join(searchable_pages),
+                    embedded_document_kind,
                 )
             )
 
@@ -362,6 +381,8 @@ class PdfInvoiceParser:
             fields=tuple(detected.values()),
             items=tuple(detected_items.values()),
             embedded_invoice_data=embedded_invoice_data,
+            embedded_document_kind=embedded_document_kind,
+            embedded_grain_credit_note_data=embedded_grain_credit_note_data,
             warnings=tuple(warnings),
             errors=tuple(errors),
         )
@@ -514,6 +535,7 @@ class PdfInvoiceParser:
         visible_fields,
         visible_items,
         visible_text,
+        embedded_document_kind,
     ):
         errors = []
         for key in (
@@ -547,6 +569,17 @@ class PdfInvoiceParser:
                 f"Belegtyp: {exc}"
             ]
         expected_type_code = embedded_document_type.invoice_type_code
+        expected_document_kinds = {
+            DocumentType.INVOICE: {DOCUMENT_KIND_INVOICE},
+            DocumentType.SELF_BILLED_INVOICE: {
+                DOCUMENT_KIND_SELF_BILLED_INVOICE,
+                DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+            },
+        }
+        if embedded_document_kind not in expected_document_kinds[embedded_document_type]:
+            errors.append(
+                "Eingebetteter Belegtyp widerspricht den eingebetteten Rechnungsdaten."
+            )
         if str(data["info"].get("invoice_type_code")) != expected_type_code:
             errors.append(
                 "Eingebettete Rechnungsdaten sind fachlich ungültig: "

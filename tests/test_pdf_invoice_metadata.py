@@ -1,8 +1,11 @@
+import json
 import unittest
 
 from rechnungshelfer.domain.models import InvoiceItem
 from rechnungshelfer.services.pdf_invoice_metadata import (
     METADATA_PREFIX,
+    DOCUMENT_KIND_INVOICE,
+    decode_pdf_metadata,
     decode_invoice_metadata,
     encode_invoice_metadata,
 )
@@ -30,6 +33,21 @@ class PdfInvoiceMetadataTests(unittest.TestCase):
 
         self.assertTrue(encoded.startswith(METADATA_PREFIX))
         self.assertEqual(decoded, invoice.to_dict())
+
+        metadata = decode_pdf_metadata(encoded)
+        self.assertEqual(metadata.document_kind, DOCUMENT_KIND_INVOICE)
+        self.assertIsNone(metadata.grain_credit_note)
+
+    def test_legacy_schema_one_metadata_remains_readable(self):
+        invoice = create_sample_invoice()
+        encoded = METADATA_PREFIX + json.dumps(
+            {"schema": 1, "invoice": invoice.to_dict()}
+        )
+
+        metadata = decode_pdf_metadata(encoded)
+
+        self.assertEqual(metadata.document_kind, DOCUMENT_KIND_INVOICE)
+        self.assertEqual(metadata.invoice, invoice.to_dict())
 
 
 if __name__ == "__main__":

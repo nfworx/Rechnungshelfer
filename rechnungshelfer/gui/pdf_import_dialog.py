@@ -109,6 +109,7 @@ class PdfImportDialog:
         self._results = queue.SimpleQueue()
         self._analysis = None
         self._import = None
+        self._grain_credit_note = None
         self._filepath = None
         self._job_id = 0
         self._settlement_review_dialog = None
@@ -120,6 +121,7 @@ class PdfImportDialog:
         self._filepath = filepath
         self._analysis = None
         self._import = None
+        self._grain_credit_note = None
         self.window = ctk.CTkToplevel(self.parent)
         self.window.title("PDF einlesen")
         self.window.geometry("560x230")
@@ -189,7 +191,16 @@ class PdfImportDialog:
         if value.settlement_draft is None:
             if not value.draft.errors:
                 try:
-                    self._import = self.controller.create_invoice_from_pdf_analysis(value)
+                    if getattr(value, "grain_credit_note", None) is not None:
+                        self._grain_credit_note = (
+                            self.controller.create_grain_credit_note_from_pdf_analysis(
+                                value
+                            )
+                        )
+                    else:
+                        self._import = (
+                            self.controller.create_invoice_from_pdf_analysis(value)
+                        )
                 except Exception as exc:
                     self.close()
                     messagebox.showerror("PDF-Import", str(exc), parent=self.parent)
@@ -244,6 +255,8 @@ class PdfImportDialog:
             )
         detected = len(analysis.draft.fields)
         status = [f"Erkannte Formularfelder: {detected}"]
+        if getattr(analysis, "grain_credit_note", None) is not None:
+            status.append("Belegtyp: Getreidegutschrift")
         if analysis.settlement_draft is not None:
             status = format_settlement_draft(analysis.settlement_draft)
         elif analysis.draft.embedded_invoice_data is not None:
@@ -337,7 +350,7 @@ class PdfImportDialog:
             )
 
     def _apply_to_form(self):
-        if self._import is None:
+        if self._import is None and self._grain_credit_note is None:
             return
         if not messagebox.askyesno(
             "PDF-Daten übernehmen",
@@ -347,9 +360,13 @@ class PdfImportDialog:
             parent=self.window,
         ):
             return
-        invoice = self._import.invoice
+        invoice = self._import.invoice if self._import is not None else None
+        grain_credit_note = self._grain_credit_note
         self.close()
-        self.on_invoice_loaded(invoice)
+        if grain_credit_note is not None:
+            self.on_grain_credit_note_loaded(grain_credit_note)
+        else:
+            self.on_invoice_loaded(invoice)
 
     def _open_settlement_review(self):
         if self._analysis is None or self._analysis.settlement_draft is None:

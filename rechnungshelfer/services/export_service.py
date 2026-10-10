@@ -55,14 +55,29 @@ class InvoiceExportService:
         self._pdf_renderer = pdf_renderer
         self._xml_renderer = xml_renderer
 
-    def export_pdf(self, invoice: Invoice, filepath: str | Path) -> None:
+    def export_pdf(
+        self,
+        invoice: Invoice,
+        filepath: str | Path,
+        *,
+        document_kind=None,
+        grain_credit_note_data=None,
+    ) -> None:
         self._normalize(invoice)
         missing = self.get_missing_required_fields(invoice, for_xml=False)
         if missing:
             raise ValueError(self.format_missing_fields(missing, "PDF"))
 
         invoice.calculate(force=True)
-        self._pdf_renderer(invoice, filepath)
+        if document_kind is None and grain_credit_note_data is None:
+            self._pdf_renderer(invoice, filepath)
+        else:
+            self._pdf_renderer(
+                invoice,
+                filepath,
+                document_kind=document_kind,
+                grain_credit_note_data=grain_credit_note_data,
+            )
 
     def export_xml(
         self,

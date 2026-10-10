@@ -110,6 +110,7 @@ class GrainSettlementView(ctk.CTkFrame):
             self.winfo_toplevel(),
             self.controller,
             self._current_export_invoice,
+            grain_credit_note_provider=self._credit_note_from_current_state,
         )
 
         self.grid_columnconfigure(0, weight=4)

@@ -10,10 +10,17 @@ from rechnungshelfer.services.export_service import ExportValidationError
 class ExportWorkflow:
     """Steuert PDF-/XML-Exporte und ihre Dialoge."""
 
-    def __init__(self, root, controller, invoice_provider):
+    def __init__(
+        self,
+        root,
+        controller,
+        invoice_provider,
+        grain_credit_note_provider=None,
+    ):
         self.root = root
         self.controller = controller
         self.invoice_provider = invoice_provider
+        self.grain_credit_note_provider = grain_credit_note_provider
 
     def generate_pdf(self):
         filepath = filedialog.asksaveasfilename(
@@ -24,7 +31,15 @@ class ExportWorkflow:
             return
 
         try:
-            self.controller.generate_pdf(self.invoice_provider(), filepath)
+            invoice = self.invoice_provider()
+            if self.grain_credit_note_provider is None:
+                self.controller.generate_pdf(invoice, filepath)
+            else:
+                self.controller.generate_pdf(
+                    invoice,
+                    filepath,
+                    grain_credit_note=self.grain_credit_note_provider(),
+                )
             messagebox.showinfo("Export", "PDF wurde erstellt.")
         except Exception as exc:
             messagebox.showerror("Fehler", str(exc))

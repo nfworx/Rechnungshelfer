@@ -1,6 +1,9 @@
 """Stabile GUI-Fassade für die Anwendungsfälle des Rechnungshelfers."""
 
 from rechnungshelfer.application.invoice_service import InvoiceApplicationService
+from rechnungshelfer.application.grain_invoice_mapper import (
+    create_invoice_from_grain_credit_note,
+)
 from rechnungshelfer.application.grain_scheme_service import (
     GrainSchemeApplicationService,
 )
@@ -31,9 +34,15 @@ from rechnungshelfer.repositories.grain_scheme_repository import (
 from rechnungshelfer.repositories.grain_credit_note_repository import (
     GrainCreditNoteRepository,
 )
+from rechnungshelfer.repositories.grain_credit_note_record import (
+    grain_credit_note_to_data,
+)
 from rechnungshelfer.repositories.master_data_repository import MasterDataRepository
 from rechnungshelfer.services.export_service import InvoiceExportService
 from rechnungshelfer.services.kosit_validation_service import KositValidator
+from rechnungshelfer.services.pdf_invoice_metadata import (
+    DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+)
 
 
 class InvoiceController:
@@ -141,6 +150,11 @@ class InvoiceController:
     def create_invoice_from_pdf_analysis(self, analysis):
         return self._get_invoice_service().create_invoice_from_pdf_analysis(analysis)
 
+    def create_grain_credit_note_from_pdf_analysis(self, analysis):
+        return self._get_invoice_service().create_grain_credit_note_from_pdf_analysis(
+            analysis
+        )
+
     def create_settlement_review(self, draft):
         review = self.settlement_review_service.create_review(draft)
         return self.grain_scheme_service.compare_import_review(review)
@@ -222,8 +236,16 @@ class InvoiceController:
         return self._get_invoice_service().recalculate(invoice, force=force)
 
     # Export und Exportvorprüfung
-    def generate_pdf(self, invoice, filepath):
-        return self._get_export_service().export_pdf(invoice, filepath)
+    def generate_pdf(self, invoice, filepath, *, grain_credit_note=None):
+        if grain_credit_note is None:
+            return self._get_export_service().export_pdf(invoice, filepath)
+        invoice = create_invoice_from_grain_credit_note(grain_credit_note)
+        return self._get_export_service().export_pdf(
+            invoice,
+            filepath,
+            document_kind=DOCUMENT_KIND_GRAIN_CREDIT_NOTE,
+            grain_credit_note_data=grain_credit_note_to_data(grain_credit_note),
+        )
 
     def generate_xml(self, invoice, filepath):
         return self._get_export_service().export_xml(invoice, filepath)
