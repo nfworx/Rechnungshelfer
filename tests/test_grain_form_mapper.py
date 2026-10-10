@@ -712,6 +712,12 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
         self.assertEqual(credit_note.net_amount, settlement.net_amount)
         self.assertEqual(credit_note.vat_rate, Decimal("7"))
         self.assertEqual(len(credit_note.deliveries), len(form.deliveries))
+        export_invoice = view._current_export_invoice()
+        self.assertEqual(export_invoice.info.invoice_number, "GS-100")
+        self.assertEqual(
+            export_invoice.monetarytotal.tax_exclusive_amount,
+            settlement.net_amount,
+        )
         review = SettlementReviewService().create_review_from_credit_note(
             credit_note
         )
@@ -754,6 +760,31 @@ class GrainCreditNoteTransferTests(unittest.TestCase):
             any(
                 call.kwargs.get("state") == "disabled"
                 for call in view.save_credit_note_button.configure.call_args_list
+            )
+        )
+
+    def test_export_buttons_follow_current_credit_note_validity(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.save_credit_note_button = Mock()
+        view.pdf_button = Mock()
+        view.xml_button = Mock()
+        view.export_workflow = Mock()
+        view.export_workflow.can_export_pdf.return_value = True
+        view.export_workflow.can_export_xml.return_value = False
+        view._save_issues = Mock(return_value=())
+
+        view._refresh_save_button()
+
+        self.assertTrue(
+            any(
+                call.kwargs.get("state") == "normal"
+                for call in view.pdf_button.configure.call_args_list
+            )
+        )
+        self.assertTrue(
+            any(
+                call.kwargs.get("state") == "disabled"
+                for call in view.xml_button.configure.call_args_list
             )
         )
 
@@ -915,12 +946,16 @@ class GrainRuleSetSelectionTests(unittest.TestCase):
         view._last_result = Mock(net_amount=Decimal("1000.00"))
         view.vat_variable = Mock(get=Mock(return_value="7,8 %"))
         view.total_rows = {
+            "net_amount": Mock(),
             "tax_amount": Mock(),
             "payable_amount": Mock(),
         }
 
         view._refresh_tax_totals()
 
+        view.total_rows["net_amount"].configure.assert_called_once_with(
+            text="1.000,00 EUR"
+        )
         view.total_rows["tax_amount"].configure.assert_called_once_with(
             text="78,00 EUR"
         )
@@ -933,28 +968,37 @@ class GrainRuleSetSelectionTests(unittest.TestCase):
         view._last_result = Mock(net_amount=Decimal("1000.00"))
         view.vat_variable = Mock(get=Mock(return_value="— auswählen —"))
         view.total_rows = {
+            "net_amount": Mock(),
             "tax_amount": Mock(),
             "payable_amount": Mock(),
         }
 
         view._refresh_tax_totals()
 
+        view.total_rows["net_amount"].configure.assert_called_once_with(
+            text="1.000,00 EUR"
+        )
         view.total_rows["tax_amount"].configure.assert_called_once_with(text="—")
         view.total_rows["payable_amount"].configure.assert_called_once_with(text="—")
 
-    def test_created_credit_note_totals_only_update_tax_and_payout(self):
+    def test_created_credit_note_totals_update_net_tax_and_payout(self):
         view = GrainSettlementView.__new__(GrainSettlementView)
         view.total_rows = {
+            "net_amount": Mock(),
             "tax_amount": Mock(),
             "payable_amount": Mock(),
         }
         credit_note = Mock(
+            net_amount=Decimal("2087.53"),
             vat_amount=Decimal("162.83"),
             credit_amount=Decimal("2250.36"),
         )
 
         view._show_credit_note_totals(credit_note)
 
+        view.total_rows["net_amount"].configure.assert_called_once_with(
+            text="2.087,53 EUR"
+        )
         view.total_rows["tax_amount"].configure.assert_called_once_with(
             text="162,83 EUR"
         )

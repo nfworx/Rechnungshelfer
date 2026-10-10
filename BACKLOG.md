@@ -39,14 +39,14 @@
 ## Aktuell in Entwicklung
 
 - P1.6 „Belegworkflow, Summenfeld und Menüführung vereinheitlichen“. Direkte
-  Speicherung und Bearbeitung der Getreidegutschrift sind umgesetzt. Als Nächstes
-  die Summenfelder und die Schaltflächen PDF/XML/Speichern vereinheitlichen;
-  anschließend Menüführung, Formularleeren und neuen Beleg umstellen.
+  Speicherung, Bearbeitung sowie PDF-/XML-Ausgabe der Getreidegutschrift und die
+  einheitlichen Summenfelder sind umgesetzt. Als Nächstes Menüführung,
+  Formularleeren und neuen Beleg umstellen.
 
 ## P0 – Kritische Fehler und Datenrisiken
 
-- [ ] Unbeabsichtigtes Überschreiben von Geschäftspartnerstammdaten durch ältere Belege verhindern.
-- [ ] Beim PDF-Rückimport eingebettete Rechnungsdaten validieren und Widersprüche zu sichtbaren Belegdaten erkennen.
+- [x] Unbeabsichtigtes Überschreiben von Geschäftspartnerstammdaten durch ältere Belege verhindern.
+- [x] Beim PDF-Rückimport eingebettete Rechnungsdaten validieren und Widersprüche zu sichtbaren Belegdaten erkennen.
 
 ## P1 – Wichtige Funktionen in empfohlener Reihenfolge
 
@@ -126,10 +126,8 @@
 
 ### 5. Dieselbe Gutschrift als PDF oder XRechnung ausgeben
 
-- [ ] Aus den bestätigten strukturierten Daten wahlweise eine lesbare PDF oder eine
-  XRechnung erzeugen; beide Ausgaben repräsentieren denselben Beleg. **Teilweise
-  umgesetzt:** Exportprojektion und Exportdienste sind vorhanden und getestet;
-  die Getreidemaske bietet die Ausgaben noch nicht aktiv an.
+- [x] Aus den bestätigten strukturierten Daten wahlweise eine lesbare PDF oder eine
+  XRechnung erzeugen; beide Ausgaben repräsentieren denselben Beleg.
 - [x] Gutschriftnummer, Datum, Parteien, Positionen, Steuersatz und Summen in beiden
   Formaten konsistent halten.
 - [x] Für die XRechnung den vorhandenen Gutschriftprozess mit Typcode `389` verwenden
@@ -141,6 +139,11 @@
   Artikelmerkmale (BG-32/BT-160/BT-161) und zusätzlich lesbar ausgeben.
 - [x] Abschlagszahlungen als bezahlten Betrag (BT-113 beziehungsweise
   `PrepaidAmount`) ausgeben und den Auszahlungsbetrag konsistent berechnen.
+- [ ] Die PDF-Fußzeile rollengerecht erzeugen: Bei Rechnungen den Verkäufer
+  beziehungsweise Belegsteller, bei Gutschriften und Getreidegutschriften den
+  Käufer beziehungsweise Belegsteller anzeigen. Kontaktdaten sowie insbesondere
+  IBAN und BIC aus dem fachlich richtigen Datensatz übernehmen und den Unterschied
+  für alle drei Belegarten mit Regressionstests absichern.
 - [ ] PDF- und XML-Ausgabe bei finanziellen Inkonsistenzen sperren. Bestätigte
   Regelwerksabweichungen aus einem Import lediglich als Warnung behandeln und die
   Ausgabe dadurch nicht blockieren. **Teilweise umgesetzt:** Finanzielle
@@ -153,8 +156,8 @@
 - [ ] Rechnung, Gutschrift und Getreideabrechnung trotz ihrer unterschiedlichen
   Fachmodelle nach demselben verständlichen Bedienmuster erstellen, bearbeiten,
   speichern, leeren und wieder öffnen können. **Teilweise umgesetzt:** Speichern,
-  Laden und Bearbeiten der Getreidegutschrift sind angeglichen; Leeren, neuer Beleg,
-  Summenfeld und Menüführung fehlen noch.
+  Laden, Bearbeiten, Summenfeld und Ausgabe der Getreidegutschrift sind angeglichen;
+  Leeren, neuer Beleg und Menüführung fehlen noch.
 - [x] Eine manuell erstellte Getreideabrechnung beim Speichern validieren, intern als
   strukturierte Getreidegutschrift übernehmen und direkt in der Datenbank sichern;
   den zusätzlichen Bedienschritt „Getreidegutschrift erstellen“ dafür entfernen.
@@ -170,10 +173,10 @@
 - [x] Gespeicherte Getreidegutschriften im Getreide-Arbeitsbereich laden und dort
   unmittelbar weiterbearbeiten. Das separate Prüffenster nur für den
   bestätigungspflichtigen PDF-/OCR-Import verwenden.
-- [ ] Für alle drei Belegarten das Summenfeld einheitlich und kompakt aufbauen. Dort
+- [x] Für alle drei Belegarten das Summenfeld einheitlich und kompakt aufbauen. Dort
   ausschließlich die Nettosumme gesamt, die jeweils anwendbare Umsatzsteuer und
   den finalen Gesamt- beziehungsweise Auszahlungsbetrag anzeigen.
-- [ ] Im Summenfeld aller Belegarten in derselben Reihenfolge die Schaltflächen
+- [x] Im Summenfeld aller Belegarten in derselben Reihenfolge die Schaltflächen
   „PDF erstellen“, „XML erstellen“ und „Speichern“ anbieten. Fachliche Detailwerte
   der Getreideabrechnung weiterhin ausschließlich im Lieferungsbereich anzeigen.
 - [ ] Im Menü „Datei“ nur die vorhandenen Importfunktionen für XML und PDF anbieten.
@@ -217,6 +220,10 @@
   unterschiedliche Tests zu verlieren; keine pauschale Testlöschung.
 - [ ] Tesseract-Distribution verschlanken und Repository-Größe optimieren.
 - [ ] Datenbank-Backup und Wiederherstellung praktisch testen.
+- [ ] Die visuelle PDF-Darstellung aller Belegarten systematisch überarbeiten,
+  insbesondere Abstände, Tabellenumbrüche, Ausrichtung, Summenbereich und Fußzeile.
+  Fachliche Korrekturen an Rollen- und Zahlungsdaten unabhängig davon zuerst unter
+  P1.5 umsetzen.
 
 ## Später – Weitere Importformate und lernende Regelvorschläge
 
@@ -246,7 +253,7 @@
   Analysewerten sowie Mengen-, Preis- und Betragsänderungen bearbeitbar.
 - [x] Strukturierte Getreidegutschriften werden verlustfrei gespeichert, nach einem
   Neustart wieder geladen und über eine getestete Projektion für PDF und XML
-  bereitgestellt; die Schaltflächen in der Getreidemaske sind noch offen.
+  bereitgestellt; beide Ausgaben sind in der Getreidemaske aktiv verfügbar.
 - [x] Der zusätzliche Bedienschritt „Getreidegutschrift erstellen“ wurde entfernt;
   manuelle Abrechnungen werden beim Speichern direkt validiert und persistiert.
 - [x] Gespeicherte Getreidegutschriften lassen sich im Getreide-Arbeitsbereich ohne

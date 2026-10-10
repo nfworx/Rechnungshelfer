@@ -14,6 +14,9 @@ from rechnungshelfer.application.grain_credit_note_mapper import (
     grain_credit_note_creation_issues,
     grain_credit_note_from_calculation,
 )
+from rechnungshelfer.application.grain_invoice_mapper import (
+    create_invoice_from_grain_credit_note,
+)
 from rechnungshelfer.application.settlement_review_service import (
     ReviewField,
     SettlementReviewDelivery,
@@ -58,6 +61,7 @@ from .grain_credit_note_delivery_dialog import GrainCreditNoteDeliveryDialog
 from .grain_credit_note_load_dialog import GrainCreditNoteLoadDialog
 from .grain_rule_presets import grain_rule_preset
 from .business_partner_dialog import BusinessPartnerListDialog
+from .export_workflow import ExportWorkflow
 from .party_card import PartyCard
 from .styles import APP_BG, FONT_NORMAL, FONT_SECTION, FONT_SMALL, TEXT, TEXT_MUTED
 
@@ -101,6 +105,11 @@ class GrainSettlementView(ctk.CTkFrame):
         self.credit_note = None
         self._persisted_credit_note_number = None
         self.vat_variable = ctk.StringVar(master=self, value="— auswählen —")
+        self.export_workflow = ExportWorkflow(
+            self.winfo_toplevel(),
+            self.controller,
+            self._current_export_invoice,
+        )
 
         self.grid_columnconfigure(0, weight=4)
         self.grid_columnconfigure(1, weight=1)
@@ -271,24 +280,11 @@ class GrainSettlementView(ctk.CTkFrame):
         totals.pack(fill="both", expand=True)
         totals.grid_columnconfigure(0, weight=1)
         totals.grid_columnconfigure(1, weight=0)
+        totals.grid_columnconfigure(2, weight=0)
         self.total_rows = {}
-        ctk.CTkLabel(
-            totals,
-            text="Umsatzsteuer",
-            font=FONT_SMALL,
-            text_color=TEXT,
-            anchor="w",
-        ).grid(row=1, column=0, sticky="w", padx=14, pady=(14, 3))
-        ctk.CTkOptionMenu(
-            totals,
-            values=["— auswählen —", "0 %", "7 %", "7,8 %", "19 %"],
-            variable=self.vat_variable,
-            command=lambda _value: self._refresh_tax_totals(),
-            width=115,
-        ).grid(row=1, column=1, sticky="e", padx=14, pady=(14, 3))
-
         for row, key, label, is_total in (
-            (2, "tax_amount", "Steuerbetrag", False),
+            (1, "net_amount", "Nettosumme", False),
+            (2, "tax_amount", "Umsatzsteuer", False),
             (3, "payable_amount", "Auszahlungsbetrag", True),
         ):
             font = FONT_SECTION if is_total else FONT_SMALL
@@ -298,7 +294,14 @@ class GrainSettlementView(ctk.CTkFrame):
                 font=font,
                 text_color=TEXT,
                 anchor="w",
-            ).grid(row=row, column=0, sticky="w", padx=14, pady=(8, 3))
+            ).grid(
+                row=row,
+                column=0,
+                columnspan=(1 if key == "tax_amount" else 2),
+                sticky="w",
+                padx=14,
+                pady=((14, 3) if row == 1 else (8, 3)),
+            )
             value = ctk.CTkLabel(
                 totals,
                 text="—",
@@ -306,54 +309,70 @@ class GrainSettlementView(ctk.CTkFrame):
                 text_color=TEXT,
                 anchor="e",
             )
-            value.grid(row=row, column=1, sticky="e", padx=14, pady=(8, 3))
+            value.grid(
+                row=row,
+                column=2,
+                sticky="e",
+                padx=14,
+                pady=((14, 3) if row == 1 else (8, 3)),
+            )
             self.total_rows[key] = value
+
+        self.vat_menu = ctk.CTkOptionMenu(
+            totals,
+            values=["— auswählen —", "0 %", "7 %", "7,8 %", "19 %"],
+            variable=self.vat_variable,
+            command=lambda _value: self._refresh_tax_totals(),
+            width=82,
+        )
+        self.vat_menu.grid(row=2, column=1, sticky="e", padx=(4, 0), pady=(8, 3))
+
+        self.pdf_button = button(
+            totals,
+            "PDF erstellen",
+            self.export_workflow.generate_pdf,
+        )
+        self.pdf_button.grid(
+            row=4,
+            column=0,
+            columnspan=3,
+            sticky="ew",
+            padx=14,
+            pady=(12, 8),
+        )
+        HoverTooltip(self.pdf_button, self._pdf_export_hint)
+
+        self.xml_button = button(
+            totals,
+            "XML erstellen",
+            self.export_workflow.generate_xml,
+        )
+        self.xml_button.grid(
+            row=5,
+            column=0,
+            columnspan=3,
+            sticky="ew",
+            padx=14,
+            pady=(0, 8),
+        )
+        HoverTooltip(self.xml_button, self._xml_export_hint)
 
         self.save_credit_note_button = button(
             totals,
-            "Getreidegutschrift speichern",
+            "Speichern",
             self.save_credit_note,
             primary=True,
         )
         self.save_credit_note_button.grid(
-            row=4,
+            row=6,
             column=0,
-            columnspan=2,
+            columnspan=3,
             sticky="ew",
             padx=14,
-            pady=(0, 8),
+            pady=(0, 14),
         )
         HoverTooltip(self.save_credit_note_button, self._credit_note_save_hint)
         self._refresh_save_button()
-
-        button(
-            totals,
-            "Gespeicherte öffnen",
-            self.open_saved_credit_notes,
-        ).grid(
-            row=5,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-            padx=14,
-            pady=(0, 8),
-        )
-
-        output_buttons = (
-            ("PDF erstellen", 6),
-            ("HTML erstellen", 7),
-        )
-        for label, row in output_buttons:
-            output_button = button(totals, label, lambda: None)
-            output_button.grid(
-                row=row,
-                column=0,
-                columnspan=2,
-                sticky="ew",
-                padx=14,
-                pady=(0, 8 if row < 7 else 14),
-            )
-            set_button_enabled(output_button, False)
 
     def load_credit_note(
         self,
@@ -450,11 +469,11 @@ class GrainSettlementView(ctk.CTkFrame):
             ),
         )
 
-    def _credit_note_for_save(self):
+    def _credit_note_from_current_state(self):
         if getattr(self, "credit_note", None) is not None:
             return self._current_credit_note()
-        if not self.calculate():
-            raise ValueError("Die Getreideabrechnung konnte nicht berechnet werden.")
+        if self._last_result is None:
+            raise ValueError("Die Getreideabrechnung wurde noch nicht berechnet.")
         form = self._form_value()
         deliveries, scheme = build_preview_inputs(form)
         vat_rate = parse_vat_rate(form.vat_rate)
@@ -464,6 +483,16 @@ class GrainSettlementView(ctk.CTkFrame):
             self._last_result,
             vat_rate,
             scheme,
+        )
+
+    def _credit_note_for_save(self):
+        if getattr(self, "credit_note", None) is None and not self.calculate():
+            raise ValueError("Die Getreideabrechnung konnte nicht berechnet werden.")
+        return self._credit_note_from_current_state()
+
+    def _current_export_invoice(self):
+        return create_invoice_from_grain_credit_note(
+            self._credit_note_from_current_state()
         )
 
     def save_credit_note(self):
@@ -642,6 +671,9 @@ class GrainSettlementView(ctk.CTkFrame):
             row += 2
 
     def _show_credit_note_totals(self, credit_note):
+        self.total_rows["net_amount"].configure(
+            text=f"{format_de(credit_note.net_amount)} EUR"
+        )
         self.total_rows["tax_amount"].configure(
             text=f"{format_de(credit_note.vat_amount)} EUR"
         )
@@ -1271,6 +1303,9 @@ class GrainSettlementView(ctk.CTkFrame):
         if self._last_result is None:
             self._refresh_save_button()
             return
+        self.total_rows["net_amount"].configure(
+            text=f"{format_de(self._last_result.net_amount)} EUR"
+        )
         try:
             vat_rate = parse_vat_rate(self.vat_variable.get())
         except GrainValidationError:
@@ -1306,14 +1341,37 @@ class GrainSettlementView(ctk.CTkFrame):
             return ""
         return "Zum Speichern fehlt noch:\n- " + "\n- ".join(issues)
 
+    def _pdf_export_hint(self):
+        issues = self._save_issues()
+        if issues:
+            return "Zum PDF-Export fehlt noch:\n- " + "\n- ".join(issues)
+        return self.export_workflow.pdf_export_hint()
+
+    def _xml_export_hint(self):
+        issues = self._save_issues()
+        if issues:
+            return "Zum XML-Export fehlt noch:\n- " + "\n- ".join(issues)
+        return self.export_workflow.xml_export_hint()
+
     def _refresh_save_button(self):
         if not hasattr(self, "save_credit_note_button"):
             return
+        has_complete_note = not self._save_issues()
         set_button_enabled(
             self.save_credit_note_button,
-            not self._save_issues(),
+            has_complete_note,
             primary=True,
         )
+        if hasattr(self, "pdf_button"):
+            set_button_enabled(
+                self.pdf_button,
+                has_complete_note and self.export_workflow.can_export_pdf(),
+            )
+        if hasattr(self, "xml_button"):
+            set_button_enabled(
+                self.xml_button,
+                has_complete_note and self.export_workflow.can_export_xml(),
+            )
 
     def _clear_totals(self):
         for value in self.total_rows.values():

@@ -12,6 +12,7 @@ from rechnungshelfer.application.errors import CustomerDuplicateError
 from rechnungshelfer.domain.models import Buyer, DEFAULT_BUYER_REFERENCE, Payment, Seller
 from rechnungshelfer.gui.export_workflow import ExportWorkflow
 from rechnungshelfer.gui.main_window import InvoiceGUI
+from rechnungshelfer.gui.totals_card import TotalsCard
 from rechnungshelfer.repositories.business_partner_repository import (
     BusinessPartnerRepository,
 )
@@ -320,6 +321,38 @@ class RegressionTests(unittest.TestCase):
             second_invoice,
             for_xml=True,
         )
+
+    def test_totals_card_shows_only_applicable_vat_rows(self):
+        invoice = self._invoice()
+        invoice.items = [invoice.items[0]]
+        invoice.items[0].set_vat(Decimal("7.8"))
+        invoice.calculate(force=True)
+        totals = TotalsCard.__new__(TotalsCard)
+        totals.invoice = invoice
+        totals.rows = {
+            key: MagicMock()
+            for key in (
+                "line_extension_amount",
+                "tax_0",
+                "tax_7",
+                "tax_7_8",
+                "tax_19",
+                "payable_amount",
+            )
+        }
+        totals.row_widgets = {
+            key: (MagicMock(), totals.rows[key])
+            for key in ("tax_0", "tax_7", "tax_7_8", "tax_19")
+        }
+        totals.refresh_export_buttons = MagicMock()
+
+        totals.refresh(recalculate=False)
+
+        totals.row_widgets["tax_7_8"][0].grid.assert_called_once_with()
+        totals.row_widgets["tax_7_8"][1].grid.assert_called_once_with()
+        for key in ("tax_0", "tax_7", "tax_19"):
+            totals.row_widgets[key][0].grid_remove.assert_called_once_with()
+            totals.row_widgets[key][1].grid_remove.assert_called_once_with()
 
     def test_export_workflow_delegates_pdf_export(self):
         invoice = self._invoice()

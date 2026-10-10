@@ -354,6 +354,7 @@ class InvoiceGUI:
             self.invoice,
             on_pdf=self.export_workflow.generate_pdf,
             on_xml=self.export_workflow.generate_xml,
+            on_save=self.save_invoice,
             can_export_pdf=self.export_workflow.can_export_pdf,
             can_export_xml=self.export_workflow.can_export_xml,
             pdf_export_hint=self.export_workflow.pdf_export_hint,
