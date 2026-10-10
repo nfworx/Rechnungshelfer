@@ -61,6 +61,8 @@ class GrainSchemeRepositoryTests(unittest.TestCase):
             versions[0].payload["rules"][0]["parameters"],
             "factor=1,4",
         )
+        self.assertEqual(self.repository.load_version(first.id), first)
+        self.assertEqual(self.repository.load_version(second.id), second)
 
     def test_drafts_are_separated_by_grain_type_and_harvest_year(self):
         self.service.save_drafts(2026, {"wheat": self._payload("1,3")})

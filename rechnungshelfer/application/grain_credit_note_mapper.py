@@ -61,10 +61,12 @@ def grain_credit_note_from_review(review) -> GrainCreditNote:
                         amount_change=_optional_decimal(
                             detail.amount_change.value
                         ),
+                        rule_deviation=detail.rule_deviation,
                     )
                     for detail in delivery.details
                 ),
                 grain_type_code=delivery.grain_type_code,
+                rule_check=delivery.rule_check,
             )
             for delivery in review.deliveries
         ),
@@ -98,6 +100,7 @@ def grain_credit_note_from_review(review) -> GrainCreditNote:
         ),
         buyer=review.buyer,
         payment_due_date=_optional_date(review.payment_due_date.value),
+        origin=review.origin,
     )
 
 

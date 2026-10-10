@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from rechnungshelfer.domain.grain_scheme_models import GrainSchemeDraft
+from rechnungshelfer.application.grain_rule_comparison import compare_import_review
 
 
 class GrainSchemeApplicationService:
@@ -43,6 +44,9 @@ class GrainSchemeApplicationService:
             _required(grain_type_code, "Getreideart"),
             _valid_year(harvest_year),
         )
+
+    def compare_import_review(self, review):
+        return compare_import_review(review, self._repository)
 
 
 def _draft_name(payload: dict, grain_type_code: str) -> str:

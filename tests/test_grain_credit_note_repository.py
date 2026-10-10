@@ -11,10 +11,19 @@ from rechnungshelfer.application.grain_credit_note_service import (
 from rechnungshelfer.application.settlement_review_service import (
     SettlementReviewService,
 )
-from rechnungshelfer.domain.grain_credit_note import GrainCreditNoteBuyer
+from rechnungshelfer.domain.grain_credit_note import (
+    GrainCreditNoteBuyer,
+    GrainRuleCheck,
+    GrainRuleDeviation,
+    GrainSchemeReference,
+)
 from rechnungshelfer.repositories.database import Database
 from rechnungshelfer.repositories.grain_credit_note_repository import (
     GrainCreditNoteRepository,
+)
+from rechnungshelfer.repositories.grain_credit_note_record import (
+    grain_credit_note_from_data,
+    grain_credit_note_to_data,
 )
 from rechnungshelfer.services.settlement_credit_note_parser import (
     SettlementCreditNoteParser,
@@ -73,6 +82,73 @@ class GrainCreditNoteRepositoryTests(unittest.TestCase):
         self.assertEqual(loaded.advance_payment, expected.advance_payment)
         self.assertEqual(loaded.buyer, expected.buyer)
 
+    def test_origin_rule_version_and_deviation_survive_database_restart(self):
+        note = structured_note()
+        reference = GrainSchemeReference(
+            version_id=17,
+            grain_type_code="oats",
+            harvest_year=2025,
+            revision=3,
+            name="Hafer Testregeln",
+        )
+        first = note.deliveries[0]
+        first_detail = replace(
+            first.details[0],
+            rule_deviation=GrainRuleDeviation(
+                document_quantity_change_kg="-28",
+                expected_quantity_change_kg="0",
+            ),
+        )
+        note = replace(
+            note,
+            origin="pdf_import",
+            deliveries=(
+                replace(
+                    first,
+                    details=(first_detail, *first.details[1:]),
+                    rule_check=GrainRuleCheck(
+                        status="checked",
+                        scheme=reference,
+                    ),
+                ),
+                *note.deliveries[1:],
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "notes.db"
+            database = Database(path)
+            GrainCreditNoteRepository(database.connection).save(note)
+            database.close()
+            reopened = Database(path)
+            try:
+                loaded = GrainCreditNoteRepository(reopened.connection).load(
+                    note.credit_note_number
+                )
+            finally:
+                reopened.close()
+
+        self.assertEqual(loaded, note)
+
+    def test_record_version_one_remains_readable_without_guessed_origin(self):
+        data = grain_credit_note_to_data(structured_note())
+        data["record_version"] = 1
+        data.pop("origin")
+        for delivery in data["deliveries"]:
+            delivery.pop("rule_check")
+            for detail in delivery["details"]:
+                detail.pop("rule_deviation")
+
+        loaded = grain_credit_note_from_data(data)
+
+        self.assertEqual(loaded.origin, "unknown")
+        self.assertTrue(
+            all(
+                delivery.rule_check.status == "not_requested"
+                for delivery in loaded.deliveries
+            )
+        )
+
     def test_source_pdf_and_ocr_metadata_are_not_stored(self):
         database = Database(":memory:")
         try:
@@ -89,7 +165,8 @@ class GrainCreditNoteRepositoryTests(unittest.TestCase):
         self.assertNotIn("source_file", payload)
         self.assertNotIn("raw_text", payload)
         self.assertNotIn("confidence", payload)
-        self.assertEqual(data["record_version"], 1)
+        self.assertEqual(data["record_version"], 2)
+        self.assertEqual(data["origin"], "pdf_import")
         self.assertEqual(data["buyer"]["name"], "Eigener Testbetrieb")
 
     def test_existing_number_requires_explicit_overwrite(self):

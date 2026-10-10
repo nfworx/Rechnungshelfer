@@ -9,7 +9,11 @@ from decimal import Decimal, ROUND_HALF_UP
 from rechnungshelfer.application.grain_credit_note_mapper import (
     grain_credit_note_from_review,
 )
-from rechnungshelfer.domain.grain_credit_note import GrainCreditNoteBuyer
+from rechnungshelfer.domain.grain_credit_note import (
+    GrainCreditNoteBuyer,
+    GrainRuleCheck,
+    GrainRuleDeviation,
+)
 from rechnungshelfer.services.format_service import parse_de
 
 
@@ -34,6 +38,7 @@ class SettlementReviewDetail:
     quantity_change_kg: ReviewField
     price_change_per_tonne: ReviewField
     amount_change: ReviewField = ReviewField("")
+    rule_deviation: GrainRuleDeviation | None = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +53,7 @@ class SettlementReviewDelivery:
     net_amount: ReviewField
     details: tuple[SettlementReviewDetail, ...] = ()
     grain_type_code: str = ""
+    rule_check: GrainRuleCheck = GrainRuleCheck()
 
 
 @dataclass(frozen=True)
@@ -80,6 +86,7 @@ class SettlementReview:
     payment_terms: ReviewField = ReviewField("")
     buyer: GrainCreditNoteBuyer = GrainCreditNoteBuyer()
     payment_due_date: ReviewField = ReviewField("")
+    origin: str = "manual"
 
 
 @dataclass(frozen=True)
@@ -160,6 +167,7 @@ class SettlementReviewService:
             payment_terms=self._field(draft.payment_terms),
             buyer=GrainCreditNoteBuyer(),
             payment_due_date=ReviewField(""),
+            origin="pdf_import",
         )
 
     def create_review_from_credit_note(self, credit_note) -> SettlementReview:
@@ -190,10 +198,12 @@ class SettlementReviewService:
                                 detail.price_change_per_tonne
                             ),
                             amount_change=field(detail.amount_change),
+                            rule_deviation=detail.rule_deviation,
                         )
                         for detail in delivery.details
                     ),
                     grain_type_code=delivery.grain_type_code,
+                    rule_check=delivery.rule_check,
                 )
                 for delivery in credit_note.deliveries
             ),
@@ -225,6 +235,7 @@ class SettlementReviewService:
                 credit_note.payment_due_date,
                 date_value=True,
             ),
+            origin=credit_note.origin,
         )
 
     def validate(self, review: SettlementReview) -> SettlementReviewResult:
@@ -263,6 +274,16 @@ class SettlementReviewService:
         delivery_amounts: list[Decimal] = []
         for index, delivery in enumerate(review.deliveries):
             prefix = f"deliveries.{index}"
+            if delivery.rule_check.status == "unavailable":
+                issues.append(
+                    SettlementReviewIssue(
+                        prefix,
+                        delivery.rule_check.note
+                        or "Für diese Lieferung wurde kein eindeutiges Regelwerk gefunden; "
+                        "es wurden nur die finanziellen Zusammenhänge geprüft.",
+                        severity="warning",
+                    )
+                )
             self._required_text(
                 delivery.ticket_number,
                 f"{prefix}.ticket_number",
@@ -345,6 +366,14 @@ class SettlementReviewService:
             price_changes_valid = True
             for detail_index, detail in enumerate(delivery.details):
                 detail_prefix = f"{prefix}.details.{detail_index}"
+                if detail.rule_deviation is not None:
+                    issues.append(
+                        SettlementReviewIssue(
+                            f"{detail_prefix}.analysis_value",
+                            self._deviation_message(detail.rule_deviation),
+                            severity="warning",
+                        )
+                    )
                 self._required_text(
                     detail.label,
                     f"{detail_prefix}.label",
@@ -520,6 +549,23 @@ class SettlementReviewService:
                     )
                 )
         return SettlementReviewResult(tuple(issues))
+
+    @staticmethod
+    def _deviation_message(deviation: GrainRuleDeviation) -> str:
+        comparisons = []
+        if deviation.document_quantity_change_kg is not None:
+            comparisons.append(
+                "Mengenänderung Beleg: "
+                f"{deviation.document_quantity_change_kg} kg / Regelwerk: "
+                f"{deviation.expected_quantity_change_kg} kg"
+            )
+        if deviation.document_price_change_per_tonne is not None:
+            comparisons.append(
+                "Preisänderung Beleg: "
+                f"{deviation.document_price_change_per_tonne} EUR/t / Regelwerk: "
+                f"{deviation.expected_price_change_per_tonne} EUR/t"
+            )
+        return "Regelwerksabweichung – " + "; ".join(comparisons)
 
     def recalculate_financials(self, review: SettlementReview) -> SettlementReview:
         """Berechnet Lieferbetraege und Belegsummen aus den editierbaren Werten."""

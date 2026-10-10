@@ -142,7 +142,8 @@ class InvoiceController:
         return self._get_invoice_service().create_invoice_from_pdf_analysis(analysis)
 
     def create_settlement_review(self, draft):
-        return self.settlement_review_service.create_review(draft)
+        review = self.settlement_review_service.create_review(draft)
+        return self.grain_scheme_service.compare_import_review(review)
 
     def create_settlement_review_from_credit_note(self, credit_note):
         return self.settlement_review_service.create_review_from_credit_note(
@@ -152,11 +153,16 @@ class InvoiceController:
     def validate_settlement_review(self, review):
         return self.settlement_review_service.validate(review)
 
+    def compare_settlement_review(self, review):
+        return self.grain_scheme_service.compare_import_review(review)
+
     def recalculate_settlement_review(self, review):
-        return self.settlement_review_service.recalculate_financials(review)
+        recalculated = self.settlement_review_service.recalculate_financials(review)
+        return self.compare_settlement_review(recalculated)
 
     def create_grain_credit_note_from_review(self, review):
-        return self.settlement_review_service.create_credit_note(review)
+        compared = self.compare_settlement_review(review)
+        return self.settlement_review_service.create_credit_note(compared)
 
     def save_grain_credit_note(
         self,

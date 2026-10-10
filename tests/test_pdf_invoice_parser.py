@@ -117,6 +117,24 @@ class PdfInvoiceParserTests(unittest.TestCase):
             any("sichtbarer Position" in error for error in draft.errors)
         )
 
+    def test_roundtrips_grain_like_pdf_without_treating_item_delivery_notes_as_header(self):
+        original = create_sample_self_billed_invoice()
+        original.info.delivery_note = ""
+        for index, item in enumerate(original.items, start=1):
+            item.pos = str(index)
+            item.description = f"Lieferschein: T100{index}"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "getreidegutschrift.pdf"
+            create_pdf(original, path)
+            extraction = PdfImportService().extract(path)
+
+        draft = PdfInvoiceParser().parse(extraction)
+
+        self.assertFalse(draft.errors)
+        self.assertEqual(len(draft.items), 4)
+        self.assertNotIn("info.delivery_note", {field.path for field in draft.fields})
+
     def test_blocks_internally_inconsistent_embedded_totals(self):
         original = create_sample_invoice()
         with tempfile.TemporaryDirectory() as tmp:

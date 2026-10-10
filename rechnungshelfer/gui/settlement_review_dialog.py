@@ -267,6 +267,7 @@ class SettlementReviewDialog:
                             f"{detail_prefix}.amount_change",
                             detail.amount_change,
                         ),
+                        rule_deviation=detail.rule_deviation,
                     )
                 )
             deliveries.append(
@@ -281,6 +282,7 @@ class SettlementReviewDialog:
                     net_amount=updated(f"{prefix}.net_amount", delivery.net_amount),
                     details=tuple(details),
                     grain_type_code=delivery.grain_type_code,
+                    rule_check=delivery.rule_check,
                 )
             )
         return SettlementReview(
@@ -320,10 +322,13 @@ class SettlementReviewDialog:
             payment_due_date=updated(
                 "payment_due_date", self.review.payment_due_date
             ),
+            origin=self.review.origin,
         )
 
     def validate(self):
-        self.review = self.collect_review()
+        self.review = self.controller.compare_settlement_review(
+            self.collect_review()
+        )
         result = self.controller.validate_settlement_review(self.review)
         for entry in self.entries.values():
             entry.configure(border_color=BORDER, border_width=1)

@@ -155,3 +155,25 @@ class GrainSchemeRepository:
             )
             for row in rows
         )
+
+    def load_version(self, version_id: int) -> GrainSchemeVersionRecord | None:
+        row = self.conn.execute(
+            """
+            SELECT grain_type_code, harvest_year, revision, name, payload,
+                   activated_at
+            FROM grain_scheme_versions
+            WHERE id = ?
+            """,
+            (int(version_id),),
+        ).fetchone()
+        if row is None:
+            return None
+        return GrainSchemeVersionRecord(
+            id=int(version_id),
+            grain_type_code=row[0],
+            harvest_year=row[1],
+            revision=row[2],
+            name=row[3],
+            payload=json.loads(row[4]),
+            activated_at=row[5],
+        )

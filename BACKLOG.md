@@ -38,8 +38,9 @@
 
 ## Aktuell in Entwicklung
 
-- P1.6 „Belegworkflow, Summenfeld und Menüführung vereinheitlichen“ ist umgesetzt.
-  Als Nächstes die noch offenen fachlichen Import- und Persistenzdetails aus P1.3
+- P1.3 „Bestätigte Daten in eine editierbare Getreidegutschrift übernehmen“ und
+  P1.6 „Belegworkflow, Summenfeld und Menüführung vereinheitlichen“ sind umgesetzt.
+  Als Nächstes die einheitliche Detailanzeige finanzieller Prüfdifferenzen aus P1.2
   bearbeiten; PDF-Darstellung und rollengerechte Fußzeile bleiben separat im Backlog.
 
 ## P0 – Kritische Fehler und Datenrisiken
@@ -59,6 +60,13 @@
   auf OCR zurückgreifen.
 - [x] Gutschriftnummer, Ausstellungsdatum, Lieferungen, Analysewerte, Mengen, Preise,
   Beträge, Steuersatz und Summen als Importentwurf erfassen.
+- [ ] Selbst erzeugte PDFs um einen validierten internen Belegtyp (`invoice`,
+  `self_billed_invoice`, `grain_credit_note`) erweitern und den Import anhand dieses
+  Merkmals in den passenden Arbeitsbereich leiten. Fremde PDFs ohne internes Merkmal
+  nur anhand mehrerer fachlicher Strukturmerkmale konservativ einordnen; die Anzahl
+  der Lieferscheine allein darf nicht entscheiden, damit auch Getreideabrechnungen mit
+  nur einer Lieferung korrekt erkannt werden. Widersprüche zwischen sichtbarem Inhalt
+  und eingebettetem Belegtyp müssen den Import blockieren.
 
 ### 2. Prüfpflichtigen Importentwurf anzeigen
 
@@ -74,11 +82,11 @@
   anzeigen. **Teilweise umgesetzt:** Abweichungen blockieren die Übernahme und der
   erwartete Wert wird genannt; die einheitliche Anzeige von Belegwert, Prüfwert und
   Differenz fehlt noch.
-- [ ] Wenn ein passendes Regelwerk eindeutig verfügbar ist, importierte Mengen- und
+- [x] Wenn ein passendes Regelwerk eindeutig verfügbar ist, importierte Mengen- und
   Preisabzüge zusätzlich dagegen prüfen. Abweichungen in der OCR-Prüfansicht je
   Analysezeile beispielsweise als „Beleg: -28 kg / Regelwerk: -30 kg“ darstellen,
   aber nur als nicht blockierende Warnung behandeln.
-- [ ] Wenn kein passendes Regelwerk eindeutig verfügbar ist, auf die Regelprüfung
+- [x] Wenn kein passendes Regelwerk eindeutig verfügbar ist, auf die Regelprüfung
   verzichten und lediglich kenntlich machen, dass nur die finanziellen
   Zusammenhänge geprüft wurden.
 - [x] Unsichere oder widersprüchliche Werte niemals automatisch übernehmen.
@@ -98,11 +106,11 @@
   getrennten Vergleichswert verwenden.
 - [x] Lieferungen, Analysewerte, Mengen- und Preisänderungen sowie bestätigte Beträge
   strukturiert und vollständig editierbar halten.
-- [ ] Herkunft des Belegs sowie erkannte Regelwerksabweichungen einschließlich der
+- [x] Herkunft des Belegs sowie erkannte Regelwerksabweichungen einschließlich der
   verwendeten Regelwerksversion strukturiert speichern, damit das Prüfverhalten
   und die Warnhinweise nach erneutem Laden nachvollziehbar bleiben. PDF-Datei,
   OCR-Rohtext und Erkennungsmetadaten weiterhin nicht dauerhaft speichern.
-- [ ] In der Hauptmaske bei einer bestätigten Regelwerksabweichung ausschließlich ein
+- [x] In der Hauptmaske bei einer bestätigten Regelwerksabweichung ausschließlich ein
   Ausrufezeichensymbol an der betroffenen Analysezeile anzeigen. Der Hoverhinweis
   erklärt knapp, dass die Abzugsberechnung vom beim Import geprüften Regelwerk
   abweicht; konkrete Vergleichswerte bleiben der OCR-Prüfansicht vorbehalten.
@@ -187,6 +195,16 @@
 - [x] Nach der Umstellung alte, deaktivierte oder doppelte Bedienelemente entfernen
   und den vollständigen Workflow für jede Belegart mit GUI-Regressionstests
   absichern.
+- [ ] Die weiterhin fehlerhaften Datumsfelder in allen drei Belegmasken systematisch
+  prüfen und vereinheitlichen. Manuelle Eingabe, Datumsauswahl, Fokuswechsel,
+  Validierung sowie Speichern und erneutes Laden müssen mit dem deutschen
+  Datumsformat zuverlässig funktionieren und durch GUI-Regressionstests abgesichert
+  werden.
+- [ ] Beim Laden gespeicherter Belege unabhängig vom aktuell geöffneten Arbeitsbereich
+  immer Rechnungen, Gutschriften und Getreidegutschriften in einer gemeinsamen Liste
+  anzeigen. Den Belegtyp eindeutig kennzeichnen und den gewählten Beleg anschließend
+  automatisch im passenden Arbeitsbereich öffnen; Filter dürfen die Gesamtliste nur
+  optional einschränken.
 
 ### 7. Fachlicher End-to-End-Abnahmetest
 
@@ -218,6 +236,11 @@
   müssen dabei erhalten bleiben. Die auffälligen Interaktionen je Maske manuell
   prüfen und zentrale Aktualisierungs- und Wechselpfade mit GUI-Regressionstests
   absichern; keine allgemeine GUI-Architekturänderung ohne nachgewiesenen Bedarf.
+- [ ] Lieferungsübersicht der Getreideabrechnung kompakter darstellen: Die separaten
+  Spalten „Δ Menge kg“ und „Δ Wert EUR“ entfernen und Mengenabzüge direkt in der
+  Spalte „Menge kg“ sowie wertmäßige Abzüge direkt in der Spalte „Betrag EUR“
+  anzeigen. Die bereits verwendete graue Darstellung der Abzugszeilen beibehalten
+  und die Lesbarkeit für Basiswert, einzelne Abzüge und Ergebniswert prüfen.
 - [ ] Die vollständige Testsuite systematisch auf fachliche Plausibilität,
   aktuellen Nutzen und tatsächliche Notwendigkeit jedes Tests prüfen. Dabei
   insbesondere widersprüchliche Erwartungen, gegeneinander arbeitende Tests,

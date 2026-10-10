@@ -1,5 +1,6 @@
 import unittest
 from dataclasses import replace
+from datetime import date
 from decimal import Decimal
 from unittest.mock import Mock, patch
 
@@ -619,6 +620,52 @@ class GrainWorkspaceNavigationTests(unittest.TestCase):
         self.assertIsNone(view.credit_note)
         self.assertFalse(view.has_unsaved_changes())
         view._render_deliveries.assert_called_once_with()
+
+    def test_loaded_rule_deviation_is_shown_as_exclamation_with_short_hint(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.delivery_host = Mock()
+        view.delivery_host.winfo_children.return_value = []
+        view._render_delivery_values = Mock()
+        detail = Mock(
+            label="Besatz",
+            analysis_value=Decimal("1"),
+            price_change_per_tonne=None,
+            quantity_change_kg=Decimal("-28"),
+            amount_change=None,
+            rule_deviation=object(),
+        )
+        delivery = Mock(
+            delivery_date=date(2025, 8, 9),
+            ticket_number="T1001",
+            grain_name="Hafer",
+            gross_quantity_kg=Decimal("2815"),
+            base_price_per_tonne=Decimal("160"),
+            settlement_quantity_kg=Decimal("2787"),
+            settlement_price_per_tonne=Decimal("144.50"),
+            net_amount=Decimal("402.72"),
+            details=(detail,),
+        )
+        credit_note = Mock(deliveries=(delivery,))
+
+        with (
+            patch(
+                "rechnungshelfer.gui.grain_settlement_view.ctk.CTkLabel"
+            ) as label,
+            patch(
+                "rechnungshelfer.gui.grain_settlement_view.ctk.CTkFrame"
+            ),
+            patch("rechnungshelfer.gui.grain_settlement_view.small_button"),
+            patch(
+                "rechnungshelfer.gui.grain_settlement_view.HoverTooltip"
+            ) as tooltip,
+        ):
+            view._render_credit_note_deliveries(credit_note)
+
+        self.assertTrue(
+            any(call.kwargs.get("text") == "!" for call in label.call_args_list)
+        )
+        tooltip.assert_called_once()
+        self.assertIn("weicht", tooltip.call_args.args[1]())
 
     def test_file_save_routes_to_grain_workspace(self):
         gui = self._gui()

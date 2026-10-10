@@ -696,6 +696,21 @@ class GrainSettlementView(ctk.CTkFrame):
                     text_color=TEXT_MUTED,
                     detail=True,
                 )
+                if detail.rule_deviation is not None:
+                    warning = ctk.CTkLabel(
+                        self.delivery_host,
+                        text="!",
+                        font=("Segoe UI", 13, "bold"),
+                        text_color="#f59e0b",
+                    )
+                    warning.grid(row=row, column=0, sticky="e", padx=5, pady=2)
+                    HoverTooltip(
+                        warning,
+                        lambda: (
+                            "Die Abzugsberechnung weicht vom beim Import "
+                            "geprüften Regelwerk ab."
+                        ),
+                    )
                 row += 1
             self._render_delivery_values(
                 (

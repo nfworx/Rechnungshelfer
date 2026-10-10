@@ -226,6 +226,10 @@ class PdfInvoiceParser:
         r"(?P<net>-?[\d.]+,\d{2})\s*$",
         re.IGNORECASE | re.MULTILINE,
     )
+    _APP_ITEMS_HEADER_PATTERN = re.compile(
+        r"^Pos\s+Bezeichnung\b",
+        re.IGNORECASE | re.MULTILINE,
+    )
     _APP_NET_AMOUNT_PATTERN = re.compile(
         r"^Nettosumme:\s*(?P<amount>-?[\d.]+,\d{2})\s+[A-Z]{3}\s*$",
         re.IGNORECASE | re.MULTILINE,
@@ -261,7 +265,8 @@ class PdfInvoiceParser:
                     and path == "payment.bic"
                 ):
                     continue
-                match = pattern.search(page_text)
+                search_text = self._labeled_search_text(page_text, path)
+                match = pattern.search(search_text)
                 if not match:
                     continue
                 value = self._normalize(match.group("value"), normalizer)
@@ -667,7 +672,8 @@ class PdfInvoiceParser:
         errors = []
         for visible, embedded in zip(visible_items, invoice.items):
             same = (
-                visible.pos == embedded.pos
+                cls._normalized_text(visible.pos)
+                == cls._normalized_text(embedded.pos)
                 and cls._normalized_text(visible.name)
                 == cls._normalized_text(embedded.name)
                 and visible.unit == embedded.unit
@@ -692,6 +698,13 @@ class PdfInvoiceParser:
                     "eingebetteten Rechnungsdaten."
                 )
         return errors
+
+    @classmethod
+    def _labeled_search_text(cls, text, path):
+        if path != "info.delivery_note":
+            return text
+        items_header = cls._APP_ITEMS_HEADER_PATTERN.search(text)
+        return text[:items_header.start()] if items_header else text
 
     @classmethod
     def _visible_total_errors(cls, invoice, text):

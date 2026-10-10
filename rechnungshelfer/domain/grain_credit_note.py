@@ -10,12 +10,60 @@ from .grain_models import GrainValidationError, decimal_value
 
 
 @dataclass(frozen=True)
+class GrainSchemeReference:
+    version_id: int
+    grain_type_code: str
+    harvest_year: int
+    revision: int
+    name: str
+
+    @property
+    def display_version(self) -> str:
+        return f"{self.harvest_year}.{self.revision}"
+
+
+@dataclass(frozen=True)
+class GrainRuleDeviation:
+    document_quantity_change_kg: Decimal | None = None
+    expected_quantity_change_kg: Decimal | None = None
+    document_price_change_per_tonne: Decimal | None = None
+    expected_price_change_per_tonne: Decimal | None = None
+
+    def __post_init__(self):
+        for name in (
+            "document_quantity_change_kg",
+            "expected_quantity_change_kg",
+            "document_price_change_per_tonne",
+            "expected_price_change_per_tonne",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, decimal_value(value))
+
+
+@dataclass(frozen=True)
+class GrainRuleCheck:
+    status: str = "not_requested"
+    scheme: GrainSchemeReference | None = None
+    note: str = ""
+
+    def __post_init__(self):
+        if self.status not in {"not_requested", "unavailable", "checked"}:
+            raise GrainValidationError("Unbekannter Status der Regelwerksprüfung.")
+        if self.status == "checked" and self.scheme is None:
+            raise GrainValidationError(
+                "Eine abgeschlossene Regelwerksprüfung benötigt eine Version."
+            )
+
+
+@dataclass(frozen=True)
 class GrainCreditNoteDetail:
     label: str
     analysis_value: Decimal
     quantity_change_kg: Decimal | None = None
     price_change_per_tonne: Decimal | None = None
     amount_change: Decimal | None = None
+    rule_deviation: GrainRuleDeviation | None = None
 
     def __post_init__(self):
         if not self.label.strip():
@@ -43,6 +91,7 @@ class GrainCreditNoteDelivery:
     net_amount: Decimal
     details: tuple[GrainCreditNoteDetail, ...] = ()
     grain_type_code: str = ""
+    rule_check: GrainRuleCheck = GrainRuleCheck()
 
     def __post_init__(self):
         for name, label in (
@@ -122,6 +171,7 @@ class GrainCreditNote:
     payment: GrainCreditNotePayment = GrainCreditNotePayment()
     buyer: GrainCreditNoteBuyer = GrainCreditNoteBuyer()
     payment_due_date: date | None = None
+    origin: str = "manual"
 
     @property
     def supplier_number(self) -> str:
@@ -139,6 +189,8 @@ class GrainCreditNote:
         ):
             raise GrainValidationError("Auszahlungsdatum ist ungültig.")
         object.__setattr__(self, "deliveries", tuple(self.deliveries))
+        if self.origin not in {"manual", "pdf_import", "unknown"}:
+            raise GrainValidationError("Unbekannte Herkunft der Getreidegutschrift.")
         if not self.deliveries:
             raise GrainValidationError("Mindestens eine Lieferung fehlt.")
         for name in (
@@ -159,4 +211,7 @@ __all__ = [
     "GrainCreditNoteBuyer",
     "GrainCreditNotePayment",
     "GrainCreditNoteSupplier",
+    "GrainRuleCheck",
+    "GrainRuleDeviation",
+    "GrainSchemeReference",
 ]
