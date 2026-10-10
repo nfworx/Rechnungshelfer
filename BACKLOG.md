@@ -38,10 +38,9 @@
 
 ## Aktuell in Entwicklung
 
-- P1.6 „Belegworkflow, Summenfeld und Menüführung vereinheitlichen“. Direkte
-  Speicherung, Bearbeitung sowie PDF-/XML-Ausgabe der Getreidegutschrift und die
-  einheitlichen Summenfelder sind umgesetzt. Als Nächstes Menüführung,
-  Formularleeren und neuen Beleg umstellen.
+- P1.6 „Belegworkflow, Summenfeld und Menüführung vereinheitlichen“ ist umgesetzt.
+  Als Nächstes die noch offenen fachlichen Import- und Persistenzdetails aus P1.3
+  bearbeiten; PDF-Darstellung und rollengerechte Fußzeile bleiben separat im Backlog.
 
 ## P0 – Kritische Fehler und Datenrisiken
 
@@ -153,11 +152,9 @@
 
 ### 6. Belegworkflow, Summenfeld und Menüführung vereinheitlichen
 
-- [ ] Rechnung, Gutschrift und Getreideabrechnung trotz ihrer unterschiedlichen
+- [x] Rechnung, Gutschrift und Getreideabrechnung trotz ihrer unterschiedlichen
   Fachmodelle nach demselben verständlichen Bedienmuster erstellen, bearbeiten,
-  speichern, leeren und wieder öffnen können. **Teilweise umgesetzt:** Speichern,
-  Laden, Bearbeiten, Summenfeld und Ausgabe der Getreidegutschrift sind angeglichen;
-  Leeren, neuer Beleg und Menüführung fehlen noch.
+  speichern, leeren und wieder öffnen können.
 - [x] Eine manuell erstellte Getreideabrechnung beim Speichern validieren, intern als
   strukturierte Getreidegutschrift übernehmen und direkt in der Datenbank sichern;
   den zusätzlichen Bedienschritt „Getreidegutschrift erstellen“ dafür entfernen.
@@ -179,15 +176,15 @@
 - [x] Im Summenfeld aller Belegarten in derselben Reihenfolge die Schaltflächen
   „PDF erstellen“, „XML erstellen“ und „Speichern“ anbieten. Fachliche Detailwerte
   der Getreideabrechnung weiterhin ausschließlich im Lieferungsbereich anzeigen.
-- [ ] Im Menü „Datei“ nur die vorhandenen Importfunktionen für XML und PDF anbieten.
-- [ ] Im Menü „Beleg“ die Aktionen „Speichern“, „Formular leeren“ und „Gespeicherten
+- [x] Im Menü „Datei“ nur die vorhandenen Importfunktionen für XML und PDF anbieten.
+- [x] Im Menü „Beleg“ die Aktionen „Speichern“, „Formular leeren“ und „Gespeicherten
   Beleg laden“ sowie „Neuer Beleg“ mit Auswahl zwischen Rechnung, Gutschrift und
   Getreideabrechnung bündeln.
-- [ ] „Formular leeren“ und „Neuer Beleg“ auch im Getreide-Arbeitsbereich vollständig
+- [x] „Formular leeren“ und „Neuer Beleg“ auch im Getreide-Arbeitsbereich vollständig
   unterstützen. Vor dem Verwerfen ungespeicherter Änderungen eine Bestätigung
   verlangen.
-- [ ] Das Menü „Stammdaten“ unverändert lassen und „Werkzeuge“ in „Hilfe“ umbenennen.
-- [ ] Nach der Umstellung alte, deaktivierte oder doppelte Bedienelemente entfernen
+- [x] Das Menü „Stammdaten“ unverändert lassen und „Werkzeuge“ in „Hilfe“ umbenennen.
+- [x] Nach der Umstellung alte, deaktivierte oder doppelte Bedienelemente entfernen
   und den vollständigen Workflow für jede Belegart mit GUI-Regressionstests
   absichern.
 
@@ -210,6 +207,17 @@
 - [ ] GitHub Actions für automatische Tests bei Pushes einrichten.
 - [ ] Testdaten und Beispiellieferungen klar vom Produktivbetrieb trennen.
 - [ ] Große GUI-Module bei Bedarf aufteilen und vereinfachen.
+- [ ] Sichtbares Neuzeichnen beziehungsweise Flackern beim Aufbau und Aktualisieren
+  der GUI systematisch beseitigen. Zuerst alle Masken und Dialoge mit vollständigem
+  Widget-Neuaufbau erfassen; aktuell puffert `BufferedFormHost` nur die Rechnungs-
+  und Gutschriftenmaske, während insbesondere die Getreideabrechnung Teilbereiche
+  direkt leert und neu erzeugt. Pragmatisch lokale Änderungen bevorzugt durch
+  Aktualisieren bestehender Widgets abbilden und den vorhandenen gepufferten
+  Flächentausch nur für tatsächlich vollständige Maskenwechsel zu einer kleinen,
+  wiederverwendbaren Lösung erweitern. Fokus, Scrollposition und Auswahlzustand
+  müssen dabei erhalten bleiben. Die auffälligen Interaktionen je Maske manuell
+  prüfen und zentrale Aktualisierungs- und Wechselpfade mit GUI-Regressionstests
+  absichern; keine allgemeine GUI-Architekturänderung ohne nachgewiesenen Bedarf.
 - [ ] Die vollständige Testsuite systematisch auf fachliche Plausibilität,
   aktuellen Nutzen und tatsächliche Notwendigkeit jedes Tests prüfen. Dabei
   insbesondere widersprüchliche Erwartungen, gegeneinander arbeitende Tests,

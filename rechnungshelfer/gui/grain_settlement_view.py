@@ -104,6 +104,7 @@ class GrainSettlementView(ctk.CTkFrame):
         self._last_result: SettlementBatchResult | None = None
         self.credit_note = None
         self._persisted_credit_note_number = None
+        self._clean_state = None
         self.vat_variable = ctk.StringVar(master=self, value="— auswählen —")
         self.export_workflow = ExportWorkflow(
             self.winfo_toplevel(),
@@ -427,6 +428,51 @@ class GrainSettlementView(ctk.CTkFrame):
         self.status_label.configure(
             text=f"{len(credit_note.deliveries)} Lieferungen · Getreidegutschrift"
         )
+        if persisted:
+            self.mark_clean()
+        else:
+            self._clean_state = None
+
+    def _state_signature(self):
+        return {
+            "document": deepcopy(self.document.to_dict()),
+            "features": deepcopy(self.features),
+            "rules": deepcopy(self.rules),
+            "rule_sets": deepcopy(self.rule_sets),
+            "harvest_year": self.harvest_year,
+            "deliveries": deepcopy(self.deliveries),
+            "next_delivery_number": self._next_delivery_number,
+            "last_result": deepcopy(self._last_result),
+            "credit_note": deepcopy(self.credit_note),
+            "vat_rate": self.vat_variable.get(),
+        }
+
+    def mark_clean(self):
+        self._clean_state = self._state_signature()
+
+    def has_unsaved_changes(self):
+        return self._clean_state is None or self._state_signature() != self._clean_state
+
+    def clear_form(self):
+        self.credit_note = None
+        self._persisted_credit_note_number = None
+        self._last_result = None
+        self.document = self.controller.create_empty_invoice(
+            DocumentType.SELF_BILLED_INVOICE
+        )
+        self.deliveries = []
+        self._next_delivery_number = 1
+        self.vat_variable.set("— auswählen —")
+        self.features, self.rules = self._current_rule_set()
+        self._set_credit_note_mode(False)
+        self._render_top_cards()
+        self._render_deliveries()
+        self._clear_totals()
+        self.status_label.configure(text="")
+        active_rules = sum(rule.enabled for rule in self.rules)
+        self.rule_button.configure(text=f"Regeln bearbeiten ({active_rules} aktiv)")
+        self._refresh_save_button()
+        self.mark_clean()
 
     def _current_credit_note(self):
         if self.credit_note is None:

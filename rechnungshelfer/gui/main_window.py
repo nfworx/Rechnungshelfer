@@ -1,7 +1,7 @@
 # rechnungshelfer/gui/main_window.py
 
 import customtkinter as ctk
-from tkinter import Menu, StringVar, filedialog, messagebox
+from tkinter import Menu, filedialog, messagebox
 from copy import deepcopy
 import queue
 import sys
@@ -42,6 +42,7 @@ class InvoiceGUI:
         self.root.configure(fg_color=APP_BG)
 
         self.invoice = self.controller.create_empty_invoice()
+        self._invoice_clean_state = deepcopy(self.invoice.to_dict())
 
         self.field_entries = {}
 
@@ -52,7 +53,7 @@ class InvoiceGUI:
         self.pdf_import_dialog = PdfImportDialog(
             self.root,
             self.controller,
-            on_invoice_loaded=self._on_invoice_loaded,
+            on_invoice_loaded=self._on_pdf_invoice_loaded,
             on_grain_credit_note_loaded=self._open_grain_credit_note,
         )
         self.export_workflow = ExportWorkflow(
@@ -125,43 +126,37 @@ class InvoiceGUI:
         self.menu_bar = Menu(self.root)
 
         self.file_menu = Menu(self.menu_bar, tearoff=False)
-        self.file_menu.add_command(label="Beleg laden", command=self.load_invoice_from_list)
-        self.file_menu.add_separator()
         self.file_menu.add_command(label="XML einlesen", command=self.load_xml)
         self.file_menu.add_command(label="PDF einlesen", command=self.load_pdf)
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Speichern", command=self.save_invoice)
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Beenden", command=self.root.destroy)
         self.menu_bar.add_cascade(label="Datei", menu=self.file_menu)
 
         self.document_menu = Menu(self.menu_bar, tearoff=False)
-        self.workspace_variable = StringVar(
-            master=self.root,
-            value=self.active_workspace,
-        )
-        self.document_menu.add_radiobutton(
-            label="Rechnung",
-            value="invoice",
-            variable=self.workspace_variable,
-            command=self._open_invoice_workspace,
-        )
-        self.document_menu.add_radiobutton(
-            label="Gutschrift",
-            value="self_billed",
-            variable=self.workspace_variable,
-            command=self._open_self_billed_workspace,
-        )
-        self.document_menu.add_radiobutton(
-            label="Getreideabrechnung",
-            value="grain",
-            variable=self.workspace_variable,
-            command=self._open_grain_workspace,
-        )
-        self.document_menu.add_separator()
+        self.document_menu.add_command(label="Speichern", command=self.save_invoice)
         self.document_menu.add_command(
             label="Formular leeren",
             command=self._clear_current_form,
+        )
+        self.document_menu.add_command(
+            label="Gespeicherten Beleg laden",
+            command=self.load_invoice_from_list,
+        )
+        self.document_menu.add_separator()
+        self.new_document_menu = Menu(self.document_menu, tearoff=False)
+        self.new_document_menu.add_command(
+            label="Rechnung",
+            command=self._open_invoice_workspace,
+        )
+        self.new_document_menu.add_command(
+            label="Gutschrift",
+            command=self._open_self_billed_workspace,
+        )
+        self.new_document_menu.add_command(
+            label="Getreideabrechnung",
+            command=self._new_grain_document,
+        )
+        self.document_menu.add_cascade(
+            label="Neuer Beleg",
+            menu=self.new_document_menu,
         )
         self.menu_bar.add_cascade(label="Beleg", menu=self.document_menu)
 
@@ -177,10 +172,10 @@ class InvoiceGUI:
         )
         self.menu_bar.add_cascade(label="Stammdaten", menu=self.master_data_menu)
 
-        tools_menu = Menu(self.menu_bar, tearoff=False)
-        tools_menu.add_command(label="Testbeleg laden", command=self.load_test_document)
-        tools_menu.add_command(label="Updates", command=self.show_updates)
-        self.menu_bar.add_cascade(label="Werkzeuge", menu=tools_menu)
+        help_menu = Menu(self.menu_bar, tearoff=False)
+        help_menu.add_command(label="Testbeleg laden", command=self.load_test_document)
+        help_menu.add_command(label="Updates", command=self.show_updates)
+        self.menu_bar.add_cascade(label="Hilfe", menu=help_menu)
 
         self.root.configure(menu=self.menu_bar)
         self._refresh_application_menu()
@@ -375,20 +370,18 @@ class InvoiceGUI:
         self._open_document_workspace(DocumentType.SELF_BILLED_INVOICE)
 
     def _open_document_workspace(self, document_type):
-        if document_type is self.invoice.document_type:
-            self._activate_invoice_workspace()
-            return
-
-        if not messagebox.askyesno(
-            "Belegmaske wechseln",
-            "Für diese Belegart wird ein neues leeres Formular angelegt.\n\n"
-            "Nicht gespeicherte Eingaben im aktuellen Beleg gehen verloren. Fortfahren?",
-        ):
-            self._refresh_application_menu()
+        if not self._confirm_discard_unsaved_changes():
             return
 
         self.invoice = self.controller.create_empty_invoice(document_type)
+        self._mark_invoice_clean()
         self.show_form()
+
+    def _new_grain_document(self):
+        if not self._confirm_discard_unsaved_changes():
+            return
+        self.grain_view.clear_form()
+        self._open_grain_workspace()
 
     def _open_grain_workspace(self):
         self.active_workspace = "grain"
@@ -412,25 +405,8 @@ class InvoiceGUI:
         self._refresh_application_menu()
 
     def _refresh_application_menu(self):
-        if not hasattr(self, "file_menu"):
-            return
-        is_grain = self.active_workspace == "grain"
-        is_self_billed = self.active_workspace == "self_billed"
-        document_state = "disabled" if is_grain else "normal"
-        self.file_menu.entryconfigure(0, state="normal")
-        for index in (2, 3):
-            self.file_menu.entryconfigure(index, state=document_state)
-        self.file_menu.entryconfigure(5, state="normal")
-        self.file_menu.entryconfigure(
-            5,
-            label=(
-                "Getreidegutschrift speichern"
-                if is_grain
-                else f"{'Gutschrift' if is_self_billed else 'Rechnung'} speichern"
-            ),
-        )
-        self.document_menu.entryconfigure(4, state=document_state)
-        self.workspace_variable.set(self.active_workspace)
+        # Alle Belegaktionen sind in jedem Arbeitsbereich verfügbar.
+        return
 
     def _refresh_document_labels(self):
         document_name = "Gutschrift" if self.invoice.is_self_billed else "Rechnung"
@@ -459,6 +435,7 @@ class InvoiceGUI:
             self.invoice = invoice
             self.invoice.calculate(force=True)
 
+        self._mark_invoice_clean()
         self.show_form()
 
     def save_invoice(self):
@@ -487,6 +464,7 @@ class InvoiceGUI:
                     return
 
             self.controller.save_invoice(self.invoice)
+            self._mark_invoice_clean()
 
             messagebox.showinfo(
                 "Gespeichert",
@@ -507,6 +485,7 @@ class InvoiceGUI:
                         self.invoice,
                         allow_customer_duplicate=True,
                     )
+                    self._mark_invoice_clean()
                     messagebox.showinfo("Gespeichert", "Beleg wurde gespeichert.")
                 except Exception as retry_error:
                     messagebox.showerror("Fehler", str(retry_error))
@@ -522,11 +501,41 @@ class InvoiceGUI:
 
     def clear_form(self):
         self.invoice = self.controller.create_empty_invoice(self.invoice.document_type)
+        self._mark_invoice_clean()
         self.show_form()
 
     def _clear_current_form(self):
-        if self.active_workspace != "grain":
-            self.clear_form()
+        if not self._confirm_discard_unsaved_changes():
+            return
+        if self.active_workspace == "grain":
+            self.grain_view.clear_form()
+            return
+        self.clear_form()
+
+    def _mark_invoice_clean(self):
+        self._invoice_clean_state = deepcopy(self.invoice.to_dict())
+
+    def _mark_invoice_dirty(self):
+        self._invoice_clean_state = None
+
+    def _has_invoice_unsaved_changes(self):
+        clean_state = getattr(self, "_invoice_clean_state", None)
+        return clean_state is None or self.invoice.to_dict() != clean_state
+
+    def _has_unsaved_changes(self):
+        if self.active_workspace == "grain":
+            return self.grain_view.has_unsaved_changes()
+        return self._has_invoice_unsaved_changes()
+
+    def _confirm_discard_unsaved_changes(self):
+        if not self._has_unsaved_changes():
+            return True
+        return messagebox.askyesno(
+            "Ungespeicherte Änderungen",
+            "Die ungespeicherten Änderungen am aktuellen Beleg gehen verloren.\n\n"
+            "Möchtest du fortfahren?",
+            parent=self.root,
+        )
 
     def show_updates(self):
         self.update_dialog.open()
@@ -543,6 +552,7 @@ class InvoiceGUI:
 
         try:
             self.invoice = self.controller.load_from_xml(fp)
+            self._mark_invoice_dirty()
             self.show_form()
         except (ValueError, RuntimeError) as e:
             messagebox.showerror("Fehler", str(e))
@@ -567,6 +577,7 @@ class InvoiceGUI:
     def _on_test_document_selected(self, invoice):
         self.invoice = invoice
         self.invoice.calculate(force=True)
+        self._mark_invoice_dirty()
         self.show_form()
 
     def _open_ocr_test_document(self):
@@ -601,6 +612,13 @@ class InvoiceGUI:
     def _on_invoice_loaded(self, invoice):
         self.invoice = invoice
         self.invoice.calculate(force=True)
+        self._mark_invoice_clean()
+        self.show_form()
+
+    def _on_pdf_invoice_loaded(self, invoice):
+        self.invoice = invoice
+        self.invoice.calculate(force=True)
+        self._mark_invoice_dirty()
         self.show_form()
 
     def _on_customer_selected(self, buyer):

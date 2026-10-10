@@ -435,49 +435,190 @@ class GrainWorkspaceNavigationTests(unittest.TestCase):
         gui.grain_view.load_credit_note.assert_called_once_with(generated)
         gui._open_grain_workspace.assert_called_once_with()
 
-    def test_same_document_workspace_does_not_create_a_new_document(self):
+    def test_new_document_replaces_same_document_type_after_confirmation(self):
         gui = self._gui()
         gui.invoice = Mock(
             document_type=DocumentType.INVOICE,
             is_self_billed=False,
         )
         gui.controller = Mock()
-        gui._activate_invoice_workspace = Mock()
+        gui._confirm_discard_unsaved_changes = Mock(return_value=True)
+        gui._mark_invoice_clean = Mock()
+        gui.show_form = Mock()
+        created = Mock()
+        gui.controller.create_empty_invoice.return_value = created
 
         gui._open_document_workspace(DocumentType.INVOICE)
 
-        gui._activate_invoice_workspace.assert_called_once_with()
+        gui.controller.create_empty_invoice.assert_called_once_with(DocumentType.INVOICE)
+        self.assertIs(gui.invoice, created)
+        gui._mark_invoice_clean.assert_called_once_with()
+        gui.show_form.assert_called_once_with()
+
+    def test_new_document_keeps_current_form_when_discard_is_rejected(self):
+        gui = self._gui()
+        gui.invoice = Mock()
+        gui.controller = Mock()
+        gui._confirm_discard_unsaved_changes = Mock(return_value=False)
+
+        gui._open_document_workspace(DocumentType.SELF_BILLED_INVOICE)
+
         gui.controller.create_empty_invoice.assert_not_called()
 
-    def test_application_menu_switches_to_grain_context(self):
+    def test_application_menu_refresh_is_independent_of_menu_indexes(self):
         gui = InvoiceGUI.__new__(InvoiceGUI)
         gui.active_workspace = "grain"
         gui.file_menu = Mock()
         gui.document_menu = Mock()
         gui.master_data_menu = Mock()
-        gui.workspace_variable = Mock()
 
         gui._refresh_application_menu()
 
-        for index in (2, 3):
-            gui.file_menu.entryconfigure.assert_any_call(
-                index,
-                state="disabled",
-            )
-        gui.file_menu.entryconfigure.assert_any_call(
-            0,
-            state="normal",
-        )
-        gui.file_menu.entryconfigure.assert_any_call(
-            5,
-            state="normal",
-        )
-        gui.file_menu.entryconfigure.assert_any_call(
-            5,
-            label="Getreidegutschrift speichern",
-        )
+        gui.file_menu.entryconfigure.assert_not_called()
+        gui.document_menu.entryconfigure.assert_not_called()
         gui.master_data_menu.entryconfigure.assert_not_called()
-        gui.workspace_variable.set.assert_called_once_with("grain")
+
+    def test_menu_groups_imports_and_document_actions_as_specified(self):
+        class RecordingMenu:
+            instances = []
+
+            def __init__(self, parent, **_kwargs):
+                self.parent = parent
+                self.entries = []
+                self.__class__.instances.append(self)
+
+            def add_command(self, **kwargs):
+                self.entries.append(("command", kwargs))
+
+            def add_cascade(self, **kwargs):
+                self.entries.append(("cascade", kwargs))
+
+            def add_separator(self):
+                self.entries.append(("separator", {}))
+
+        gui = InvoiceGUI.__new__(InvoiceGUI)
+        gui.root = Mock()
+        gui._refresh_application_menu = Mock()
+
+        with patch("rechnungshelfer.gui.main_window.Menu", RecordingMenu):
+            gui._build_menu_bar()
+
+        top, file_menu, document_menu, new_menu, master_menu, help_menu = (
+            RecordingMenu.instances
+        )
+        self.assertEqual(
+            [entry[1]["label"] for entry in top.entries],
+            ["Datei", "Beleg", "Stammdaten", "Hilfe"],
+        )
+        self.assertEqual(
+            [entry[1]["label"] for entry in file_menu.entries],
+            ["XML einlesen", "PDF einlesen"],
+        )
+        self.assertEqual(
+            [entry[1].get("label") for entry in document_menu.entries],
+            [
+                "Speichern",
+                "Formular leeren",
+                "Gespeicherten Beleg laden",
+                None,
+                "Neuer Beleg",
+            ],
+        )
+        self.assertEqual(
+            [entry[1]["label"] for entry in new_menu.entries],
+            ["Rechnung", "Gutschrift", "Getreideabrechnung"],
+        )
+        self.assertEqual(
+            [entry[1].get("label") for entry in master_menu.entries],
+            ["Geschäftspartnerliste", None, "Eigener Betrieb"],
+        )
+        self.assertEqual(
+            [entry[1]["label"] for entry in help_menu.entries],
+            ["Testbeleg laden", "Updates"],
+        )
+
+    def test_clear_current_grain_form_respects_discard_confirmation(self):
+        gui = self._gui()
+        gui.active_workspace = "grain"
+        gui._confirm_discard_unsaved_changes = Mock(side_effect=[False, True])
+
+        gui._clear_current_form()
+        gui.grain_view.clear_form.assert_not_called()
+
+        gui._clear_current_form()
+        gui.grain_view.clear_form.assert_called_once_with()
+
+    def test_new_grain_document_clears_and_opens_workspace(self):
+        gui = self._gui()
+        gui._confirm_discard_unsaved_changes = Mock(return_value=True)
+        gui._open_grain_workspace = Mock()
+
+        gui._new_grain_document()
+
+        gui.grain_view.clear_form.assert_called_once_with()
+        gui._open_grain_workspace.assert_called_once_with()
+
+    def test_invoice_changes_are_detected_against_clean_state(self):
+        gui = InvoiceGUI.__new__(InvoiceGUI)
+        gui.invoice = InvoiceFactory().create(DocumentType.INVOICE)
+
+        gui._mark_invoice_clean()
+        self.assertFalse(gui._has_invoice_unsaved_changes())
+
+        gui.invoice.info.invoice_number = "RE-NEU"
+        self.assertTrue(gui._has_invoice_unsaved_changes())
+
+    def test_grain_changes_are_detected_against_clean_state(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.document = InvoiceFactory().create(DocumentType.SELF_BILLED_INVOICE)
+        view.features = ()
+        view.rules = ()
+        view.rule_sets = {}
+        view.harvest_year = 2026
+        view.deliveries = []
+        view._next_delivery_number = 1
+        view._last_result = None
+        view.credit_note = None
+        view.vat_variable = Mock()
+        view.vat_variable.get.return_value = "— auswählen —"
+
+        view.mark_clean()
+        self.assertFalse(view.has_unsaved_changes())
+
+        view.document.info.invoice_number = "GS-NEU"
+        self.assertTrue(view.has_unsaved_changes())
+
+    def test_clear_grain_form_creates_clean_empty_document(self):
+        view = GrainSettlementView.__new__(GrainSettlementView)
+        view.controller = Mock()
+        empty = InvoiceFactory().create(DocumentType.SELF_BILLED_INVOICE)
+        view.controller.create_empty_invoice.return_value = empty
+        view.credit_note = Mock()
+        view._persisted_credit_note_number = "GS-ALT"
+        view._last_result = Mock()
+        view.deliveries = [Mock()]
+        view._next_delivery_number = 4
+        view.features = ()
+        view.rules = ()
+        view.rule_sets = {"wheat": ((), ())}
+        view.harvest_year = 2026
+        view.vat_variable = Mock()
+        view.vat_variable.get.return_value = "— auswählen —"
+        view._set_credit_note_mode = Mock()
+        view._render_top_cards = Mock()
+        view._render_deliveries = Mock()
+        view._clear_totals = Mock()
+        view.status_label = Mock()
+        view.rule_button = Mock()
+        view._refresh_save_button = Mock()
+
+        view.clear_form()
+
+        self.assertIs(view.document, empty)
+        self.assertEqual(view.deliveries, [])
+        self.assertIsNone(view.credit_note)
+        self.assertFalse(view.has_unsaved_changes())
+        view._render_deliveries.assert_called_once_with()
 
     def test_file_save_routes_to_grain_workspace(self):
         gui = self._gui()
