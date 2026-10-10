@@ -84,7 +84,7 @@ class InvoiceApplicationService:
 
         with self._database.transaction():
             if invoice.is_self_billed and invoice.seller.name:
-                self._partners.save_supplier(
+                self._partners.ensure_supplier(
                     invoice.seller,
                     invoice.payment,
                     commit=False,
@@ -97,7 +97,7 @@ class InvoiceApplicationService:
                 and invoice.buyer.customer_number
                 and invoice.buyer.name
             ):
-                self._partners.save_customer(invoice.buyer, commit=False)
+                self._partners.ensure_customer(invoice.buyer, commit=False)
 
     def _different_customer_duplicates(self, invoice: Invoice):
         if (
@@ -169,6 +169,13 @@ class InvoiceApplicationService:
         if analysis.settlement_draft is not None:
             raise ValueError(
                 "Die erkannte Testabrechnung muss vor der Übernahme geprüft werden."
+            )
+
+        if analysis.draft.errors:
+            raise ValueError(
+                "Der PDF-Rückimport wurde wegen widersprüchlicher oder ungültiger "
+                "Rechnungsdaten gesperrt:\n- "
+                + "\n- ".join(analysis.draft.errors)
             )
 
         if analysis.draft.embedded_invoice_data is not None:

@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from dataclasses import replace
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -17,6 +18,10 @@ from rechnungshelfer.services.pdf_service import create_pdf
 from rechnungshelfer.services.pdf_invoice_parser import (
     BUSINESS_PARTNER_NUMBER_PATH,
     PdfInvoiceParser,
+)
+from rechnungshelfer.services.pdf_invoice_metadata import (
+    METADATA_PREFIX,
+    encode_invoice_metadata,
 )
 from rechnungshelfer.services.sample_document_service import (
     create_sample_invoice,
@@ -70,6 +75,120 @@ class PdfInvoiceParserTests(unittest.TestCase):
             [vars(item) for item in imported.items],
             [vars(item) for item in original.items],
         )
+
+    def test_blocks_embedded_header_that_contradicts_visible_pdf(self):
+        original = create_sample_invoice()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rechnung.pdf"
+            create_pdf(original, path)
+            extraction = PdfImportService().extract(path)
+
+        tampered = create_sample_invoice()
+        tampered.info.invoice_number = "MANIPULIERT-1"
+        extraction = replace(
+            extraction,
+            metadata={"Subject": encode_invoice_metadata(tampered)},
+        )
+
+        draft = PdfInvoiceParser().parse(extraction)
+
+        self.assertTrue(draft.errors)
+        self.assertTrue(
+            any("info.invoice_number" in error for error in draft.errors)
+        )
+
+    def test_blocks_embedded_position_that_contradicts_visible_pdf(self):
+        original = create_sample_invoice()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rechnung.pdf"
+            create_pdf(original, path)
+            extraction = PdfImportService().extract(path)
+
+        tampered = create_sample_invoice()
+        tampered.items[0].name = "Manipulierte Position"
+        extraction = replace(
+            extraction,
+            metadata={"Subject": encode_invoice_metadata(tampered)},
+        )
+
+        draft = PdfInvoiceParser().parse(extraction)
+
+        self.assertTrue(
+            any("sichtbarer Position" in error for error in draft.errors)
+        )
+
+    def test_blocks_internally_inconsistent_embedded_totals(self):
+        original = create_sample_invoice()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rechnung.pdf"
+            create_pdf(original, path)
+            extraction = PdfImportService().extract(path)
+
+        tampered = create_sample_invoice()
+        tampered.monetarytotal.payable_amount = Decimal("0.00")
+        extraction = replace(
+            extraction,
+            metadata={"Subject": encode_invoice_metadata(tampered)},
+        )
+
+        draft = PdfInvoiceParser().parse(extraction)
+
+        self.assertTrue(
+            any("Gesamt-/Auszahlungsbetrag" in error for error in draft.errors)
+        )
+
+    def test_blocks_embedded_document_type_code_contradiction(self):
+        original = create_sample_invoice()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rechnung.pdf"
+            create_pdf(original, path)
+            extraction = PdfImportService().extract(path)
+
+        tampered = create_sample_invoice()
+        tampered.info.invoice_type_code = "389"
+        extraction = replace(
+            extraction,
+            metadata={"Subject": encode_invoice_metadata(tampered)},
+        )
+
+        draft = PdfInvoiceParser().parse(extraction)
+
+        self.assertTrue(
+            any("InvoiceTypeCode" in error for error in draft.errors)
+        )
+
+    def test_blocks_visible_total_that_contradicts_embedded_data(self):
+        original = create_sample_invoice()
+        extraction = extraction_with(
+            f"Rechnung Nr. {original.info.invoice_number} vom "
+            f"{original.info.invoice_date}\n"
+            "Nettosumme: 0,01 EUR\n"
+            "Gesamtbetrag: 0,01 EUR"
+        )
+        extraction = replace(
+            extraction,
+            metadata={"Subject": encode_invoice_metadata(original)},
+        )
+
+        draft = PdfInvoiceParser().parse(extraction)
+
+        self.assertTrue(
+            any("sichtbaren Nettosumme" in error for error in draft.errors)
+        )
+        self.assertTrue(
+            any("Gesamt-/Auszahlungsbetrag" in error for error in draft.errors)
+        )
+
+    def test_malformed_embedded_metadata_is_a_blocking_error(self):
+        extraction = replace(
+            extraction_with("Rechnungsnummer: R-1"),
+            metadata={"Subject": METADATA_PREFIX + "{"},
+        )
+
+        draft = PdfInvoiceParser().parse(extraction)
+
+        self.assertTrue(draft.errors)
+        self.assertIsNone(draft.embedded_invoice_data)
 
     def test_detects_only_explicitly_labeled_invoice_fields(self):
         extraction = extraction_with(
@@ -290,6 +409,54 @@ Gutschriftbetrag in EUR 434,13
         partners.save_customer.assert_not_called()
         partners.save_supplier.assert_not_called()
         database.transaction.assert_not_called()
+
+    def test_roundtrips_program_self_billed_pdf_without_conflicts(self):
+        original = create_sample_self_billed_invoice()
+        database = Mock()
+        invoices = Mock()
+        partners = Mock()
+        master_data = Mock()
+        service = InvoiceApplicationService(
+            database=database,
+            invoice_repository=invoices,
+            business_partner_repository=partners,
+            master_data_repository=master_data,
+            invoice_factory=InvoiceFactory(),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "testgutschrift.pdf"
+            create_pdf(original, path)
+            imported = service.load_from_pdf(path)
+
+        self.assertEqual(imported.invoice.to_dict(), original.to_dict())
+        self.assertFalse(imported.draft.errors)
+        master_data.load_into.assert_not_called()
+        invoices.save.assert_not_called()
+        partners.save_customer.assert_not_called()
+        partners.save_supplier.assert_not_called()
+        database.transaction.assert_not_called()
+
+    def test_contradictory_embedded_data_cannot_be_converted(self):
+        original = create_sample_invoice()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rechnung.pdf"
+            create_pdf(original, path)
+            extraction = PdfImportService().extract(path)
+
+        tampered = create_sample_invoice()
+        tampered.info.invoice_number = "MANIPULIERT-1"
+        extraction = replace(
+            extraction,
+            metadata={"Subject": encode_invoice_metadata(tampered)},
+        )
+        service, _database, _invoices, _partners, _master_data = self._service(
+            extraction
+        )
+        analysis = service.analyze_pdf("rechnung.pdf")
+
+        with self.assertRaisesRegex(ValueError, "gesperrt"):
+            service.create_invoice_from_pdf_analysis(analysis)
 
 if __name__ == "__main__":
     unittest.main()

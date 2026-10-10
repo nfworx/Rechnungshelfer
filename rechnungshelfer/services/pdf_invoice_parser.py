@@ -11,6 +11,7 @@ from rechnungshelfer.domain.models import DocumentType, Invoice, InvoiceItem
 from .pdf_import_service import PdfImportResult, normalize_ocr_text
 from .pdf_invoice_metadata import decode_invoice_metadata
 from .settlement_credit_note_parser import SettlementCreditNoteDraft
+from .validation_service import validate_document
 
 
 BUSINESS_PARTNER_NUMBER_PATH = "business_partner.number"
@@ -36,6 +37,7 @@ class DetectedInvoiceItem:
     discount: str
     vat: str
     tax_category: str
+    net: str
 
     def to_invoice_item(self) -> InvoiceItem:
         return InvoiceItem(**asdict(self))
@@ -48,6 +50,7 @@ class PdfInvoiceDraft:
     items: tuple[DetectedInvoiceItem, ...] = ()
     embedded_invoice_data: dict | None = None
     warnings: tuple[str, ...] = ()
+    errors: tuple[str, ...] = ()
 
     def get(self, path: str) -> DetectedInvoiceField | None:
         return next((field for field in self.fields if field.path == path), None)
@@ -223,6 +226,20 @@ class PdfInvoiceParser:
         r"(?P<net>-?[\d.]+,\d{2})\s*$",
         re.IGNORECASE | re.MULTILINE,
     )
+    _APP_NET_AMOUNT_PATTERN = re.compile(
+        r"^Nettosumme:\s*(?P<amount>-?[\d.]+,\d{2})\s+[A-Z]{3}\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    _APP_TAX_AMOUNT_PATTERN = re.compile(
+        r"^MwSt\s+(?P<rate>[\d.,]+)\s*%:\s*"
+        r"(?P<amount>-?[\d.]+,\d{2})\s+[A-Z]{3}\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    _APP_PAYABLE_AMOUNT_PATTERN = re.compile(
+        r"^(?:Gesamtbetrag|Auszahlungsbetrag):\s*"
+        r"(?P<amount>-?[\d.]+,\d{2})\s+[A-Z]{3}\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
     _UNIT_CODES = {
         "std": "HUR", "stk": "C62", "kg": "KGM", "g": "GRM",
         "t": "TNE", "l": "LTR", "m³": "MTQ", "m²": "MTK",
@@ -233,9 +250,11 @@ class PdfInvoiceParser:
         document_type = self._detect_document_type(extraction.full_text)
         detected = {}
         detected_items: dict[int, DetectedInvoiceItem] = {}
+        searchable_pages = []
 
         for page in extraction.pages:
             page_text = self._searchable_page_text(page)
+            searchable_pages.append(page_text)
             for path, pattern, confidence, normalizer in self._LABELED_PATTERNS:
                 if (
                     document_type is DocumentType.SELF_BILLED_INVOICE
@@ -288,6 +307,7 @@ class PdfInvoiceParser:
                 detected_items.setdefault(item.pos, item)
 
         warnings = []
+        errors = []
         embedded_invoice_data = None
         subject = next(
             (
@@ -300,7 +320,18 @@ class PdfInvoiceParser:
         try:
             embedded_invoice_data = decode_invoice_metadata(subject)
         except ValueError as exc:
-            warnings.append(str(exc))
+            errors.append(str(exc))
+
+        if embedded_invoice_data is not None:
+            errors.extend(
+                self._embedded_invoice_errors(
+                    embedded_invoice_data,
+                    document_type,
+                    tuple(detected.values()),
+                    tuple(detected_items.values()),
+                    "\n".join(searchable_pages),
+                )
+            )
 
         if (
             "info.invoice_number" not in detected
@@ -327,6 +358,7 @@ class PdfInvoiceParser:
             items=tuple(detected_items.values()),
             embedded_invoice_data=embedded_invoice_data,
             warnings=tuple(warnings),
+            errors=tuple(errors),
         )
 
     @classmethod
@@ -464,9 +496,255 @@ class PdfInvoiceParser:
                     discount=discount,
                     vat=vat,
                     tax_category="Z" if Decimal(vat) == 0 else "S",
+                    net=cls._decimal_value(match.group("net")),
                 )
             )
         return items
+
+    @classmethod
+    def _embedded_invoice_errors(
+        cls,
+        data,
+        visible_document_type,
+        visible_fields,
+        visible_items,
+        visible_text,
+    ):
+        errors = []
+        for key in (
+            "seller",
+            "buyer",
+            "delivery",
+            "info",
+            "payment",
+            "monetarytotal",
+        ):
+            if not isinstance(data.get(key), dict):
+                errors.append(
+                    f"Eingebettete Rechnungsdaten: Abschnitt '{key}' fehlt oder ist ungültig."
+                )
+        for key in ("items", "taxtotal"):
+            values = data.get(key)
+            if not isinstance(values, list) or not all(
+                isinstance(value, dict) for value in values
+            ):
+                errors.append(
+                    f"Eingebettete Rechnungsdaten: Abschnitt '{key}' fehlt oder ist ungültig."
+                )
+        if errors:
+            return errors
+
+        try:
+            embedded_document_type = DocumentType(data.get("document_type"))
+        except (TypeError, ValueError) as exc:
+            return [
+                "Eingebettete Rechnungsdaten enthalten keinen gültigen "
+                f"Belegtyp: {exc}"
+            ]
+        expected_type_code = embedded_document_type.invoice_type_code
+        if str(data["info"].get("invoice_type_code")) != expected_type_code:
+            errors.append(
+                "Eingebettete Rechnungsdaten sind fachlich ungültig: "
+                f"Belegtyp und InvoiceTypeCode widersprechen sich; erwartet {expected_type_code}."
+            )
+
+        try:
+            invoice = Invoice.from_dict(data)
+        except Exception as exc:
+            return [f"Eingebettete Rechnungsdaten sind fachlich ungültig: {exc}"]
+
+        validation = validate_document(invoice)
+        errors.extend(
+            f"Eingebettete Rechnungsdaten sind fachlich ungültig: {message}"
+            for message in validation.errors
+        )
+
+        if invoice.document_type is not visible_document_type:
+            errors.append(
+                "Widerspruch zwischen sichtbarem Belegtyp und eingebetteten Rechnungsdaten."
+            )
+
+        errors.extend(cls._embedded_calculation_errors(data, invoice))
+        errors.extend(
+            cls._visible_field_errors(
+                invoice,
+                visible_document_type,
+                visible_fields,
+            )
+        )
+        errors.extend(cls._visible_item_errors(invoice, visible_items))
+        errors.extend(cls._visible_total_errors(invoice, visible_text))
+        return errors
+
+    @classmethod
+    def _embedded_calculation_errors(cls, data, invoice):
+        errors = []
+        for index, (stored, calculated) in enumerate(
+            zip(data["items"], invoice.items),
+            start=1,
+        ):
+            if not cls._same_decimal(stored.get("net"), calculated.net):
+                errors.append(
+                    f"Eingebettete Position {index}: gespeicherter Nettobetrag "
+                    "widerspricht der Neuberechnung."
+                )
+        if len(data["items"]) != len(invoice.items):
+            errors.append("Eingebettete Positionsdaten sind unvollständig.")
+
+        stored_total = data["monetarytotal"]
+        for key, label in (
+            ("line_extension_amount", "Nettosumme"),
+            ("tax_exclusive_amount", "Summe ohne Umsatzsteuer"),
+            ("tax_inclusive_amount", "Summe mit Umsatzsteuer"),
+            ("payable_amount", "Gesamt-/Auszahlungsbetrag"),
+            ("prepaid_amount", "bereits gezahlter Betrag"),
+        ):
+            if not cls._same_decimal(
+                stored_total.get(key),
+                getattr(invoice.monetarytotal, key),
+            ):
+                errors.append(
+                    f"Eingebettete Rechnungsdaten: {label} widerspricht der Neuberechnung."
+                )
+
+        stored_taxes = {
+            (
+                str(item.get("tax_category", "")),
+                cls._decimal_or_none(item.get("percent")),
+            ): item
+            for item in data["taxtotal"]
+        }
+        calculated_taxes = {
+            (item.tax_category, item.percent): item for item in invoice.taxtotal
+        }
+        if set(stored_taxes) != set(calculated_taxes):
+            errors.append(
+                "Eingebettete Umsatzsteuergruppen widersprechen der Neuberechnung."
+            )
+        else:
+            for key, calculated in calculated_taxes.items():
+                stored = stored_taxes[key]
+                if not cls._same_decimal(
+                    stored.get("amount"), calculated.amount
+                ) or not cls._same_decimal(
+                    stored.get("taxable_amount"), calculated.taxable_amount
+                ):
+                    errors.append(
+                        "Eingebettete Umsatzsteuerbeträge widersprechen der Neuberechnung."
+                    )
+                    break
+        return errors
+
+    @classmethod
+    def _visible_field_errors(cls, invoice, document_type, fields):
+        errors = []
+        for field in fields:
+            if field.path == BUSINESS_PARTNER_NUMBER_PATH:
+                actual = (
+                    invoice.seller.supplier_number
+                    if document_type is DocumentType.SELF_BILLED_INVOICE
+                    else invoice.buyer.customer_number
+                )
+            else:
+                section, attribute = field.path.split(".", 1)
+                actual = getattr(getattr(invoice, section), attribute, "")
+            if cls._normalized_text(actual) != cls._normalized_text(field.value):
+                errors.append(
+                    f"Widerspruch bei sichtbarem Feld '{field.path}': "
+                    f"PDF '{field.value}', eingebettet '{actual}'."
+                )
+        return errors
+
+    @classmethod
+    def _visible_item_errors(cls, invoice, visible_items):
+        if not visible_items:
+            return []
+        if len(invoice.items) != len(visible_items):
+            return [
+                "Widerspruch bei den Positionen: sichtbare und eingebettete "
+                "Anzahl unterscheiden sich."
+            ]
+        errors = []
+        for visible, embedded in zip(visible_items, invoice.items):
+            same = (
+                visible.pos == embedded.pos
+                and cls._normalized_text(visible.name)
+                == cls._normalized_text(embedded.name)
+                and visible.unit == embedded.unit
+                and visible.tax_category == embedded.tax_category
+                and all(
+                    cls._same_decimal(left, right)
+                    for left, right in (
+                        (visible.qty, embedded.qty),
+                        (
+                            visible.price_without_discount,
+                            embedded.price_without_discount,
+                        ),
+                        (visible.discount, embedded.discount),
+                        (visible.vat, embedded.vat),
+                        (visible.net, embedded.net),
+                    )
+                )
+            )
+            if not same:
+                errors.append(
+                    f"Widerspruch bei sichtbarer Position {visible.pos} und "
+                    "eingebetteten Rechnungsdaten."
+                )
+        return errors
+
+    @classmethod
+    def _visible_total_errors(cls, invoice, text):
+        errors = []
+        net_match = cls._APP_NET_AMOUNT_PATTERN.search(text)
+        if net_match and not cls._same_decimal(
+            cls._decimal_value(net_match.group("amount")),
+            invoice.monetarytotal.line_extension_amount,
+        ):
+            errors.append("Widerspruch bei der sichtbaren Nettosumme.")
+        payable_match = cls._APP_PAYABLE_AMOUNT_PATTERN.search(text)
+        if payable_match and not cls._same_decimal(
+            cls._decimal_value(payable_match.group("amount")),
+            invoice.monetarytotal.payable_amount,
+        ):
+            errors.append("Widerspruch beim sichtbaren Gesamt-/Auszahlungsbetrag.")
+        visible_taxes = {
+            cls._decimal_or_none(cls._decimal_value(match.group("rate"))):
+            cls._decimal_value(match.group("amount"))
+            for match in cls._APP_TAX_AMOUNT_PATTERN.finditer(text)
+        }
+        calculated_taxes = {tax.percent: tax.amount for tax in invoice.taxtotal}
+        for rate, amount in visible_taxes.items():
+            if rate not in calculated_taxes or not cls._same_decimal(
+                amount,
+                calculated_taxes[rate],
+            ):
+                errors.append(
+                    f"Widerspruch beim sichtbaren Umsatzsteuerbetrag für {rate} %."
+                )
+        return errors
+
+    @staticmethod
+    def _normalized_text(value):
+        return " ".join(str(value or "").split()).casefold()
+
+    @staticmethod
+    def _decimal_or_none(value):
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _same_decimal(cls, left, right):
+        left_decimal = cls._decimal_or_none(left)
+        right_decimal = cls._decimal_or_none(right)
+        return (
+            left_decimal is not None
+            and right_decimal is not None
+            and left_decimal.quantize(Decimal("0.01"))
+            == right_decimal.quantize(Decimal("0.01"))
+        )
 
     @staticmethod
     def _decimal_value(value):

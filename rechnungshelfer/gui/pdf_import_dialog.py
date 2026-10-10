@@ -187,12 +187,13 @@ class PdfImportDialog:
 
         self._analysis = value
         if value.settlement_draft is None:
-            try:
-                self._import = self.controller.create_invoice_from_pdf_analysis(value)
-            except Exception as exc:
-                self.close()
-                messagebox.showerror("PDF-Import", str(exc), parent=self.parent)
-                return
+            if not value.draft.errors:
+                try:
+                    self._import = self.controller.create_invoice_from_pdf_analysis(value)
+                except Exception as exc:
+                    self.close()
+                    messagebox.showerror("PDF-Import", str(exc), parent=self.parent)
+                    return
         self._show_result()
 
     def _show_result(self):
@@ -238,6 +239,9 @@ class PdfImportDialog:
         status_messages = [*extraction.warnings, *extraction.errors]
         if analysis.settlement_draft is None:
             status_messages.extend(analysis.draft.warnings)
+            status_messages.extend(
+                f"BLOCKIERT: {error}" for error in analysis.draft.errors
+            )
         detected = len(analysis.draft.fields)
         status = [f"Erkannte Formularfelder: {detected}"]
         if analysis.settlement_draft is not None:
@@ -298,9 +302,14 @@ class PdfImportDialog:
         apply_button.grid(row=0, column=1, padx=8, sticky="ew")
         if (
             analysis.settlement_draft is None
-            and not analysis.draft.fields
-            and not analysis.draft.items
-            and analysis.draft.embedded_invoice_data is None
+            and (
+                analysis.draft.errors
+                or (
+                    not analysis.draft.fields
+                    and not analysis.draft.items
+                    and analysis.draft.embedded_invoice_data is None
+                )
+            )
         ):
             apply_button.configure(state="disabled")
         button(footer, "Schließen", self.close).grid(

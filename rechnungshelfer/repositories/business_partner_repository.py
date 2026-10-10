@@ -42,6 +42,25 @@ class BusinessPartnerRepository:
         buyer.customer_number = number
         return number
 
+    def ensure_customer(self, buyer: Buyer, *, commit: bool = True) -> str:
+        """Legt eine fehlende Kundenrolle an, ohne Stammdaten zu aktualisieren."""
+
+        if commit:
+            with self.conn:
+                return self.ensure_customer(buyer, commit=False)
+        number = normalize_partner_number(buyer.customer_number)
+        profile = self.load_partner(number)
+        if profile is None:
+            return self.save_customer(buyer, commit=False)
+        if BusinessPartnerRole.CUSTOMER not in profile.roles:
+            self._save_role(
+                self._partner_id(number),
+                BusinessPartnerRole.CUSTOMER,
+                {field: getattr(buyer, field) for field in CUSTOMER_ROLE_FIELDS},
+            )
+        buyer.customer_number = number
+        return number
+
     def save_supplier(
         self,
         seller: Seller,
@@ -61,6 +80,37 @@ class BusinessPartnerRepository:
         }
         role_data["payment"] = dict(payment.__dict__)
         self._save_role(partner_id, BusinessPartnerRole.SUPPLIER, role_data)
+        seller.supplier_number = number
+        return number
+
+    def ensure_supplier(
+        self,
+        seller: Seller,
+        payment: Payment,
+        *,
+        commit: bool = True,
+    ) -> str:
+        """Legt eine fehlende Lieferantenrolle an, ohne Stammdaten zu aktualisieren."""
+
+        if commit:
+            with self.conn:
+                return self.ensure_supplier(seller, payment, commit=False)
+        number = normalize_partner_number(seller.supplier_number)
+        if not str(seller.buyer_reference or "").strip():
+            seller.buyer_reference = number
+        profile = self.load_partner(number)
+        if profile is None:
+            return self.save_supplier(seller, payment, commit=False)
+        if BusinessPartnerRole.SUPPLIER not in profile.roles:
+            role_data = {
+                field: getattr(seller, field) for field in SUPPLIER_ROLE_FIELDS
+            }
+            role_data["payment"] = dict(payment.__dict__)
+            self._save_role(
+                self._partner_id(number),
+                BusinessPartnerRole.SUPPLIER,
+                role_data,
+            )
         seller.supplier_number = number
         return number
 

@@ -207,6 +207,12 @@
 - [ ] GitHub Actions für automatische Tests bei Pushes einrichten.
 - [ ] Testdaten und Beispiellieferungen klar vom Produktivbetrieb trennen.
 - [ ] Große GUI-Module bei Bedarf aufteilen und vereinfachen.
+- [ ] Die vollständige Testsuite systematisch auf fachliche Plausibilität,
+  aktuellen Nutzen und tatsächliche Notwendigkeit jedes Tests prüfen. Dabei
+  insbesondere widersprüchliche Erwartungen, gegeneinander arbeitende Tests,
+  ungewollte Seiteneffekte sowie Abhängigkeiten von Ausführungsreihenfolge oder
+  gemeinsamem Zustand erkennen und bereinigen. Tests nur nach nachvollziehbarer
+  Prüfung entfernen oder grundlegend ändern.
 - [ ] Wiederholte Test-Fixtures und Hilfsfunktionen zusammenführen, ohne fachlich
   unterschiedliche Tests zu verlieren; keine pauschale Testlöschung.
 - [ ] Tesseract-Distribution verschlanken und Repository-Größe optimieren.

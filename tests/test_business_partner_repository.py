@@ -64,6 +64,100 @@ class BusinessPartnerRepositoryTests(unittest.TestCase):
         self.assertEqual(seller.supplier_number, "0042")
         self.assertEqual(payment.iban, "DE89370400440532013000")
 
+    def test_ensure_customer_keeps_existing_master_data(self):
+        self.repository.save_customer(
+            Buyer(
+                customer_number="0042",
+                name="Aktueller Name",
+                city="Neustadt",
+                email="neu@example.de",
+                leitweg_id="NEU-42",
+            )
+        )
+
+        self.repository.ensure_customer(
+            Buyer(
+                customer_number="0042",
+                name="Alter Name",
+                city="Altdorf",
+                email="alt@example.de",
+                leitweg_id="ALT-42",
+            )
+        )
+
+        loaded = self.repository.load_partner("0042")
+        self.assertEqual(loaded.buyer.name, "Aktueller Name")
+        self.assertEqual(loaded.buyer.city, "Neustadt")
+        self.assertEqual(loaded.buyer.email, "neu@example.de")
+        self.assertEqual(loaded.buyer.leitweg_id, "NEU-42")
+
+    def test_ensure_supplier_keeps_existing_master_and_payment_data(self):
+        self.repository.save_supplier(
+            Seller(
+                supplier_number="0042",
+                name="Aktueller Hof",
+                city="Neustadt",
+                buyer_reference="NEU-42",
+            ),
+            Payment(iban="DE89370400440532013000"),
+        )
+
+        self.repository.ensure_supplier(
+            Seller(
+                supplier_number="0042",
+                name="Alter Hof",
+                city="Altdorf",
+                buyer_reference="ALT-42",
+            ),
+            Payment(iban="DE12500105170648489890"),
+        )
+
+        loaded = self.repository.load_partner("0042")
+        self.assertEqual(loaded.seller.name, "Aktueller Hof")
+        self.assertEqual(loaded.seller.city, "Neustadt")
+        self.assertEqual(loaded.seller.buyer_reference, "NEU-42")
+        self.assertEqual(loaded.payment.iban, "DE89370400440532013000")
+
+    def test_ensure_adds_missing_role_without_changing_common_data(self):
+        self.repository.save_customer(
+            Buyer(customer_number="0042", name="Aktueller Hof", city="Neustadt")
+        )
+
+        self.repository.ensure_supplier(
+            Seller(
+                supplier_number="0042",
+                name="Alter Hof",
+                city="Altdorf",
+            ),
+            Payment(iban="DE89370400440532013000"),
+        )
+
+        loaded = self.repository.load_partner("0042")
+        self.assertEqual(loaded.seller.name, "Aktueller Hof")
+        self.assertEqual(loaded.seller.city, "Neustadt")
+        self.assertEqual(loaded.payment.iban, "DE89370400440532013000")
+
+    def test_ensure_creates_unknown_customer_and_supplier(self):
+        self.repository.ensure_customer(
+            Buyer(customer_number="0041", name="Neuer Kunde")
+        )
+        seller = Seller(
+            supplier_number="0042",
+            name="Neuer Lieferant",
+            buyer_reference="",
+        )
+        self.repository.ensure_supplier(
+            seller,
+            Payment(iban="DE89370400440532013000"),
+        )
+
+        customer = self.repository.load_partner("0041")
+        supplier = self.repository.load_partner("0042")
+        self.assertEqual(customer.buyer.name, "Neuer Kunde")
+        self.assertEqual(supplier.seller.name, "Neuer Lieferant")
+        self.assertEqual(supplier.payment.iban, "DE89370400440532013000")
+        self.assertEqual(seller.buyer_reference, "0042")
+
     def test_deleting_one_role_keeps_partner_and_other_role(self):
         self.repository.save_customer(Buyer(customer_number="42", name="Musterhof"))
         self.repository.save_supplier(

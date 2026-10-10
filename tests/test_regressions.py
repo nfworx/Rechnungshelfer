@@ -178,6 +178,51 @@ class RegressionTests(unittest.TestCase):
             self.assertEqual(controller.partner_repo.list_suppliers(), [])
             controller.close()
 
+    def test_saving_old_invoice_does_not_overwrite_customer_master_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            controller = self._controller_for(Path(tmp))
+            invoice = self._invoice()
+            invoice.set_document_type("invoice")
+            invoice.info.invoice_number = "OLD-CUSTOMER-1"
+            invoice.buyer.customer_number = "2001"
+            invoice.buyer.name = "Alter Kundenname"
+            invoice.buyer.city = "Altdorf"
+            current = copy.deepcopy(invoice.buyer)
+            current.name = "Aktueller Kundenname"
+            current.city = "Neustadt"
+            controller.partner_repo.save_customer(current)
+
+            controller.save_invoice(invoice)
+
+            loaded = controller.partner_repo.load_partner("2001")
+            self.assertEqual(loaded.buyer.name, "Aktueller Kundenname")
+            self.assertEqual(loaded.buyer.city, "Neustadt")
+            controller.close()
+
+    def test_saving_old_credit_note_does_not_overwrite_supplier_master_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            controller = self._controller_for(Path(tmp))
+            invoice = self._invoice()
+            invoice.info.invoice_number = "OLD-SUPPLIER-1"
+            invoice.seller.supplier_number = "2001"
+            invoice.seller.name = "Alter Hof"
+            invoice.seller.city = "Altdorf"
+            invoice.payment.iban = "DE12500105170648489890"
+            current = copy.deepcopy(invoice.seller)
+            current.name = "Aktueller Hof"
+            current.city = "Neustadt"
+            current_payment = copy.deepcopy(invoice.payment)
+            current_payment.iban = "DE89370400440532013000"
+            controller.partner_repo.save_supplier(current, current_payment)
+
+            controller.save_invoice(invoice)
+
+            loaded = controller.partner_repo.load_partner("2001")
+            self.assertEqual(loaded.seller.name, "Aktueller Hof")
+            self.assertEqual(loaded.seller.city, "Neustadt")
+            self.assertEqual(loaded.payment.iban, "DE89370400440532013000")
+            controller.close()
+
     def test_zero_vat_uses_zero_rated_category(self):
         invoice = self._invoice()
         invoice.items[0].set_vat(Decimal("0.00"))

@@ -165,6 +165,23 @@ class PdfImportGuiTests(unittest.TestCase):
         controller.create_invoice_from_pdf_analysis.assert_not_called()
         dialog._show_result.assert_called_once_with()
 
+    def test_blocked_invoice_import_stays_in_review_without_conversion(self):
+        controller = MagicMock()
+        dialog = PdfImportDialog(MagicMock(), controller, MagicMock())
+        dialog.window = MagicMock()
+        dialog.window.winfo_exists.return_value = True
+        dialog._show_result = MagicMock()
+        draft = SimpleNamespace(errors=("Widerspruch",))
+        analysis = SimpleNamespace(settlement_draft=None, draft=draft)
+        dialog._results.put((0, "result", analysis))
+
+        dialog._poll_result()
+
+        self.assertIs(dialog._analysis, analysis)
+        self.assertIsNone(dialog._import)
+        controller.create_invoice_from_pdf_analysis.assert_not_called()
+        dialog._show_result.assert_called_once_with()
+
     def test_recognized_settlement_opens_editable_review_dialog(self):
         controller = MagicMock()
         draft = object()
